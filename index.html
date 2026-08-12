@@ -288,6 +288,7 @@
     <li><strong>Buff pra longa distância</strong>: todo Stack User de alcance 2+ agora causa mais dano quanto mais longe estiver do alvo (+8% por bloco além do 1º).</li>
     <li><strong>Posicionamento manual</strong> na arena — escolhe onde cada Stack User fica antes da batalha, com reorganização rápida entre rodadas (mostrando os obstáculos/lava/portais daquela rodada). Comprar um personagem novo já adiciona ele direto no time.</li>
     <li><strong>Duas Stack Users novas</strong>: Nerith (água) invoca tentáculos estacionários perto dela mesma — fracos individualmente, mas dano considerável, e entram em frenesi se ela morrer. Voltra (elétrico) eletrifica e encadeia até 3 blocos de distância, acumula carga até estourar Sobrecarga, e detona onda de choque paralisante se um eletrificado morrer nesse período — contra Metal, o ataque dela só atordoa, sem dano.</li>
+    <li><strong>Correção:</strong> se uma partida anterior tinha expandido a arena (onda 15+) e você perdesse e começasse uma nova, o tamanho da arena só resetava DEPOIS da tela de posicionamento inicial — fazendo os personagens serem posicionados fora dos limites da arena pequena de verdade. Agora o reset acontece antes de qualquer posicionamento.</li>
     <li><strong>Chefes ainda mais perigosos depois da onda 25</strong>: o leque de poder emprestado cresceu (agora inclui a lança da Ferrha e a chuva da Zeph), e depois da onda 25 o chefe tem 50% de chance de vir com uma SEGUNDA habilidade — dessa vez uma passiva de verdade (frenesi do Kael, barreira da Ferrha, Pele de Pedra do Terrus ou combo do Raio). A da Glacia ficou de fora, já que curar não serve pra nada num chefe sozinho.</li>
     <li><strong>Correção nas interações</strong>: quando mais de uma dupla/trio elegível existia na mesma rodada, todas falavam ao mesmo tempo, empilhando balões. Agora o jogo escolhe só uma por rodada, ao acaso — as outras ficam disponíveis pra rodadas seguintes.</li>
     <li><strong>Primeira interação tripla</strong>: Raio, Kael e Voltra no mesmo time — os dois falam sobre explodir, e a Voltra debocha ("Amadores.").</li>
@@ -1409,6 +1410,7 @@ function openStarterPick(){
       setMenuLocked(true);
       resetRoundTracking();
       resetMatchProgression();
+      if(arenaExpanded){ arenaExpanded = false; RADIUS = 4; regenerateAllHexes(); }
       document.getElementById('confirm-team-btn').textContent = 'Confirmar';
       openTeamSelect('Monte seu time (1 a 3 Stack Users)');
     });
