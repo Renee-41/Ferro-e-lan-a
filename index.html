@@ -143,6 +143,20 @@
   .achievement-toast-label{ font-family:'JetBrains Mono',monospace; font-size:9px; color:var(--gold); text-transform:uppercase; letter-spacing:1px; margin-bottom:2px; }
   .achievement-toast-name{ font-family:'Oswald',sans-serif; font-size:14px; color:#fff2e6; font-weight:600; }
   .achievement-toast-desc{ font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--steel); margin-top:2px; }
+  #suggestion-popup{
+    display:none; position:fixed; top:56px; left:50%; transform:translateX(-50%); z-index:200;
+    background:linear-gradient(135deg,var(--iron-mid),var(--iron-dark));
+    border:1px solid var(--frost); border-radius:8px; padding:12px 36px 12px 16px;
+    box-shadow:0 8px 24px rgba(0,0,0,0.5); max-width:calc(100vw - 28px);
+    align-items:center; gap:10px;
+  }
+  #suggestion-popup.show{ display:flex; }
+  #suggestion-text{ font-family:'JetBrains Mono',monospace; font-size:12px; color:#eae4d8; }
+  #suggestion-close-btn{
+    position:absolute; top:6px; right:8px; background:none; border:none; color:var(--steel);
+    font-size:18px; line-height:1; cursor:pointer; padding:4px;
+  }
+  #suggestion-close-btn:hover{ color:#eae4d8; }
   #tutorial-overlay{
     display:none; position:fixed; inset:0; z-index:20000;
     background:rgba(10,8,7,0.72);
@@ -288,6 +302,10 @@
     <li><strong>Buff pra longa distância</strong>: todo Stack User de alcance 2+ agora causa mais dano quanto mais longe estiver do alvo (+8% por bloco além do 1º).</li>
     <li><strong>Posicionamento manual</strong> na arena — escolhe onde cada Stack User fica antes da batalha, com reorganização rápida entre rodadas (mostrando os obstáculos/lava/portais daquela rodada). Comprar um personagem novo já adiciona ele direto no time.</li>
     <li><strong>Duas Stack Users novas</strong>: Nerith (água) invoca tentáculos estacionários perto dela mesma — fracos individualmente, mas dano considerável, e entram em frenesi se ela morrer. Voltra (elétrico) eletrifica e encadeia até 3 blocos de distância, acumula carga até estourar Sobrecarga, e detona onda de choque paralisante se um eletrificado morrer nesse período — contra Metal, o ataque dela só atordoa, sem dano.</li>
+    <li><strong>Sugestão de time</strong>: um pop-up (fecha no X) aparece no preparo quando o time tá sem tanque, suporte, atirador ou controlador, sugerindo o Stack User mais barato que preenche essa falta.</li>
+    <li><strong>Loja reorganizada</strong>: personagens ordenados do mais barato pro mais caro; itens combinados (com receita) agora ficam sempre no final da lista de Itens.</li>
+    <li><strong>Correção no tutorial</strong>: ainda falava "até 3 Stack Users" — atualizado pra refletir que o time pode crescer até 5 comprando na Loja.</li>
+    <li><strong>Nova interação Kael + Terrus</strong>: agressivo vs. pacifista, terminando com um "Tenta a sorte." bem seco do Terrus.</li>
     <li><strong>Correção:</strong> se uma partida anterior tinha expandido a arena (onda 15+) e você perdesse e começasse uma nova, o tamanho da arena só resetava DEPOIS da tela de posicionamento inicial — fazendo os personagens serem posicionados fora dos limites da arena pequena de verdade. Agora o reset acontece antes de qualquer posicionamento.</li>
     <li><strong>Chefes ainda mais perigosos depois da onda 25</strong>: o leque de poder emprestado cresceu (agora inclui a lança da Ferrha e a chuva da Zeph), e depois da onda 25 o chefe tem 50% de chance de vir com uma SEGUNDA habilidade — dessa vez uma passiva de verdade (frenesi do Kael, barreira da Ferrha, Pele de Pedra do Terrus ou combo do Raio). A da Glacia ficou de fora, já que curar não serve pra nada num chefe sozinho.</li>
     <li><strong>Correção nas interações</strong>: quando mais de uma dupla/trio elegível existia na mesma rodada, todas falavam ao mesmo tempo, empilhando balões. Agora o jogo escolhe só uma por rodada, ao acaso — as outras ficam disponíveis pra rodadas seguintes.</li>
@@ -368,6 +386,11 @@
 
 <div id="achievement-toast-container"></div>
 
+<div id="suggestion-popup">
+  <button id="suggestion-close-btn">×</button>
+  <div id="suggestion-text"></div>
+</div>
+
 <div id="tutorial-overlay">
   <div id="tutorial-ring"></div>
   <div id="tutorial-tooltip"></div>
@@ -378,7 +401,7 @@
     <button id="tutorial-close" style="background:none;border:none;color:var(--steel);font-size:16px;cursor:pointer;line-height:1;">×</button>
   </div>
   <ul>
-    <li><strong>O básico:</strong> você monta um time de até 3 Stack Users num grid hexagonal e eles lutam sozinhos — sem controle direto, é tático: quem você escolhe, equipa e posiciona é o que decide a batalha.</li>
+    <li><strong>O básico:</strong> você monta um time (começa com 1 a 3, pode crescer até 5 comprando na Loja) num grid hexagonal e eles lutam sozinhos — sem controle direto, é tático: quem você escolhe, equipa e posiciona é o que decide a batalha.</li>
     <li><strong>Modos:</strong> "Contra Bot" é ondas infinitas de inimigos crescendo em dificuldade; "Local 2 Jogadores" é você e outra pessoa no mesmo aparelho, cada um com moeda e time próprios, se enfrentando por rodadas infinitas.</li>
     <li><strong>Moedas e Loja:</strong> você ganha moeda vencendo rodadas e usa pra comprar novos Stack Users ou itens — só dá pra comprar durante uma partida em andamento.</li>
     <li><strong>Estrelas:</strong> comprar um Stack User repetido é uma fusão — a cada 2 cópias extras, ele sobe de estrela (até 4★) e fica mais forte.</li>
@@ -419,7 +442,7 @@
       </div>
       <div class="mode-card" id="mode-pvp">
         <h3>Local — 2 Jogadores</h3>
-        <p>Rodadas infinitas: cada jogador tem moedas e time próprios. Pra começar, cada um escolhe até 3 (um de cada tipo, sem Ferrha) — depois disso, só dá pra pegar mais comprando na Loja. Entre rodadas, cada jogador tem seus próprios 15s pra se preparar, na sua vez.</p>
+        <p>Rodadas infinitas: cada jogador tem moedas e time próprios. Pra começar, cada um escolhe até 3 (um de cada tipo, sem Ferrha) — depois disso, só dá pra pegar mais comprando na Loja, até um limite de 5 por jogador. Entre rodadas, cada jogador tem seus próprios 15s pra se preparar, na sua vez.</p>
       </div>
     </div>
     <div style="margin-top:18px;text-align:center;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--steel);letter-spacing:0.5px;">
@@ -1003,6 +1026,46 @@ function showAchievementToast(id){
   }, 4500);
 }
 
+/* ============ SUGESTÃO DE TIME ============ */
+const ROLE_CATEGORY = {
+  ferrha:'tank', terrus:'tank', shecry:'tank',
+  glacia:'suporte',
+  ima:'controle',
+  voss:'longa distância', pyra:'longa distância', zeph:'longa distância', voltra:'longa distância',
+  nyx:'corpo a corpo', kael:'corpo a corpo', frosk:'corpo a corpo',
+  gelida:'especial', raio:'especial', nerith:'especial',
+};
+const ROLE_LABELS = {
+  tank:'tanque', suporte:'suporte', controle:'controlador',
+  'longa distância':'atirador', 'corpo a corpo':'lutador corpo a corpo', especial:'especialista',
+};
+function computeTeamSuggestion(teamIds){
+  const priorityOrder = ['tank','suporte','longa distância','controle'];
+  const teamCategories = new Set(teamIds.map(id=>ROLE_CATEGORY[id]));
+  for(const cat of priorityOrder){
+    if(!teamCategories.has(cat)){
+      const candidates = Object.entries(CHAMPION_CATALOG)
+        .filter(([id])=>ROLE_CATEGORY[id]===cat && !teamIds.includes(id))
+        .sort((a,b)=>a[1].cost-b[1].cost);
+      if(candidates.length) return {category:cat, champId:candidates[0][0]};
+    }
+  }
+  return null;
+}
+function showTeamSuggestion(teamIds){
+  document.getElementById('suggestion-popup').classList.remove('show');
+  if(!teamIds || teamIds.length===0) return;
+  const suggestion = computeTeamSuggestion(teamIds);
+  if(!suggestion) return;
+  const def = CHAMPION_CATALOG[suggestion.champId];
+  document.getElementById('suggestion-text').innerHTML =
+    `Seu time precisa de um <strong style="color:var(--frost);">${ROLE_LABELS[suggestion.category]}</strong> → <strong style="color:var(--molten);">${def.name}</strong>`;
+  document.getElementById('suggestion-popup').classList.add('show');
+}
+document.getElementById('suggestion-close-btn').addEventListener('click', ()=>{
+  document.getElementById('suggestion-popup').classList.remove('show');
+});
+
 function setSoundEnabled(on){
   soundEnabled = on;
   const btn = document.getElementById('sound-toggle-btn');
@@ -1039,7 +1102,8 @@ function renderShop(){
   el.innerHTML = '';
   const distinctOwned = Object.keys(owned).length;
   const atCap = distinctOwned >= MAX_OWNED_CHAMPS;
-  Object.entries(CHAMPION_CATALOG).forEach(([id,def])=>{
+  const sortedChampEntries = Object.entries(CHAMPION_CATALOG).sort((a,b)=>a[1].cost-b[1].cost);
+  sortedChampEntries.forEach(([id,def])=>{
     const isOwned = !!owned[id];
     const prog = owned[id];
     const copyCost = Math.round(def.cost*0.5);
@@ -1131,7 +1195,12 @@ function renderShop(){
 function renderItems(){
   const el = document.getElementById('item-cards');
   el.innerHTML = '';
-  Object.entries(ITEM_CATALOG).forEach(([id,def])=>{
+  const sortedItemEntries = Object.entries(ITEM_CATALOG).sort((a,b)=>{
+    const aRecipe = !!a[1].recipe, bRecipe = !!b[1].recipe;
+    if(aRecipe !== bRecipe) return aRecipe ? 1 : -1; // itens combinados vão pro final
+    return (a[1].cost||0) - (b[1].cost||0);
+  });
+  sortedItemEntries.forEach(([id,def])=>{
     const owned_count = itemInventory[id]||0;
     const card = document.createElement('div');
     card.className = 'champ-card';
@@ -1412,7 +1481,7 @@ function openStarterPick(){
       resetMatchProgression();
       if(arenaExpanded){ arenaExpanded = false; RADIUS = 4; regenerateAllHexes(); }
       document.getElementById('confirm-team-btn').textContent = 'Confirmar';
-      openTeamSelect('Monte seu time (1 a 3 Stack Users)');
+      openTeamSelect('Monte seu time inicial (1 a 3 — pode crescer até 5 comprando na Loja)');
     });
     cardsEl.appendChild(card);
   });
@@ -3039,6 +3108,11 @@ const DUO_BANTER = [
     {speaker:'kael', text:'Dessa vez talvez seja eu.'},
     {speaker:'voltra', text:'Vocês chamam isso de explosão? Amadores.'},
   ]},
+  {pair:['kael','terrus'], lines:[
+    {speaker:'terrus', text:'Nem tudo se resolve no soco. Precisa de meditação.'},
+    {speaker:'kael', text:'Eu posso calar sua boca com um soco. Isso resolveria.'},
+    {speaker:'terrus', text:'Tenta a sorte.'},
+  ]},
   {pair:['terrus','shecry'], lines:[
     {speaker:'shecry', text:'Você nunca perde a paciência, Terrus.'},
     {speaker:'terrus', text:'Pressa é o que quebra pedra antes da hora.'},
@@ -3855,6 +3929,7 @@ function startPrepTimer(){
   document.querySelector('#prep-overlay h3').textContent = 'Próxima rodada em';
   renderPrepStats();
   overlay.style.display = 'flex';
+  showTeamSuggestion(teamP1);
   let t = wave>=5 ? 40 : 15;
   timerEl.textContent = t;
   let paused = false;
@@ -3901,6 +3976,7 @@ function finishPrep(){
 function finishPrepContinue(){
   document.getElementById('quit-battle-btn').style.display = 'none';
   document.getElementById('view-summary-btn').style.display = 'none';
+  document.getElementById('suggestion-popup').classList.remove('show');
   const wavePicks = randomEnemyWave(wave);
   buildTeams(teamP1, wavePicks.map(w=>w.key), false);
   applyTempEnemyStats(wavePicks);
