@@ -309,6 +309,10 @@
     <li><strong>Buff pra longa distância</strong>: todo Stack User de alcance 2+ agora causa mais dano quanto mais longe estiver do alvo (+8% por bloco além do 1º).</li>
     <li><strong>Posicionamento manual</strong> na arena — escolhe onde cada Stack User fica antes da batalha, com reorganização rápida entre rodadas (mostrando os obstáculos/lava/portais daquela rodada). Comprar um personagem novo já adiciona ele direto no time.</li>
     <li><strong>Duas Stack Users novas</strong>: Nerith (água) invoca tentáculos estacionários perto dela mesma — fracos individualmente, mas dano considerável, e entram em frenesi se ela morrer. Voltra (elétrico) eletrifica e encadeia até 3 blocos de distância, acumula carga até estourar Sobrecarga, e detona onda de choque paralisante se um eletrificado morrer nesse período — contra Metal, o ataque dela só atordoa, sem dano.</li>
+    <li><strong>Nova aba: Conquistas</strong> — mostra todas as 10, quais já foram desbloqueadas e quais ainda faltam, com barra de progresso.</li>
+    <li><strong>Correção na conquista "Último de Pé"</strong>: só desbloqueia a partir da onda 10 agora — era fácil demais ganhar nas ondas iniciais (praticamente impossíveis de perder).</li>
+    <li><strong>Inimigos normais também roubam poder</strong>: agora, não só os chefes — qualquer inimigo de 2-3 estrelas tem chance de vir com uma habilidade emprestada (e, depois da onda 30, chance de vir com uma passiva rara também).</li>
+    <li><strong>Dificuldade geral aumentada depois da onda 30</strong>: chance de estrela subiu de 35% pra 55%, e chance de vir 3 estrelas (em vez de 2) subiu de 40% pra 75% — jogo bem mais puxado no fim de run.</li>
     <li><strong>Botão "💡 Dicas"</strong> no topo: desliga o pop-up de sugestão de time pra quem já conhece o jogo. Fica salvo entre sessões.</li>
     <li><strong>Gélida mais barata</strong>: primeira compra caiu de 180 pra 138 moedas (cópia: 58).</li>
     <li><strong>Sugestão de time</strong>: um pop-up (fecha no X) aparece no preparo quando o time tá sem tanque, suporte, atirador ou controlador, sugerindo o Stack User mais barato que preenche essa falta.</li>
@@ -430,6 +434,7 @@
   <button class="nav-btn" data-screen="items">Itens</button>
   <button class="nav-btn" data-screen="roster">Meu Time</button>
   <button class="nav-btn" data-screen="recommended">Itens Recomendados</button>
+  <button class="nav-btn" data-screen="achievements">Conquistas</button>
   <button class="nav-btn" data-screen="battle" id="nav-battle-btn" style="display:none;">Batalha</button>
   <div class="coin-badge">🪙 <span id="coin-count">0</span> moedas</div>
   <button id="sound-toggle-btn" title="Som (desligado)">🔇 Som</button>
@@ -483,6 +488,15 @@
     <h2>Itens Recomendados por Stack User</h2>
     <div class="subtitle" style="margin-bottom:10px;">Sugestões de build pra cada personagem — não é regra fixa, só um ponto de partida.</div>
     <div class="grid-cards" id="recommended-cards"></div>
+  </div>
+</div>
+
+<!-- ACHIEVEMENTS -->
+<div class="screen" id="screen-achievements">
+  <div class="panel">
+    <h2>Conquistas</h2>
+    <div class="subtitle" style="margin-bottom:10px;" id="achievements-progress"></div>
+    <div id="achievements-list" style="display:flex; flex-direction:column; gap:8px;"></div>
   </div>
 </div>
 
@@ -898,6 +912,7 @@ document.querySelectorAll('.nav-btn').forEach(btn=>{
     if(s==='items') renderItems();
     if(s==='roster') renderRoster();
     if(s==='recommended') renderRecommended();
+    if(s==='achievements') renderAchievementsList();
     showScreen(s);
   });
 });
@@ -988,7 +1003,7 @@ const ACHIEVEMENTS = {
   boss_slayer: {icon:'💀', name:'Caçador de Chefes', desc:'Derrote um chefe'},
   corrupted_hunter: {icon:'🌀', name:'Purificador', desc:'Derrote 10 criaturas corrompidas'},
   perfect_wave: {icon:'✨', name:'Sem Arranhões', desc:'Vença uma onda sem perder ninguém do time'},
-  solo_survivor: {icon:'🔥', name:'Último de Pé', desc:'Vença uma onda sendo o único sobrevivente'},
+  solo_survivor: {icon:'🔥', name:'Último de Pé', desc:'Vença uma onda a partir da 10 sendo o único sobrevivente'},
   four_star: {icon:'⭐', name:'Estrela Máxima', desc:'Evolua um Stack User até 4 estrelas'},
   full_roster: {icon:'👥', name:'Colecionador', desc:'Tenha 5 Stack Users no time na mesma partida'},
 };
@@ -1004,6 +1019,26 @@ function trackCorruptedKill(){
   corruptedKillCount++;
   try{ localStorage.setItem('ferroLancaCorruptedKills', String(corruptedKillCount)); }catch(e){}
   if(corruptedKillCount>=10) unlockAchievement('corrupted_hunter');
+}
+
+function renderAchievementsList(){
+  const ids = Object.keys(ACHIEVEMENTS);
+  const unlockedCount = ids.filter(id=>unlockedAchievements.has(id)).length;
+  document.getElementById('achievements-progress').textContent = `${unlockedCount} de ${ids.length} desbloqueadas`;
+  const listEl = document.getElementById('achievements-list');
+  listEl.innerHTML = ids.map(id=>{
+    const def = ACHIEVEMENTS[id];
+    const unlocked = unlockedAchievements.has(id);
+    return `
+      <div style="display:flex; align-items:center; gap:12px; padding:10px 12px; background:${unlocked?'rgba(232,194,80,0.08)':'rgba(0,0,0,0.15)'}; border:1px solid ${unlocked?'var(--gold)':'#3a3f47'}; border-radius:6px;">
+        <div style="font-size:24px; opacity:${unlocked?1:0.25};">${def.icon}</div>
+        <div>
+          <div style="font-family:'Oswald',sans-serif; font-size:14px; color:${unlocked?'var(--gold)':'#8b95a3'};">${def.name}${unlocked?'':' 🔒'}</div>
+          <div style="font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--steel);">${def.desc}</div>
+        </div>
+      </div>
+    `;
+  }).join('');
 }
 
 function unlockAchievement(id){
@@ -2422,9 +2457,12 @@ function randomEnemyWave(waveNum){
   const picks = [];
   for(let i=0;i<count;i++) picks.push(keys[Math.floor(Math.random()*keys.length)]);
   const boostIndex = boostThisWave ? Math.floor(Math.random()*picks.length) : -1;
-  const starChance = waveNum<=4 ? 0 : (waveNum>15 ? 0.35 : 0.20);
+  const starChance = waveNum<=4 ? 0 : (waveNum>30 ? 0.55 : (waveNum>15 ? 0.35 : 0.20));
   const starRollIndex = Math.random()<starChance ? Math.floor(Math.random()*picks.length) : -1;
-  const starRollLevel = (waveNum>15 && Math.random()<0.4) ? 3 : 2; // depois da onda 15, chance de vir 3 estrelas em vez de 2
+  const threeStarChance = waveNum>30 ? 0.75 : (waveNum>15 ? 0.4 : 0); // depois da onda 30, MUITO mais chance de vir 3 estrelas
+  const starRollLevel = (waveNum>15 && Math.random()<threeStarChance) ? 3 : 2;
+  const SU_POWERS_POOL = ['lanca','ima','perfuro','rajada','furia','couraca','explosao','chuva','congelamento'];
+  const CHAMP_POWERS_POOL = ['kael','ferrha','terrus','raio'];
   return picks.map((k,i)=>{
     const base = ENEMY_CATALOG[k];
     // Onda 1 é bem mais fraca (20% do dano base e 65% da vida); depois disso o dano sobe aos poucos,
@@ -2440,9 +2478,21 @@ function randomEnemyWave(waveNum){
       const mult = enemyStars===3 ? {atk:1.5, hp:1.65} : {atk:1.25, hp:1.3};
       scaledAtk = Math.round(scaledAtk*mult.atk*10)/10; hpScale *= mult.hp;
     }
+    // inimigos com 2-3 estrelas também podem vir com poder emprestado, igual os chefes — chance maior a partir da onda 15
+    let enemySpecial = hasStarRoll ? (base.special || null) : null;
+    let enemyBorrowedChampPower = null;
+    if(hasStarRoll){
+      const borrowChance = waveNum>15 ? 0.6 : 0.25;
+      if(Math.random() < borrowChance){
+        enemySpecial = SU_POWERS_POOL[Math.floor(Math.random()*SU_POWERS_POOL.length)];
+      }
+      if(waveNum>30 && enemyStars===3 && Math.random()<0.35){
+        enemyBorrowedChampPower = CHAMP_POWERS_POOL[Math.floor(Math.random()*CHAMP_POWERS_POOL.length)];
+      }
+    }
     return {
-      key:k, boosted:i===boostIndex, twoStar:hasStarRoll,
-      scaled:{...base, hp:Math.round(base.hp*hpScale), atk:scaledAtk, stars:enemyStars, special:hasStarRoll?(base.special||null):null}
+      key:k, boosted:i===boostIndex, twoStar:hasStarRoll, borrowedChampPower:enemyBorrowedChampPower,
+      scaled:{...base, hp:Math.round(base.hp*hpScale), atk:scaledAtk, stars:enemyStars, special:enemySpecial}
     };
   });
 }
@@ -2503,7 +2553,11 @@ function logReinforcements(wavePicks, waveNum){
     if(boosted) log(`Reforço da rodada ${waveNum}: ${ENEMY_CATALOG[boosted.key].name} ficou mais forte!`, 'sys');
   }
   const twoStar = wavePicks.find(w=>w.twoStar);
-  if(twoStar) log(`${'★'.repeat(twoStar.scaled.stars)} ${ENEMY_CATALOG[twoStar.key].name} apareceu com ${twoStar.scaled.stars} estrelas — vai usar habilidade!`, 'hl');
+  if(twoStar){
+    log(`${'★'.repeat(twoStar.scaled.stars)} ${ENEMY_CATALOG[twoStar.key].name} apareceu com ${twoStar.scaled.stars} estrelas — vai usar habilidade!`, 'hl');
+    if(twoStar.scaled.special) log(`🌀 Poder emprestado: ${BORROWED_POWER_NAMES[twoStar.scaled.special] || twoStar.scaled.special}.`, 'hl');
+    if(twoStar.borrowedChampPower) log(`⚠ E também uma passiva rara: ${BORROWED_CHAMP_POWER_NAMES[twoStar.borrowedChampPower]}!`, 'hl');
+  }
 }
 let corruptedIdCounter = 90000;
 // Criaturas neutras que emergem da Rachadura depois da onda 15 — atacam jogador E inimigos, sem lado nenhum.
@@ -3889,7 +3943,7 @@ function checkVictory(){
           roundSurvivorChampId = survivor.champId;
           pendingXpDebuffChamp = survivor.champId;
           log(`${survivor.name} foi o único sobrevivente e ganhou +${formatXp(bonusAmt)} XP bônus!`, 'hl');
-          unlockAchievement('solo_survivor');
+          if(wave>=10) unlockAchievement('solo_survivor');
         }
         if(aliveUnits.length === teamP1.length) unlockAchievement('perfect_wave');
         if(wave>=10) unlockAchievement('wave10');
