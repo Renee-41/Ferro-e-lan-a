@@ -309,6 +309,8 @@
     <li><strong>Buff pra longa distância</strong>: todo Stack User de alcance 2+ agora causa mais dano quanto mais longe estiver do alvo (+8% por bloco além do 1º).</li>
     <li><strong>Posicionamento manual</strong> na arena — escolhe onde cada Stack User fica antes da batalha, com reorganização rápida entre rodadas (mostrando os obstáculos/lava/portais daquela rodada). Comprar um personagem novo já adiciona ele direto no time.</li>
     <li><strong>Duas Stack Users novas</strong>: Nerith (água) invoca tentáculos estacionários perto dela mesma — fracos individualmente, mas dano considerável, e entram em frenesi se ela morrer. Voltra (elétrico) eletrifica e encadeia até 3 blocos de distância, acumula carga até estourar Sobrecarga, e detona onda de choque paralisante se um eletrificado morrer nesse período — contra Metal, o ataque dela só atordoa, sem dano.</li>
+    <li><strong>3 itens combinados novos</strong>: Precisão Mortal (Mira + Luneta, longa distância), Brasa Eterna (Brasa Selvagem + Núcleo Amplificador, ativa 30% mais rápido e causa 75% mais dano) e Vigor Absoluto (Manto Robusto + Coração Vital, a maior fonte de vida do jogo).</li>
+    <li><strong>Shecry ajustada</strong>: preço de compra caiu de 174 pra 150 moedas, e o ataque base subiu de 14 pra 18 — sentia-se cara demais pro pouco dano que ela causava mesmo com a passiva de escala.</li>
     <li><strong>Nova aba: Conquistas</strong> — mostra todas as 10, quais já foram desbloqueadas e quais ainda faltam, com barra de progresso.</li>
     <li><strong>Correção na conquista "Último de Pé"</strong>: só desbloqueia a partir da onda 10 agora — era fácil demais ganhar nas ondas iniciais (praticamente impossíveis de perder).</li>
     <li><strong>Inimigos normais também roubam poder</strong>: agora, não só os chefes — qualquer inimigo de 2-3 estrelas tem chance de vir com uma habilidade emprestada (e, depois da onda 30, chance de vir com uma passiva rara também).</li>
@@ -762,7 +764,7 @@ const CHAMPION_CATALOG = {
   frosk:{name:'Frosk',element:'gelo',role:'Lutador Congelante',cost:70,hp:115,atk:16,range:1,speed:1,special:'congelamento',desc:'A cada 5 golpes, congela o alvo, paralisando por 0,5s — e causa 30% de dano extra nesse golpe.'},
   gelida:{name:'Gélida',element:'gelo',role:'Espectro Glacial',cost:115,hp:130,atk:20,range:1,speed:1,special:'congelamento',desc:'A cada 5 golpes, congela o alvo, paralisando por 0,5s. Passiva: ao morrer, fica em espectro por 5s — mira o inimigo com MENOS vida da arena inteira. Se ele já estiver com 5% de vida ou menos, ela o executa na hora (só demora 3s pra trocar de lugar); senão, arremessa um pilar de gelo nele, jogando-o até a parede, atordoando-o por 3s (imóvel até acabar) e causando 8 de dano a cada 0,5s. Se o alvo morrer antes do espectro acabar, ela toma o lugar dele e volta à batalha com 60% de vida — e pode repetir isso INFINITAS vezes na mesma partida, contanto que continue conseguindo o abate. Se não conseguir, morre de vez.'},
   raio:{name:'Raio',element:'eletrico',role:'Combatente Elétrico',cost:140,hp:104,atk:17,range:1,speed:1.2,special:null,desc:'Habilidade única: a cada 5 golpes acertados, OU sempre que chegar a 10% de vida (pode repetir depois que curar), dispara um combo relâmpago de 8 golpes em ~3 segundos — empurra o inimigo pra longe, se teleporta do lado dele, bate e repete. Fica imune a todo dano durante o combo. Cada golpe consome 5% da vida dele mesmo como combustível, e quanto menos vida ele tiver, mais forte ele bate (até +150%). O 8º golpe não empurra, atordoa (se o inimigo sobreviver) e causa 10x o dano dos outros golpes (+10% se tiver item de dano equipado). Se terminar com 3% de vida ou menos, fica atordoado por 3s (ainda imune) e depois sofre uma sobrecarga: cura 10% da vida e ganha velocidade de ataque por 5s.'},
-  shecry:{name:'Shecry',element:'gelo',role:'Colosso Glacial',cost:145,hp:240,atk:14,range:1,speed:0.85,special:null,desc:'Quanto mais vida ela perdeu, mais dano ela causa (até +120%); quanto mais vida ela ainda tem, mais resistente ela fica (até +35% de redução de dano). Passiva: ao cair abaixo de 30% de vida (uma vez por batalha), ganha um escudo baseado na vida máxima e cria uma aura que reduz a velocidade de movimento e ataque de quem estiver a até 2 blocos dela — o efeito da aura vai enfraquecendo aos poucos ao longo de 6 segundos.'},
+  shecry:{name:'Shecry',element:'gelo',role:'Colosso Glacial',cost:125,hp:245,atk:18,range:1,speed:0.85,special:null,desc:'Quanto mais vida ela perdeu, mais dano ela causa (até +120%); quanto mais vida ela ainda tem, mais resistente ela fica (até +35% de redução de dano). Passiva: ao cair abaixo de 30% de vida (uma vez por batalha), ganha um escudo baseado na vida máxima e cria uma aura que reduz a velocidade de movimento e ataque de quem estiver a até 2 blocos dela — o efeito da aura vai enfraquecendo aos poucos ao longo de 6 segundos.'},
   nerith:{name:'Nerith',element:'agua',role:'Profetisa das Marés',cost:135,hp:300,atk:5,range:1,speed:0.9,special:null,desc:'Bate muito fraco sozinha — sua força de verdade são os tentáculos. Invoca um tentáculo perto dela mesma, num ritmo que cresce a cada um (5s, 6s, 7s, 8s), até um limite de 4 vivos ao mesmo tempo — se um for destruído, o próximo demora só 3s. Os tentáculos não se movem, atacam com alcance de 3 blocos, causam dano considerável, mas têm pouca vida — fáceis de destruir. Se Nerith morrer, todos os tentáculos vivos entram em frenesi: atacam mais rápido e miram inimigos aleatórios até serem destruídos.'},
   voltra:{name:'Voltra',element:'eletrico',role:'Tecelã de Correntes',cost:135,hp:110,atk:16,range:3,speed:1,special:null,desc:'Corrente Elétrica: cada ataque eletrifica o alvo, reduzindo a velocidade dele com base no seu ataque — e se outro inimigo estiver a até 3 blocos, o efeito se propaga pra ele também (25% mais fraco a cada salto). Reação em Cadeia: cada inimigo tocado pela corrente dá 1 carga; ao acumular 10, ela entra em Sobrecarga por 5s. Se ela morrer durante esse período, fica imune por 4s carregando energia ao máximo antes de explodir numa onda de choque que atinge a arena inteira — puxa todo inimigo pra perto de onde ela caiu, paralisa todos por 5s e causa dano extra (mais forte quanto mais inimigos estiverem eletrificados/por perto).'},
 };
@@ -784,6 +786,9 @@ const ITEM_CATALOG = {
   coracao_vital:{name:'Coração Vital', kind:'vida', cost:65, desc:'+80 de HP máximo, em qualquer Stack User.', effect:{hpFlat:80, appliesTo:'all'}},
   manto_robusto:{name:'Manto Robusto', kind:'vida', cost:75, desc:'+15% de HP máximo, em qualquer Stack User.', effect:{hpPct:0.15, appliesTo:'all'}},
   muralha_viva:{name:'Muralha Viva', kind:'combinado · vida/tanque', recipe:['coracao_vital','placa'], desc:'Combinação de Coração Vital + Placa de Blindagem. +150 de HP máximo e 20% de redução de dano, em qualquer Stack User.', effect:{hpFlat:150, dmgReductionPct:0.20, appliesTo:'all'}},
+  precisao_mortal:{name:'Precisão Mortal', kind:'combinado · longa distância', recipe:['mira','luneta'], desc:'Combinação de Mira Telescópica + Luneta de Longo Alcance. +2 de alcance, +30% de dano e +30% de velocidade de ataque — só alcance 2+.', effect:{range:2, atkPct:0.30, speedPct:0.30, appliesTo:'ranged'}},
+  brasa_eterna:{name:'Brasa Eterna', kind:'combinado · dano ativo', recipe:['brasa','amplificador'], desc:'Combinação de Brasa Selvagem + Núcleo Amplificador. A Brasa Selvagem ativa 30% mais rápido (a cada 3,5s) e causa 75% mais dano — o efeito elemental de cada personagem continua o mesmo.', effect:{}},
+  vigor_absoluto:{name:'Vigor Absoluto', kind:'combinado · vida', recipe:['manto_robusto','coracao_vital'], desc:'Combinação de Manto Robusto + Coração Vital. +25% de HP máximo E +100 de HP máximo, em qualquer Stack User — a maior fonte de vida bruta do jogo.', effect:{hpPct:0.25, hpFlat:100, appliesTo:'all'}},
 };
 
 // ---- Ícones simples (linha, sem emoji) pros itens ----
@@ -804,6 +809,7 @@ const ITEM_ICON_SHAPE_BY_ID = {
   luneta:'telescope', mira:'crosshair', manopla:'fist', brasa:'flame', placa:'shield', botas:'boot',
   amuleto:'gem', amplificador:'core', furia_blindada:'fist', olho_falcao:'crosshair', coracao_ferro:'heart',
   nucleo_eterno:'core', coracao_vital:'heart', manto_robusto:'cloak', muralha_viva:'heart',
+  precisao_mortal:'crosshair', brasa_eterna:'flame', vigor_absoluto:'heart',
 };
 function itemIconSVG(itemId, size){
   size = size || 32;
@@ -2946,7 +2952,10 @@ function passiveAmp(u){ return 1 + 0.20*countItem(u,'amplificador') + 0.30*count
 
 // ---- Brasa Selvagem: item ativo independente do ciclo de ataque normal ----
 let emberEvents = []; // {time, targetId, type}
-function emberBaseDmg(){ return currentWeather==='chuva' ? 2 : 4; }
+function emberBaseDmg(u){
+  const base = currentWeather==='chuva' ? 2 : 4;
+  return (u && hasItem(u,'brasa_eterna')) ? Math.round(base*1.75) : base;
+}
 // ---- Raio: combo elétrico de 8 golpes (empurra, teleporta do lado do alvo, bate, repete) ----
 function triggerComboUltimate(unit, attacker){
   unit.comboActive = true;
@@ -3057,7 +3066,7 @@ function triggerEmberItem(u){
   const targets = units.filter(o=>o.alive && o.team!==u.team && hexDistance(u,o)<=radius);
   if(targets.length===0) return;
   elementSfx(u.element);
-  u.emberCooldown = 5000;
+  u.emberCooldown = hasItem(u,'brasa_eterna') ? 3500 : 5000;
   spawnCastEffect(u.rx, u.ry, '#e0693a');
   log(`${u.name} ativa a Brasa Selvagem!`, 'hl');
 
@@ -3067,7 +3076,7 @@ function triggerEmberItem(u){
     targets.forEach(t=>{
       const dist = hexDistance(u,t);
       const delay = Math.max(0, dist-1) * 1000;
-      emberEvents.push({time: now+delay, targetId:t.id, type:'wave'});
+      emberEvents.push({time: now+delay, targetId:t.id, type:'wave', sourceId:u.id});
     });
     return;
   }
@@ -3075,7 +3084,7 @@ function triggerEmberItem(u){
   const fireSource = {element:'fogo', team:u.team, champId:u.champId, name:u.name};
   const shockSource = {element:'eletrico', team:u.team, champId:u.champId, name:u.name};
   targets.forEach(t=>{
-    applyDamage(fireSource, t, emberBaseDmg(), '🔥', true);
+    applyDamage(fireSource, t, emberBaseDmg(u), '🔥', true);
     if(u.element==='terra' && t.alive){
       applyCC(t, 500, 'terra');
       spawnFloatText(t.rx, t.ry-40, 'ATORDOADO', '#b08a52');
@@ -3098,7 +3107,7 @@ function triggerEmberItem(u){
         const chainCandidates = units.filter(o=>o.alive && o.team!==u.team && o.id!==t.id && hexDistance(u,o)<=radius+2);
         if(chainCandidates.length){
           const chainTarget = chainCandidates[Math.floor(Math.random()*chainCandidates.length)];
-          applyDamage(shockSource, chainTarget, emberBaseDmg(), '⚡', true);
+          applyDamage(shockSource, chainTarget, emberBaseDmg(u), '⚡', true);
           chainTarget.shockedUntil = now + 4000;
           spawnCastEffect(chainTarget.rx, chainTarget.ry, '#f5e663');
           spawnFloatText(chainTarget.rx, chainTarget.ry-24, 'CADEIA!', '#f5e663');
@@ -3110,7 +3119,7 @@ function triggerEmberItem(u){
         spawnFloatText(t.rx, t.ry-24, 'VAPORIZANDO', '#4f9fd4');
         emberEvents.push({time: now+2000, targetId:t.id, type:'vaporize'});
       } else {
-        emberEvents.push({time: now+1000, targetId:t.id, type:'tick'});
+        emberEvents.push({time: now+1000, targetId:t.id, type:'tick', sourceId:u.id});
       }
     }
   });
@@ -3124,9 +3133,11 @@ function updateEmberEvents(){
     const t = units.find(x=>x.id===ev.targetId);
     if(t && t.alive){
       if(ev.type==='tick'){
-        applyDamage({element:'fogo', team: t.team==='player'?'enemy':'player', champId:'brasa', name:'Brasa Selvagem'}, t, emberBaseDmg(), '🔥', true);
+        const src = units.find(x=>x.id===ev.sourceId);
+        applyDamage({element:'fogo', team: t.team==='player'?'enemy':'player', champId:'brasa', name:'Brasa Selvagem'}, t, emberBaseDmg(src), '🔥', true);
       } else if(ev.type==='wave'){
-        applyDamage({element:'fogo', team: t.team==='player'?'enemy':'player', champId:'brasa', name:'Brasa Selvagem'}, t, emberBaseDmg(), '🔥', true);
+        const src = units.find(x=>x.id===ev.sourceId);
+        applyDamage({element:'fogo', team: t.team==='player'?'enemy':'player', champId:'brasa', name:'Brasa Selvagem'}, t, emberBaseDmg(src), '🔥', true);
         spawnCastEffect(t.rx, t.ry, '#e0693a');
       } else if(ev.type==='iceTick'){
         applyDamage({element:'gelo', team: t.team==='player'?'enemy':'player', champId:'gelo_pilar', name:'Pilar de Gelo'}, t, ev.dmg||8, '❄', true);
