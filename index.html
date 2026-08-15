@@ -311,6 +311,7 @@
     <button id="patchnotes-close" style="background:none;border:none;color:var(--steel);font-size:16px;cursor:pointer;line-height:1;">×</button>
   </div>
   <ul>
+    <li><strong>Coluna "Mortes" no resumo pós-partida</strong>: agora dá pra ver quantas vezes cada Stack User morreu na run, não só dano e abates.</li>
     <li><strong>Expansão de time (endgame)</strong>: a partir da onda 40, aparece na Loja a opção "⭐ Expandir o Time" — compra única por tier (500 / 800 / 1200 moedas), levando o limite de personagens de 5 até 8. Cada expansão comprada deixa os inimigos proporcionalmente mais fortes (e o teto de inimigos por onda sobe também), pra dificuldade acompanhar o time maior.</li>
     <li><strong>Correção grande no catch-up de XP</strong>: comprar um personagem novo direto da loja (o jeito mais comum de crescer o time) não ativava o bônus de XP de recém-chegado — só a troca pela tela "Meu Time" ativava. Agora todo mundo que entra tarde ganha esse bônus, começa alguns níveis mais perto do resto do grupo (em vez de sempre no nível 1), e o bônus de XP escala com o tamanho do atraso (até 5x) em vez de um valor fixo. XP de participação também foi corrigido — antes excluía recém-chegados, agora dá bônus extra pra eles.</li>
     <li><strong>3 itens combinados novos</strong>: Precisão Mortal (Mira + Luneta, longa distância), Brasa Eterna (Brasa Selvagem + Núcleo Amplificador, ativa 30% mais rápido e causa 75% mais dano) e Vigor Absoluto (Manto Robusto + Coração Vital, a maior fonte de vida do jogo).</li>
@@ -895,7 +896,7 @@ let roundLevelUps = []; // champIds that leveled up this wave
 let roundDeaths = []; // names that died this wave
 let matchStats = {}; // champId -> {damageDealt, damageTaken, kills}
 function ensureMatchStats(champId){
-  if(!matchStats[champId]) matchStats[champId] = {damageDealt:0, damageTaken:0, kills:0};
+  if(!matchStats[champId]) matchStats[champId] = {damageDealt:0, damageTaken:0, kills:0, deaths:0};
   return matchStats[champId];
 }
 let roundSurvivorChampId = null;
@@ -2882,17 +2883,18 @@ function renderMatchSummary(){
     return;
   }
   tableEl.innerHTML = `
-    <div style="display:grid;grid-template-columns:1.6fr 1fr 1fr 1fr;gap:6px;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--steel);padding:0 6px 6px;border-bottom:1px solid #3a3f47;">
-      <div>Stack User</div><div>Dano causado</div><div>Dano recebido</div><div>Abates</div>
+    <div style="display:grid;grid-template-columns:1.5fr 1fr 1fr 0.8fr 0.8fr;gap:6px;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--steel);padding:0 6px 6px;border-bottom:1px solid #3a3f47;">
+      <div>Stack User</div><div>Dano causado</div><div>Dano recebido</div><div>Abates</div><div>Mortes</div>
     </div>
     ${entries.map(([champId,s])=>{
       const def = CHAMPION_CATALOG[champId];
       const isMvp = champId===mvpId;
-      return `<div style="display:grid;grid-template-columns:1.6fr 1fr 1fr 1fr;gap:6px;align-items:center;padding:8px 6px;border-bottom:1px solid #2a2e35;${isMvp?'background:rgba(232,194,80,0.08);':''}">
+      return `<div style="display:grid;grid-template-columns:1.5fr 1fr 1fr 0.8fr 0.8fr;gap:6px;align-items:center;padding:8px 6px;border-bottom:1px solid #2a2e35;${isMvp?'background:rgba(232,194,80,0.08);':''}">
         <div style="font-family:'Oswald',sans-serif;color:${isMvp?'var(--gold)':'#eae4d8'};">${isMvp?'★ ':''}${def.name}</div>
         <div style="color:var(--ember);">${s.damageDealt}</div>
         <div style="color:var(--steel);">${s.damageTaken}</div>
         <div style="color:#7fd49a;">${s.kills}</div>
+        <div style="color:${s.deaths>0?'#c94d3d':'var(--steel)'};">${s.deaths||0}</div>
       </div>`;
     }).join('')}
   `;
@@ -3222,7 +3224,7 @@ function updateEmberEvents(){
         if(t.hp<=0){
           t.hp=0; t.alive=false;
           log(`${t.name} vaporizou!`, 'sys');
-          if(t.team==='player') roundDeaths.push(t.name);
+          if(t.team==='player'){ roundDeaths.push(t.name); ensureMatchStats(t.champId).deaths++; }
         }
       }
     }
@@ -3523,7 +3525,7 @@ function applyDamage(attacker, target, baseDmg, tag, ignoreDefense){
           spawnFloatText(ghostTarget.rx, ghostTarget.ry-40, 'EXECUTADO!', '#8fd4e8');
           spawnCastEffect(ghostTarget.rx, ghostTarget.ry, '#8fd4e8');
           log(`${target.name} executa ${ghostTarget.name} na hora com o gelo!`, 'hl');
-          if(ghostTarget.team==='player') roundDeaths.push(ghostTarget.name);
+          if(ghostTarget.team==='player'){ roundDeaths.push(ghostTarget.name); ensureMatchStats(ghostTarget.champId).deaths++; }
           triggerScreenShake(10, 260);
           target.ghostUntil = now + 3000*passiveAmp(target);
         } else {
@@ -3571,7 +3573,7 @@ function applyDamage(attacker, target, baseDmg, tag, ignoreDefense){
     } else {
       target.hp=0; target.alive=false;
       log(`${target.name} caiu em combate.`, 'sys');
-      if(target.team==='player') roundDeaths.push(target.name);
+      if(target.team==='player'){ roundDeaths.push(target.name); ensureMatchStats(target.champId).deaths++; }
       if(target.champId==='nerith'){
         const tentacles = units.filter(o=>o.alive && o.isTentacle && o.tentacleParentId===target.id);
         if(tentacles.length){
@@ -3864,7 +3866,7 @@ function updateBattleLogic(dt){
       u.voltraDetonating = false;
       u.hp = 0; u.alive = false;
       log(`${u.name} caiu em combate.`, 'sys');
-      if(u.team==='player') roundDeaths.push(u.name);
+      if(u.team==='player'){ roundDeaths.push(u.name); ensureMatchStats(u.champId).deaths++; }
       triggerElectricShockwave(u, u);
       return;
     }
@@ -3890,7 +3892,7 @@ function updateBattleLogic(dt){
         } else {
           u.hp = 0; u.alive = false; u.ghostUntil = 0;
           log(`${u.name} não resistiu e caiu de vez.`, 'sys');
-          if(u.team==='player') roundDeaths.push(u.name);
+          if(u.team==='player'){ roundDeaths.push(u.name); ensureMatchStats(u.champId).deaths++; }
           return;
         }
       } else {
