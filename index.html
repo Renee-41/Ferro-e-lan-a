@@ -311,6 +311,7 @@
     <button id="patchnotes-close" style="background:none;border:none;color:var(--steel);font-size:16px;cursor:pointer;line-height:1;">×</button>
   </div>
   <ul>
+    <li><strong>Correção grande no catch-up de XP</strong>: comprar um personagem novo direto da loja (o jeito mais comum de crescer o time) não ativava o bônus de XP de recém-chegado — só a troca pela tela "Meu Time" ativava. Agora todo mundo que entra tarde ganha esse bônus, começa alguns níveis mais perto do resto do grupo (em vez de sempre no nível 1), e o bônus de XP escala com o tamanho do atraso (até 5x) em vez de um valor fixo. XP de participação também foi corrigido — antes excluía recém-chegados, agora dá bônus extra pra eles.</li>
     <li><strong>3 itens combinados novos</strong>: Precisão Mortal (Mira + Luneta, longa distância), Brasa Eterna (Brasa Selvagem + Núcleo Amplificador, ativa 30% mais rápido e causa 75% mais dano) e Vigor Absoluto (Manto Robusto + Coração Vital, a maior fonte de vida do jogo).</li>
     <li><strong>Shecry ajustada</strong>: preço de compra caiu de 174 pra 150 moedas, e o ataque base subiu de 14 pra 18 — sentia-se cara demais pro pouco dano que ela causava mesmo com a passiva de escala.</li>
     <li><strong>Nova aba: Conquistas</strong> — mostra todas as 10, quais já foram desbloqueadas e quais ainda faltam, com barra de progresso.</li>
@@ -1161,7 +1162,11 @@ refreshContinueCard();
 // Adiciona um Stack User recém-comprado direto no time ativo (sem precisar de "ajustar equipe" separado).
 function addToActiveTeam(champId){
   if(mode==='pve'){
-    if(!teamP1.includes(champId)) teamP1.push(champId);
+    if(!teamP1.includes(champId)){
+      const hadTeammates = teamP1.length>0;
+      teamP1.push(champId);
+      if(hadTeammates) grantCatchUpJoin(champId);
+    }
   } else if(mode==='pvp'){
     if(activePvpPlayer==='p2'){
       if(!teamP2.includes(champId)) teamP2.push(champId);
@@ -1169,6 +1174,22 @@ function addToActiveTeam(champId){
       if(!teamP1.includes(champId)) teamP1.push(champId);
     }
   }
+}
+// Quando um Stack User entra num time que já tá em andamento, ele pula pra perto do nível
+// do resto do grupo (em vez de sempre nascer no 1) e ganha XP turbinado até alcançar de vez.
+function grantCatchUpJoin(champId){
+  const prog = owned[champId];
+  if(!prog) return;
+  const veteranLevels = teamP1.filter(id=>id!==champId && owned[id]).map(id=>owned[id].level);
+  if(veteranLevels.length===0) return;
+  const minVeteranLevel = Math.min(...veteranLevels);
+  const startLevel = Math.max(1, minVeteranLevel-3);
+  if(startLevel > prog.level){
+    prog.level = startLevel;
+    prog.xp = 0;
+    log(`${CHAMPION_CATALOG[champId].name} entra no time já no nível ${startLevel}, pra não ficar tão atrás do resto do grupo!`, 'hl');
+  }
+  if(minVeteranLevel - prog.level > 2) newcomerChamps.add(champId);
 }
 
 const MAX_OWNED_CHAMPS = 5;
@@ -1495,15 +1516,21 @@ function awardXp(champId, amount){
   }
 }
 function formatXp(n){ return Number.isInteger(n) ? n : n.toFixed(1); }
+function catchUpMultiplier(champId){
+  if(!newcomerChamps.has(champId)) return 1;
+  const veteranLevels = teamP1.filter(id=>id!==champId && owned[id]).map(id=>owned[id].level);
+  if(veteranLevels.length===0) return 1;
+  const lvl = owned[champId] ? owned[champId].level : 1;
+  const gap = Math.max(0, Math.min(...veteranLevels) - lvl);
+  return Math.min(5, 1 + gap*0.4); // quanto maior o atraso, mais forte o bônus, até 5x
+}
 function killXpAmount(champId){
-  if(newcomerChamps.has(champId)) return 10;
   if(activeXpDebuffs.includes(champId)) return 1;
-  return 2;
+  return Math.round(2*catchUpMultiplier(champId)*10)/10;
 }
 function survivorXpAmount(champId){
-  if(newcomerChamps.has(champId)) return 15;
   if(activeXpDebuffs.includes(champId)) return 3.5;
-  return 7;
+  return Math.round(7*catchUpMultiplier(champId)*10)/10;
 }
 function recomputeNewcomerBuffs(){
   if(newcomerChamps.size===0) return;
@@ -3954,7 +3981,7 @@ function checkVictory(){
         }
         coins += coinGain; totalCoinsThisRun += coinGain; updateCoinBadge();
         aliveUnits.forEach(u=>{
-          if(owned[u.champId] && !newcomerChamps.has(u.champId)) awardXp(u.champId, 3);
+          if(owned[u.champId]) awardXp(u.champId, Math.round(3*catchUpMultiplier(u.champId)*10)/10);
         });
         if(teamP1.length > 1 && aliveUnits.length === 1){
           const survivor = aliveUnits[0];
