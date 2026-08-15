@@ -311,6 +311,7 @@
     <button id="patchnotes-close" style="background:none;border:none;color:var(--steel);font-size:16px;cursor:pointer;line-height:1;">×</button>
   </div>
   <ul>
+    <li><strong>10 conquistas novas</strong> (total agora: 20) — Além do Limite (onda 40), No Coração da Rachadura (onda 50), Chefe em Dobro, Intocável (onda 20 sem perder ninguém), Mais Espaço e Exército Completo (expansão de time), Explosão Suprema (wipe com a Voltra), Enxame Completo (4 tentáculos da Nerith), Pureza Elemental (time mono-elemento) e Bolso Cheio (1000 moedas guardadas).</li>
     <li><strong>Coluna "Mortes" no resumo pós-partida</strong>: agora dá pra ver quantas vezes cada Stack User morreu na run, não só dano e abates.</li>
     <li><strong>Expansão de time (endgame)</strong>: a partir da onda 40, aparece na Loja a opção "⭐ Expandir o Time" — compra única por tier (500 / 800 / 1200 moedas), levando o limite de personagens de 5 até 8. Cada expansão comprada deixa os inimigos proporcionalmente mais fortes (e o teto de inimigos por onda sobe também), pra dificuldade acompanhar o time maior.</li>
     <li><strong>Correção grande no catch-up de XP</strong>: comprar um personagem novo direto da loja (o jeito mais comum de crescer o time) não ativava o bônus de XP de recém-chegado — só a troca pela tela "Meu Time" ativava. Agora todo mundo que entra tarde ganha esse bônus, começa alguns níveis mais perto do resto do grupo (em vez de sempre no nível 1), e o bônus de XP escala com o tamanho do atraso (até 5x) em vez de um valor fixo. XP de participação também foi corrigido — antes excluía recém-chegados, agora dá bônus extra pra eles.</li>
@@ -934,7 +935,10 @@ document.querySelectorAll('.nav-btn').forEach(btn=>{
     showScreen(s);
   });
 });
-function updateCoinBadge(){ document.getElementById('coin-count').textContent = testMode ? '∞' : coins; }
+function updateCoinBadge(){
+  document.getElementById('coin-count').textContent = testMode ? '∞' : coins;
+  if(!testMode && coins>=1000) unlockAchievement('rich');
+}
 
 /* ============ SOM (sintetizado via Web Audio API — sem arquivo de áudio) ============ */
 let soundEnabled = false; // desligado por padrão de propósito — jogo feito pra tocar escondido
@@ -1017,13 +1021,23 @@ const ACHIEVEMENTS = {
   wave10: {icon:'⚔️', name:'Sobrevivente', desc:'Alcance a onda 10'},
   wave20: {icon:'🛡️', name:'Veterano', desc:'Alcance a onda 20'},
   wave30: {icon:'👑', name:'Lenda da Rachadura', desc:'Alcance a onda 30'},
+  wave40: {icon:'🌌', name:'Além do Limite', desc:'Alcance a onda 40'},
+  wave50: {icon:'🕳️', name:'No Coração da Rachadura', desc:'Alcance a onda 50'},
   wave15_expand: {icon:'🗺️', name:'Novo Horizonte', desc:'Veja a arena se expandir na onda 15'},
   boss_slayer: {icon:'💀', name:'Caçador de Chefes', desc:'Derrote um chefe'},
+  double_boss_slayer: {icon:'⚠️', name:'Chefe em Dobro', desc:'Derrote um chefe que veio com poder emprestado E passiva rara (onda 25+)'},
   corrupted_hunter: {icon:'🌀', name:'Purificador', desc:'Derrote 10 criaturas corrompidas'},
   perfect_wave: {icon:'✨', name:'Sem Arranhões', desc:'Vença uma onda sem perder ninguém do time'},
+  no_deaths_20: {icon:'🕊️', name:'Intocável', desc:'Chegue na onda 20 sem perder nenhum Stack User na partida'},
   solo_survivor: {icon:'🔥', name:'Último de Pé', desc:'Vença uma onda a partir da 10 sendo o único sobrevivente'},
   four_star: {icon:'⭐', name:'Estrela Máxima', desc:'Evolua um Stack User até 4 estrelas'},
   full_roster: {icon:'👥', name:'Colecionador', desc:'Tenha 5 Stack Users no time na mesma partida'},
+  team_expansion_first: {icon:'📈', name:'Mais Espaço', desc:'Compre a primeira expansão de time (onda 40+)'},
+  team_expansion_full: {icon:'🏰', name:'Exército Completo', desc:'Leve o time até 8 Stack Users'},
+  voltra_wipe: {icon:'⚡', name:'Explosão Suprema', desc:'Vença uma onda com a explosão da Voltra eliminando o último inimigo'},
+  nerith_swarm: {icon:'🐙', name:'Enxame Completo', desc:'Tenha os 4 tentáculos da Nerith vivos ao mesmo tempo'},
+  mono_element: {icon:'🔮', name:'Pureza Elemental', desc:'Vença uma onda com um time formado só por um elemento'},
+  rich: {icon:'💰', name:'Bolso Cheio', desc:'Tenha 1000 moedas guardadas ao mesmo tempo'},
 };
 let unlockedAchievements = new Set();
 try{
@@ -1222,6 +1236,8 @@ function renderShop(){
       teamExpansionTier++;
       sfxCoin();
       log(`Time expandido! Agora dá pra ter até ${getMaxOwnedChamps()} Stack Users.`, 'hl');
+      unlockAchievement('team_expansion_first');
+      if(teamExpansionTier>=TEAM_EXPANSION_COSTS.length) unlockAchievement('team_expansion_full');
       updateCoinBadge();
       renderShop();
     });
@@ -3605,7 +3621,10 @@ function applyDamage(attacker, target, baseDmg, tag, ignoreDefense){
           log(`${attacker.name} abate uma criatura corrompida — recompensa extra!`, 'hl');
           trackCorruptedKill();
         }
-        if(target.isBoss) unlockAchievement('boss_slayer');
+        if(target.isBoss){
+          unlockAchievement('boss_slayer');
+          if(target.special && target.borrowedChampPower) unlockAchievement('double_boss_slayer');
+        }
       }
     }
   }
@@ -3655,12 +3674,16 @@ function triggerElectricShockwave(voltra, deadUnit){
   const nearbyCount = units.filter(o=>o.alive && o.team!==voltra.team && hexDistance(o,deadUnit)<=3).length;
   const shockDmg = 35 + (chainedCount+nearbyCount)*12;
   const targets = units.filter(o=>o.alive && o.team!==voltra.team);
+  const hadTargets = targets.length>0;
   const shockSource = {element:'eletrico', team:voltra.team, champId:voltra.champId, name:voltra.name};
   targets.forEach(o=>{
     pullAdjacent(voltra, o);
     applyCC(o, 5000, 'eletrico');
     applyDamage(shockSource, o, shockDmg, '⚡ONDA', true);
   });
+  if(hadTargets && voltra.team==='player' && !units.some(o=>o.alive && o.team!==voltra.team)){
+    unlockAchievement('voltra_wipe');
+  }
   spawnFloatText(deadUnit.rx, deadUnit.ry-40, 'ONDA DE CHOQUE!', '#f5e663');
   spawnShockwaveRing(deadUnit.rx, deadUnit.ry, 520, '#f5e663', 0);
   spawnShockwaveRing(deadUnit.rx, deadUnit.ry, 520, '#fff2a8', 120);
@@ -3690,6 +3713,7 @@ function spawnNerithTentacle(nerith){
   t.actionTimer = 900;
   units.push(t);
   spawnCastEffect(t.rx, t.ry, '#4f9fd4');
+  if(aliveTentacles.length+1>=4) unlockAchievement('nerith_swarm');
 }
 function getTentacleTarget(t){
   const parent = units.find(x=>x.id===t.tentacleParentId);
@@ -4035,6 +4059,13 @@ function checkVictory(){
         if(wave>=10) unlockAchievement('wave10');
         if(wave>=20) unlockAchievement('wave20');
         if(wave>=30) unlockAchievement('wave30');
+        if(wave>=40) unlockAchievement('wave40');
+        if(wave>=50) unlockAchievement('wave50');
+        if(wave>=20 && Object.values(matchStats).every(s=>!(s.deaths>0))) unlockAchievement('no_deaths_20');
+        if(teamP1.length>0){
+          const elements = teamP1.map(id=>CHAMPION_CATALOG[id].element);
+          if(elements.every(e=>e===elements[0])) unlockAchievement('mono_element');
+        }
         if(aliveUnits.length===0) log(`Ninguém sobreviveu, mas o time inimigo caiu junto — a onda ${wave} ainda conta como vencida!`, 'hl');
         log(`Onda ${wave} vencida! +${coinGain} moedas${coinBonusMsg}.`, 'sys');
         sfxVictory();
