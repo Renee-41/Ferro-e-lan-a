@@ -311,6 +311,7 @@
     <button id="patchnotes-close" style="background:none;border:none;color:var(--steel);font-size:16px;cursor:pointer;line-height:1;">×</button>
   </div>
   <ul>
+    <li><strong>Expansão de time (endgame)</strong>: a partir da onda 40, aparece na Loja a opção "⭐ Expandir o Time" — compra única por tier (500 / 800 / 1200 moedas), levando o limite de personagens de 5 até 8. Cada expansão comprada deixa os inimigos proporcionalmente mais fortes (e o teto de inimigos por onda sobe também), pra dificuldade acompanhar o time maior.</li>
     <li><strong>Correção grande no catch-up de XP</strong>: comprar um personagem novo direto da loja (o jeito mais comum de crescer o time) não ativava o bônus de XP de recém-chegado — só a troca pela tela "Meu Time" ativava. Agora todo mundo que entra tarde ganha esse bônus, começa alguns níveis mais perto do resto do grupo (em vez de sempre no nível 1), e o bônus de XP escala com o tamanho do atraso (até 5x) em vez de um valor fixo. XP de participação também foi corrigido — antes excluía recém-chegados, agora dá bônus extra pra eles.</li>
     <li><strong>3 itens combinados novos</strong>: Precisão Mortal (Mira + Luneta, longa distância), Brasa Eterna (Brasa Selvagem + Núcleo Amplificador, ativa 30% mais rápido e causa 75% mais dano) e Vigor Absoluto (Manto Robusto + Coração Vital, a maior fonte de vida do jogo).</li>
     <li><strong>Shecry ajustada</strong>: preço de compra caiu de 174 pra 150 moedas, e o ataque base subiu de 14 pra 18 — sentia-se cara demais pro pouco dano que ela causava mesmo com a passiva de escala.</li>
@@ -1192,14 +1193,41 @@ function grantCatchUpJoin(champId){
   if(minVeteranLevel - prog.level > 2) newcomerChamps.add(champId);
 }
 
-const MAX_OWNED_CHAMPS = 5;
+const MAX_OWNED_CHAMPS_BASE = 5;
+const TEAM_EXPANSION_COSTS = [500, 800, 1200]; // custo de cada tier: 5→6, 6→7, 7→8
+const TEAM_EXPANSION_UNLOCK_WAVE = 40;
+let teamExpansionTier = 0; // 0 a 3 — cada tier soma +1 no limite de personagens
+function getMaxOwnedChamps(){ return MAX_OWNED_CHAMPS_BASE + teamExpansionTier; }
 const SPECIAL_PASSIVE_CHAMPS = ['ferrha','kael','terrus','gelida','raio','ima','shecry'];
 
 function renderShop(){
   const el = document.getElementById('shop-cards');
   el.innerHTML = '';
+  if(mode==='pve' && wave>=TEAM_EXPANSION_UNLOCK_WAVE && teamExpansionTier<TEAM_EXPANSION_COSTS.length){
+    const expCost = TEAM_EXPANSION_COSTS[teamExpansionTier];
+    const nextCap = getMaxOwnedChamps()+1;
+    const card = document.createElement('div');
+    card.className = 'champ-card';
+    card.style.cssText = 'border-color:var(--gold);background:linear-gradient(135deg,rgba(232,194,80,0.12),rgba(0,0,0,0.1));';
+    card.innerHTML = `
+      <div class="champ-name" style="color:var(--gold);">⭐ Expandir o Time</div>
+      <div class="champ-desc">Libera espaço pra mais 1 Stack User no time — limite atual: ${getMaxOwnedChamps()}, vira ${nextCap}.</div>
+      <div class="champ-stats" style="color:var(--gold);">${expCost} moedas</div>
+      <button class="main-btn" style="margin-top:8px;width:100%;" ${coins<expCost?'disabled':''}>Comprar expansão</button>
+    `;
+    card.querySelector('button').addEventListener('click', ()=>{
+      if(coins < expCost) return;
+      coins -= expCost;
+      teamExpansionTier++;
+      sfxCoin();
+      log(`Time expandido! Agora dá pra ter até ${getMaxOwnedChamps()} Stack Users.`, 'hl');
+      updateCoinBadge();
+      renderShop();
+    });
+    el.appendChild(card);
+  }
   const distinctOwned = Object.keys(owned).length;
-  const atCap = distinctOwned >= MAX_OWNED_CHAMPS;
+  const atCap = distinctOwned >= getMaxOwnedChamps();
   const sortedChampEntries = Object.entries(CHAMPION_CATALOG).sort((a,b)=>a[1].cost-b[1].cost);
   sortedChampEntries.forEach(([id,def])=>{
     const isOwned = !!owned[id];
@@ -1222,7 +1250,7 @@ function renderShop(){
     } else if(atCap && inMatch){
       const options = Object.keys(owned).map(oid=>`<option value="${oid}">${CHAMPION_CATALOG[oid].name}</option>`).join('');
       ownedBlock = `
-        <div class="champ-stats" style="color:var(--ember);">Time no limite de ${MAX_OWNED_CHAMPS} — troque alguém por ${def.name}</div>
+        <div class="champ-stats" style="color:var(--ember);">Time no limite de ${getMaxOwnedChamps()} — troque alguém por ${def.name}</div>
         <select class="swap-select" data-swaptarget="${id}" style="width:100%;margin:4px 0;padding:4px;background:#1a1c20;color:#eae4d8;border:1px solid #3a3f47;border-radius:4px;">${options}</select>
         <button class="main-btn buy-btn" data-swapbuy="${id}" ${coins<firstCost?'disabled':''}>Trocar — ${firstCost} 🪙</button>
       `;
@@ -2471,7 +2499,8 @@ function randomEnemyWave(waveNum){
         borrowedChampPower = CHAMP_POWERS[Math.floor(Math.random()*CHAMP_POWERS.length)];
       }
     }
-    return [{key:k, boosted:false, isBoss:true, borrowedPower, borrowedChampPower, scaled:{...base, hp:Math.round(base.hp*bossMult.hp*scale), atk:Math.round(base.atk*bossMult.atk*scale), stars:bossMult.stars, special:bossSpecial}}];
+    const expansionMultBoss = 1 + teamExpansionTier*0.12;
+    return [{key:k, boosted:false, isBoss:true, borrowedPower, borrowedChampPower, scaled:{...base, hp:Math.round(base.hp*bossMult.hp*scale*expansionMultBoss), atk:Math.round(base.atk*bossMult.atk*scale*expansionMultBoss), stars:bossMult.stars, special:bossSpecial}}];
   }
 
   if(waveNum <= 5){
@@ -2490,7 +2519,7 @@ function randomEnemyWave(waveNum){
       lastWaveEvent = 'boost';
     } else {
       boostThisWave = false; // 60%: aparece mais um inimigo
-      currentEnemyCount = Math.min(currentEnemyCount + 1, 11);
+      currentEnemyCount = Math.min(currentEnemyCount + 1, 11 + teamExpansionTier*2);
       count = currentEnemyCount;
       lastWaveEvent = 'grow';
     }
@@ -2513,6 +2542,12 @@ function randomEnemyWave(waveNum){
     const easyAtk = base.atk * easyFactor;
     let scaledAtk = Math.round((easyAtk + waveAtkBonus(waveNum)) * 10) / 10;
     let hpScale = waveHpScale(waveNum);
+    if(teamExpansionTier>0){
+      // time expandido enfrenta inimigos proporcionalmente mais fortes, não só mais numerosos
+      const expansionMult = 1 + teamExpansionTier*0.12;
+      scaledAtk = Math.round(scaledAtk*expansionMult*10)/10;
+      hpScale *= expansionMult;
+    }
     if(i===boostIndex){ scaledAtk = Math.round(scaledAtk*1.4*10)/10; hpScale *= 1.3; }
     const hasStarRoll = i===starRollIndex;
     const enemyStars = hasStarRoll ? starRollLevel : 1;
@@ -2736,7 +2771,7 @@ function saveGameSnapshot(){
   if(mode!=='pve') return;
   const snapshot = {
     wave, teamP1, owned, coins, itemInventory, teamP1Positions,
-    currentStarterChamp, totalCoinsThisRun, bestWaveEver, arenaExpanded, RADIUS,
+    currentStarterChamp, totalCoinsThisRun, bestWaveEver, arenaExpanded, RADIUS, teamExpansionTier,
   };
   try{ localStorage.setItem(SAVE_KEY, JSON.stringify(snapshot)); }catch(e){}
 }
@@ -2777,6 +2812,7 @@ function resumeSavedGame(){
   teamP1Positions = snap.teamP1Positions || {};
   currentStarterChamp = snap.currentStarterChamp || 'ferrha';
   totalCoinsThisRun = snap.totalCoinsThisRun || 0;
+  teamExpansionTier = snap.teamExpansionTier || 0;
   if(snap.bestWaveEver > bestWaveEver) bestWaveEver = snap.bestWaveEver;
   if(arenaExpanded !== !!snap.arenaExpanded || RADIUS !== (snap.RADIUS||4)){
     arenaExpanded = !!snap.arenaExpanded;
@@ -2810,6 +2846,7 @@ function hardResetProgress(){
   itemInventory = {};
   teamP1Positions = {};
   teamP2Positions = {};
+  teamExpansionTier = 0;
   updateCoinBadge();
 }
 
