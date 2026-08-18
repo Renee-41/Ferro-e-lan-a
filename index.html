@@ -368,6 +368,7 @@
     <button id="patchnotes-close" style="background:none;border:none;color:var(--steel);font-size:16px;cursor:pointer;line-height:1;">×</button>
   </div>
   <ul>
+    <li><strong>XP de abate agora é compartilhado</strong>: em vez de ir só pra quem deu o golpe final, todo XP de abate da onda é somado e dividido igualmente entre TODO o time no fim da rodada (recém-chegados ainda recebem o bônus extra de catch-up por cima da parte deles). Resolve o problema de um único personagem virar absurdamente mais forte que o resto só por concentrar os abates.</li>
     <li><strong>Nerf na Zeph e na Pyra</strong>: velocidade base caiu 30% nas duas (Zeph: 1.6→1.12, Pyra: 1→0.7) — combinada com estrelas altas e a Precisão Mortal, a velocidade de ataque delas tava saindo do controle.</li>
     <li><strong>"Imposto sobre bênçãos"</strong>: quando não sobra mais bênção nova pra escolher, aparece uma notificação cobrando 500 moedas mesmo assim — sem chance de recurso.</li>
     <li><strong>Chefe da onda 60 sem dó</strong>: vida subiu de quase 10 mil pra 40 mil.</li>
@@ -1878,8 +1879,10 @@ function recomputeNewcomerBuffs(){
     if(minVeteranLevel - lvl <= 2) newcomerChamps.delete(id);
   });
 }
+let waveXpPool = 0; // XP de abate da rodada, somada e dividida igualmente entre o time no fim da onda
 function resetRoundTracking(){
   roundXpGain = {}; roundLevelUps = []; roundDeaths = []; roundSurvivorChampId = null;
+  waveXpPool = 0;
 }
 
 /* ============ MODE SELECT -> TEAM SELECT ============ */
@@ -4046,9 +4049,9 @@ function applyDamage(attacker, target, baseDmg, tag, ignoreDefense){
         }
       }
       if(mode==='pve' && attacker.team==='player' && (target.team==='enemy' || target.team==='corrupted')){
-        const xpAmt = killXpAmount(attacker.champId) + (target.team==='corrupted' ? 2 : 0);
-        awardXp(attacker.champId, xpAmt);
-        spawnFloatText(attacker.rx, attacker.ry-34, `+${formatXp(xpAmt)} xp`, '#e8c250');
+        const xpAmt = 2 + (target.team==='corrupted' ? 2 : 0);
+        waveXpPool += xpAmt; // vai pro fundo comum — dividido igualmente com o time no fim da onda
+        spawnFloatText(attacker.rx, attacker.ry-34, `+${formatXp(xpAmt)} xp (time)`, '#e8c250');
         ensureMatchStats(attacker.champId).kills++;
         if(hasItem(attacker,'fragmento_corrompido') && Math.random()<0.25 && attacker.alive && attacker.hp<attacker.maxhp){
           const healAmt = Math.round(attacker.maxhp*0.15);
@@ -4557,6 +4560,13 @@ function checkVictory(){
           }
         }
         coins += coinGain; totalCoinsThisRun += coinGain; updateCoinBadge();
+        if(teamP1.length>0 && waveXpPool>0){
+          const baseShare = waveXpPool / teamP1.length;
+          teamP1.forEach(id=>{
+            if(owned[id]) awardXp(id, Math.round(baseShare*catchUpMultiplier(id)*10)/10);
+          });
+          log(`${formatXp(Math.round(waveXpPool*10)/10)} XP de abate dividido igualmente entre o time!`, 'sys');
+        }
         aliveUnits.forEach(u=>{
           if(owned[u.champId]) awardXp(u.champId, Math.round(3*catchUpMultiplier(u.champId)*10)/10);
         });
