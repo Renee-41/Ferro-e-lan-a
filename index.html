@@ -173,6 +173,42 @@
     font-size:18px; line-height:1; cursor:pointer; padding:4px;
   }
   #suggestion-close-btn:hover{ color:#eae4d8; }
+
+  #finisher-overlay{
+    display:none; position:fixed; inset:0; z-index:5000; pointer-events:none;
+    align-items:center; justify-content:center;
+  }
+  #finisher-overlay.show{ display:flex; }
+  .finisher-vignette{
+    position:absolute; inset:0;
+    background:radial-gradient(ellipse at center, rgba(0,0,0,0) 30%, rgba(0,0,0,0.92) 78%);
+    opacity:0; transition:opacity 0.35s ease;
+  }
+  #finisher-overlay.show .finisher-vignette{ opacity:1; }
+  .finisher-portrait-wrap{
+    position:relative; z-index:2; display:flex; flex-direction:column; align-items:center;
+    transform:scale(0.4) translateY(20px); opacity:0;
+    transition:transform 0.4s cubic-bezier(.2,1.4,.4,1), opacity 0.3s ease;
+  }
+  #finisher-overlay.show .finisher-portrait-wrap{ transform:scale(1) translateY(0); opacity:1; }
+  .finisher-portrait{
+    width:120px; height:120px; border-radius:50%; border:4px solid var(--gold);
+    box-shadow:0 0 40px 6px currentColor, inset 0 0 20px rgba(0,0,0,0.4);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .finisher-name{
+    margin-top:14px; font-family:'Cambria','Oswald',serif; font-size:26px; font-weight:700;
+    color:var(--gold); letter-spacing:2px; text-shadow:0 2px 12px rgba(0,0,0,0.8);
+  }
+  .finisher-label{
+    margin-top:2px; font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--ember);
+    letter-spacing:5px; font-weight:600;
+  }
+  .finisher-flash{
+    position:absolute; inset:0; background:#fff; opacity:0; pointer-events:none;
+  }
+  .finisher-flash.pulse{ animation:finisherFlash 0.5s ease-out; }
+  @keyframes finisherFlash{ 0%{opacity:0.85;} 100%{opacity:0;} }
   #tutorial-overlay{
     display:none; position:fixed; inset:0; z-index:20000;
     background:rgba(10,8,7,0.72);
@@ -311,6 +347,7 @@
     <button id="patchnotes-close" style="background:none;border:none;color:var(--steel);font-size:16px;cursor:pointer;line-height:1;">×</button>
   </div>
   <ul>
+    <li><strong>Cinemática de golpe final</strong>: no golpe que elimina o último inimigo da onda, o jogo pausa por um instante, a tela escurece nas bordas (estilo jogo de luta), a câmera foca em quem deu o abate com o retrato dele no centro, e um flash de impacto fecha a sequência antes de mostrar o resultado da onda.</li>
     <li><strong>Catch-up de XP muito mais forte</strong>: recém-chegados agora entram só 1 nível atrás do time (era 3), e o bônus de XP escala até 10x o normal (era 5x) — resolvia mal demais quando o time já tava muito nivelado, principalmente depois da onda 40.</li>
     <li><strong>Zeph com mais alcance</strong>: 2 → 3 blocos — ela tava correndo demais pra perto dos inimigos pra uma "atiradora".</li>
     <li><strong>Olho de Falcão e Vigor Absoluto ganharam identidade própria</strong>: Olho de Falcão agora faz o portador sempre mirar automaticamente no inimigo com MENOS vida ao alcance (em vez do mais próximo), no lugar de só empilhar os mesmos números da Precisão Mortal. Vigor Absoluto virou um item de sustentação — regenera 2% da vida máxima a cada 3s, diferente da defesa de impacto da Muralha Viva.</li>
@@ -416,6 +453,16 @@
 </div>
 
 <div id="achievement-toast-container"></div>
+
+<div id="finisher-overlay">
+  <div class="finisher-vignette"></div>
+  <div class="finisher-portrait-wrap">
+    <div class="finisher-portrait" id="finisher-portrait"></div>
+    <div class="finisher-name" id="finisher-name"></div>
+    <div class="finisher-label">GOLPE FINAL</div>
+  </div>
+  <div class="finisher-flash" id="finisher-flash"></div>
+</div>
 
 <div id="suggestion-popup">
   <button id="suggestion-close-btn">×</button>
@@ -3636,6 +3683,9 @@ function applyDamage(attacker, target, baseDmg, tag, ignoreDefense){
           unlockAchievement('boss_slayer');
           if(target.special && target.borrowedChampPower) unlockAchievement('double_boss_slayer');
         }
+        if(target.team==='enemy' && !units.some(o=>o.alive && o.team==='enemy')){
+          triggerFinisherSequence(attacker, ()=>{ checkVictory(); });
+        }
       }
     }
   }
@@ -3893,6 +3943,7 @@ function doAction(u){
 }
 
 function updateBattleLogic(dt){
+  if(finisherActive) return; // pausa a física normal enquanto a cinemática do golpe final roda
   const now = performance.now();
   units.forEach(u=>{
     if(!u.alive) return;
@@ -4031,7 +4082,7 @@ function updateBattleLogic(dt){
       u.actionTimer += 900/effSpeed;
     }
   });
-  checkVictory();
+  if(!finisherActive) checkVictory();
 }
 
 function checkVictory(){
@@ -4675,8 +4726,38 @@ let rafRunning = false;
 let dramaticActive = false;
 let dramaticUnitId = null;
 let camViewBox = {x:0, y:0, w:500, h:460};
+let finisherActive = false; // pausa a lógica de batalha enquanto a cinemática do golpe final roda
+
+// Dispara a cinemática de "golpe final", estilo jogo de luta: vinheta fechando, retrato do
+// personagem no centro, câmera dramática nele, flash de impacto, e só então libera o resultado.
+function triggerFinisherSequence(killer, onDone){
+  finisherActive = true;
+  dramaticActive = true;
+  dramaticUnitId = killer.id;
+  const overlay = document.getElementById('finisher-overlay');
+  const portrait = document.getElementById('finisher-portrait');
+  const nameEl = document.getElementById('finisher-name');
+  const flash = document.getElementById('finisher-flash');
+  portrait.style.background = killer.color;
+  portrait.style.color = killer.color;
+  nameEl.textContent = killer.name;
+  overlay.classList.add('show');
+  triggerScreenShake(6, 300);
+  setTimeout(()=>{
+    flash.classList.remove('pulse'); void flash.offsetWidth; flash.classList.add('pulse');
+    triggerScreenShake(14, 400);
+  }, 900);
+  setTimeout(()=>{
+    overlay.classList.remove('show');
+    finisherActive = false;
+    dramaticActive = false;
+    dramaticUnitId = null;
+    onDone();
+  }, 1900);
+}
 
 function updateDramaticCheck(){
+  if(finisherActive) return; // a cinemática do golpe final já controla a câmera sozinha
   if(!battleActive){
     if(dramaticActive){ dramaticActive=false; dramaticUnitId=null; }
     return;
