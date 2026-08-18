@@ -347,6 +347,7 @@
     <button id="patchnotes-close" style="background:none;border:none;color:var(--steel);font-size:16px;cursor:pointer;line-height:1;">×</button>
   </div>
   <ul>
+    <li><strong>Correção real do golpe final não disparando</strong>: vários efeitos especiais (combo do Raio, corrente da Voltra, etc) aplicam dano usando um objeto genérico em vez da unidade de verdade — a checagem de "isso é uma passiva?" não reconhecia isso e o golpe final nunca disparava nesses casos. Agora ele sempre resolve pra unidade real por trás do golpe, tanto pra checar a passiva quanto pra pegar a cor certa no retrato.</li>
     <li><strong>Ajustes na cinemática de golpe final</strong>: agora só dispara quando o abate vem de uma passiva/habilidade especial em andamento (frenesi do Kael, combo do Raio, tentáculos em frenesi da Nerith, execução da Gélida, explosão da Voltra, etc) — não em qualquer ataque básico. Também corrigi o retrato: agora sempre mostra a cor certa do elemento de quem deu o golpe (o Raio, por exemplo, aparece amarelo elétrico).</li>
     <li><strong>Cinemática de golpe final</strong>: no golpe que elimina o último inimigo da onda, o jogo pausa por um instante, a tela escurece nas bordas (estilo jogo de luta), a câmera foca em quem deu o abate com o retrato dele no centro, e um flash de impacto fecha a sequência antes de mostrar o resultado da onda.</li>
     <li><strong>Catch-up de XP muito mais forte</strong>: recém-chegados agora entram só 1 nível atrás do time (era 3), e o bônus de XP escala até 10x o normal (era 5x) — resolvia mal demais quando o time já tava muito nivelado, principalmente depois da onda 40.</li>
@@ -3688,7 +3689,7 @@ function applyDamage(attacker, target, baseDmg, tag, ignoreDefense){
           if(target.special && target.borrowedChampPower) unlockAchievement('double_boss_slayer');
         }
         if(target.team==='enemy' && isPassiveMoment(attacker) && !units.some(o=>o.alive && o.team==='enemy')){
-          triggerFinisherSequence(attacker, ()=>{ checkVictory(); });
+          triggerFinisherSequence(resolveRealAttacker(attacker), ()=>{ checkVictory(); });
         }
       }
     }
@@ -4736,8 +4737,17 @@ let finisherActive = false; // pausa a lógica de batalha enquanto a cinemática
 
 // Só considera "golpe final" quando o abate vem de uma passiva/habilidade especial em andamento —
 // não de um ataque básico qualquer.
-function isPassiveMoment(attacker){
-  if(!attacker || !attacker.id) return false; // fontes sintéticas (sem unidade real por trás) não contam
+// Vários efeitos especiais (combo do Raio, corrente da Voltra, etc) aplicam dano usando um objeto
+// genérico só pra registrar a origem, em vez da unidade de verdade — isso resolve pra unidade real,
+// pra checar as flags de passiva certinho e pra pegar a cor certa no retrato do golpe final.
+function resolveRealAttacker(attacker){
+  if(attacker && attacker.id!==undefined) return attacker;
+  if(!attacker) return null;
+  return units.find(u=>u.alive && u.champId===attacker.champId && u.team===attacker.team) || null;
+}
+function isPassiveMoment(rawAttacker){
+  const attacker = resolveRealAttacker(rawAttacker);
+  if(!attacker) return false;
   const now = performance.now();
   return !!(
     (attacker.frenzyUntil && now < attacker.frenzyUntil) || attacker.comboActive ||
