@@ -363,6 +363,8 @@
     <button id="patchnotes-close" style="background:none;border:none;color:var(--steel);font-size:16px;cursor:pointer;line-height:1;">×</button>
   </div>
   <ul>
+    <li><strong>Falas soltas individuais</strong>: os 15 Stack Users agora têm frases próprias que aparecem sozinhas de vez em quando — uma ao subir de nível, outra ao entrar em combate — sem precisar de outro personagem por perto.</li>
+    <li><strong>Golpe final estendido pra Ferrha, Terrus, Shecry e Ímã</strong>: a cinemática já cobria Kael, Raio, Nerith, Gélida e Voltra — agora cobre também a barreira da Ferrha, a Pele de Pedra do Terrus, o escudo da Shecry e o golpe magnético da Ímã.</li>
     <li><strong>Limitador de economia (endgame)</strong>: depois da onda 30, quanto mais completo o time (estrelas máximas / itens cheios), menos moeda a onda dá — até 45% de redução. Força escolher entre item novo ou expansão de time lá pela onda 40, em vez de comprar tudo.</li>
     <li><strong>Sistema de Bênçãos</strong>: a cada 2 chefes derrotados (chefe duplo conta como 1), escolha 1 de 3 bênçãos sorteadas — todas com um lado bom E um lado ruim: Fúria Coletiva, Passo Leve, Bênção do Ferreiro, Vínculo Duplo (2 SUs aleatórios ganham 5 slots de item), Reforço Tardio e Fôlego Extra.</li>
     <li><strong>Itens Relíquia</strong>: 3 itens novos que só dropam de chefe (40% de chance cada) — Núcleo da Rachadura, Fragmento Corrompido e Coroa de Ferro. Não têm receita nem preço, não dá pra comprar.</li>
@@ -1732,13 +1734,16 @@ function awardXp(champId, amount){
   prog.xp += amount;
   roundXpGain[champId] = (roundXpGain[champId]||0) + amount;
   let needed = xpToNextLevel(prog.level);
+  let leveledUp = false;
   while(prog.xp >= needed){
     prog.xp -= needed;
     prog.level++;
+    leveledUp = true;
     if(!roundLevelUps.includes(champId)) roundLevelUps.push(champId);
     log(`${CHAMPION_CATALOG[champId].name} subiu para o nível ${prog.level}!`, 'sys');
     needed = xpToNextLevel(prog.level);
   }
+  if(leveledUp) trySoloLine(champId, 'levelup');
 }
 function formatXp(n){ return Number.isInteger(n) ? n : n.toFixed(1); }
 function catchUpMultiplier(champId){
@@ -2413,7 +2418,7 @@ function makeUnit(id, team, champId, def, level, q, r, statOverride, stars, item
     tentacleCooldown: 5000, isTentacle: false, cantMove: false, tentacleParentId: null, tentacleFrenzy: false,
     electroSlowUntil: 0, electroSlowPct: 0, chainCharge: 0, overchargeUntil: 0, overchargeTickAt: 0,
     voltraDetonating: false, voltraDetonateUntil: 0,
-    borrowedChampPower: null, vigorRegenAt: 0
+    borrowedChampPower: null, vigorRegenAt: 0, imaProcAt: 0
   };
 }
 
@@ -2806,6 +2811,7 @@ function startPveRun(){
   log(`Onda 1 iniciada!`, 'sys');
   logReinforcements(wavePicks, 1);
   checkDuoBanter(teamP1, banterNextRoundPve, wave);
+  triggerRandomSoloBattleStart(teamP1);
   document.getElementById('nav-battle-btn').style.display = 'inline-block';
   showScreen('battle');
   startBattleLoopIfNeeded();
@@ -3462,6 +3468,41 @@ function updateEmberEvents(){
   emberEvents = pending;
 }
 
+// Falas soltas individuais — cada personagem tem a própria, sem depender de estar em dupla com ninguém.
+const SOLO_LINES = {
+  ferrha: {levelup:'Fico mais firme a cada dia.', battlestart:'Ninguém passa enquanto eu estiver de pé.'},
+  voss: {levelup:'Minha mira melhora. As perguntas continuam as mesmas.', battlestart:'Vamos ver o que esse lugar esconde.'},
+  nyx: {levelup:'Nem eu percebi.', battlestart:'Vocês nem vão me ver chegar.'},
+  kael: {levelup:'Mais fogo. Mais poder. Nunca é suficiente.', battlestart:'Vamos ver até onde eu aguento dessa vez.'},
+  terrus: {levelup:'A vila que eu perdi teria orgulho disso.', battlestart:'Fico de guarda. Como sempre.'},
+  pyra: {levelup:'Cada nível é mais um passo perto de entender a Rachadura.', battlestart:'Deixa eu estudar isso de perto.'},
+  glacia: {levelup:'Espero que isso seja o suficiente pra mantê-los vivos.', battlestart:'Fico de olho em todo mundo.'},
+  zeph: {levelup:'Mais rápida. Sempre mais rápida.', battlestart:'Última a chegar, primeira a sair.'},
+  ima: {levelup:'Ainda não sei o que significa "querer". Mas isso ajuda.', battlestart:'Tudo que reluz vem pra perto de mim.'},
+  frosk: {levelup:'Mais forte. Bom.', battlestart:'Chega perto que eu congelo.'},
+  gelida: {levelup:'Mais um nível. Mais um empréstimo contra a morte.', battlestart:'Dessa vez eu não vou ficar pra trás.'},
+  raio: {levelup:'Mais carga. Mais risco. Perfeito.', battlestart:'Vamos ver se eu aguento até o fim dessa vez.'},
+  shecry: {levelup:'Quanto mais eu aguento, mais forte eu fico.', battlestart:'Tentem me machucar. Vejam o que acontece.'},
+  nerith: {levelup:'ELE está satisfeito com esse progresso.', battlestart:'Eles já sabem que estamos aqui.'},
+  voltra: {levelup:'Mais carga na corrente. Vai doer mais.', battlestart:'Sintam a eletricidade no ar.'},
+};
+function trySoloLine(champId, moment){
+  const lines = SOLO_LINES[champId];
+  if(!lines || !lines[moment]) return;
+  const chance = moment==='levelup' ? 0.25 : 0.15;
+  if(Math.random() > chance) return;
+  const name = CHAMPION_CATALOG[champId].name;
+  const text = lines[moment];
+  log(`${name}: "${text}"`, 'hl');
+  const u = units.find(o=>o.alive && o.champId===champId);
+  if(u) spawnFloatText(u.rx, u.ry-50, text, '#eae4d8', 'banter');
+}
+function triggerRandomSoloBattleStart(teamIds){
+  if(!teamIds || teamIds.length===0) return;
+  const pick = teamIds[Math.floor(Math.random()*teamIds.length)];
+  setTimeout(()=> trySoloLine(pick, 'battlestart'), 600);
+}
+
 const CATCHPHRASES = {
   kael: ['QUEIMA TUDO!'],
   ferrha_barrier_2: ['ISSO NEM COMEÇOU!'],
@@ -4058,6 +4099,7 @@ function doAction(u){
       u.hitCount++;
       if(u.hitCount%4===0 && u.imaUsesLeft>0){
         u.imaUsesLeft--;
+        u.imaProcAt = performance.now();
         dmg = Math.round(dmg*1.5);
         applyDamage(u,target,dmg,'🧲');
         if(target.alive) pullAdjacent(u, target);
@@ -4441,6 +4483,7 @@ function finishPrepContinue(){
   log(`Onda ${wave} iniciada. Time totalmente recuperado.`, 'sys');
   logReinforcements(wavePicks, wave);
   checkDuoBanter(teamP1, banterNextRoundPve, wave);
+  triggerRandomSoloBattleStart(teamP1);
   battleActive = true;
   showScreen('battle');
   saveGameSnapshot();
@@ -4936,7 +4979,8 @@ function isPassiveMoment(rawAttacker){
     (attacker.overchargeUntil && now < attacker.overchargeUntil) ||
     attacker.voltraDetonating ||
     (attacker.barrierUntil && now < attacker.barrierUntil) ||
-    (attacker.shecryUltUntil && now < attacker.shecryUltUntil)
+    (attacker.shecryUltUntil && now < attacker.shecryUltUntil) ||
+    (attacker.imaProcAt && now - attacker.imaProcAt < 300)
   );
 }
 
