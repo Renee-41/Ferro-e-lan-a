@@ -368,6 +368,7 @@
     <button id="patchnotes-close" style="background:none;border:none;color:var(--steel);font-size:16px;cursor:pointer;line-height:1;">×</button>
   </div>
   <ul>
+    <li><strong>Correção na navegação por teclado</strong>: a barra de abas (Menu, Loja, Itens, etc) ficava fora do alcance do teclado, então não dava pra trocar de tela nem selecionar o primeiro personagem de nenhuma lista. Agora a barra de abas sempre entra na navegação, com o conteúdo da tela atual vindo primeiro na ordem.</li>
     <li><strong>Navegação por teclado</strong>: setas ou WASD navegam entre os botões da tela atual, Espaço confirma o que estiver selecionado, e Q volta/fecha pop-ups. Funciona em menus, loja, itens, conquistas e telas de escolha — o posicionamento manual na arena continua só no toque/clique, por enquanto.</li>
     <li><strong>Falas soltas individuais</strong>: os 15 Stack Users agora têm frases próprias que aparecem sozinhas de vez em quando — uma ao subir de nível, outra ao entrar em combate — sem precisar de outro personagem por perto.</li>
     <li><strong>Golpe final estendido pra Ferrha, Terrus, Shecry e Ímã</strong>: a cinemática já cobria Kael, Raio, Nerith, Gélida e Voltra — agora cobre também a barreira da Ferrha, a Pele de Pedra do Terrus, o escudo da Shecry e o golpe magnético da Ímã.</li>
@@ -4975,13 +4976,21 @@ function getKeyboardContext(){
   return document.querySelector('.screen.active') || document.body;
 }
 function getFocusableElements(){
-  const root = getKeyboardContext();
-  if(!root) return [];
-  const nodes = root.querySelectorAll('button:not([disabled]), select, [data-blessing]');
-  return Array.from(nodes).filter(el=>{
+  const overlayOpen = document.querySelector('#blessing-overlay.show, #suggestion-popup.show, #patchnotes-panel.open, #tutorial-panel.open');
+  const visible = el=>{
     const rect = el.getBoundingClientRect();
     return rect.width>0 && rect.height>0;
-  });
+  };
+  if(overlayOpen){
+    const root = getKeyboardContext();
+    return root ? Array.from(root.querySelectorAll('button:not([disabled]), select, [data-blessing]')).filter(visible) : [];
+  }
+  const topbar = document.querySelector('.topbar');
+  const screen = document.querySelector('.screen.active');
+  const nodes = [];
+  if(screen) nodes.push(...screen.querySelectorAll('button:not([disabled]), select, [data-blessing]'));
+  if(topbar) nodes.push(...topbar.querySelectorAll('button:not([disabled])'));
+  return nodes.filter(visible);
 }
 function moveKeyboardFocus(dir){
   const els = getFocusableElements();
