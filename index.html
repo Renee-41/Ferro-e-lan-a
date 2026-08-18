@@ -207,8 +207,24 @@
   .finisher-flash{
     position:absolute; inset:0; background:#fff; opacity:0; pointer-events:none;
   }
-  .finisher-flash.pulse{ animation:finisherFlash 0.5s ease-out; }
-  @keyframes finisherFlash{ 0%{opacity:0.85;} 100%{opacity:0;} }
+  .finisher-flash.pulse{ animation:finisherFlash 0.35s ease-out; }
+  .finisher-flash.pulse-big{ animation:finisherFlashBig 0.6s ease-out; }
+  @keyframes finisherFlash{ 0%{opacity:0.6;} 100%{opacity:0;} }
+  @keyframes finisherFlashBig{ 0%{opacity:0.95; background:#fff2a8;} 40%{opacity:0.7;} 100%{opacity:0; background:#fff;} }
+
+  #blessing-overlay{
+    display:none; position:fixed; inset:0; z-index:6000;
+    background:rgba(0,0,0,0.75); align-items:center; justify-content:center;
+  }
+  #blessing-overlay.show{ display:flex; }
+  .blessing-panel{
+    width:520px; max-width:calc(100vw - 32px); max-height:85vh; overflow-y:auto;
+    background:linear-gradient(180deg,var(--iron-mid),var(--iron-dark));
+    border:1px solid var(--gold); border-radius:8px; padding:20px;
+    box-shadow:0 12px 40px rgba(0,0,0,0.6);
+  }
+  #blessing-cards .champ-card{ transition:border-color 0.15s ease, transform 0.15s ease; }
+  #blessing-cards .champ-card:hover{ border-color:var(--gold); transform:translateY(-2px); }
   #tutorial-overlay{
     display:none; position:fixed; inset:0; z-index:20000;
     background:rgba(10,8,7,0.72);
@@ -347,6 +363,11 @@
     <button id="patchnotes-close" style="background:none;border:none;color:var(--steel);font-size:16px;cursor:pointer;line-height:1;">×</button>
   </div>
   <ul>
+    <li><strong>Limitador de economia (endgame)</strong>: depois da onda 30, quanto mais completo o time (estrelas máximas / itens cheios), menos moeda a onda dá — até 45% de redução. Força escolher entre item novo ou expansão de time lá pela onda 40, em vez de comprar tudo.</li>
+    <li><strong>Sistema de Bênçãos</strong>: a cada 2 chefes derrotados (chefe duplo conta como 1), escolha 1 de 3 bênçãos sorteadas — todas com um lado bom E um lado ruim: Fúria Coletiva, Passo Leve, Bênção do Ferreiro, Vínculo Duplo (2 SUs aleatórios ganham 5 slots de item), Reforço Tardio e Fôlego Extra.</li>
+    <li><strong>Itens Relíquia</strong>: 3 itens novos que só dropam de chefe (40% de chance cada) — Núcleo da Rachadura, Fragmento Corrompido e Coroa de Ferro. Não têm receita nem preço, não dá pra comprar.</li>
+    <li><strong>Chefe duplo depois da onda 30</strong>: 30% de chance de aparecerem 2 chefes na mesma onda (cada um um pouco mais fraco individualmente), com chance de relíquia separada pra cada um.</li>
+    <li><strong>Animação de golpe final estendida</strong>: dura mais alguns segundos agora, com 4 flashes tipo estroboscópio elétrico crescendo em intensidade até o flash grande final.</li>
     <li><strong>Correção real do golpe final não disparando</strong>: vários efeitos especiais (combo do Raio, corrente da Voltra, etc) aplicam dano usando um objeto genérico em vez da unidade de verdade — a checagem de "isso é uma passiva?" não reconhecia isso e o golpe final nunca disparava nesses casos. Agora ele sempre resolve pra unidade real por trás do golpe, tanto pra checar a passiva quanto pra pegar a cor certa no retrato.</li>
     <li><strong>Ajustes na cinemática de golpe final</strong>: agora só dispara quando o abate vem de uma passiva/habilidade especial em andamento (frenesi do Kael, combo do Raio, tentáculos em frenesi da Nerith, execução da Gélida, explosão da Voltra, etc) — não em qualquer ataque básico. Também corrigi o retrato: agora sempre mostra a cor certa do elemento de quem deu o golpe (o Raio, por exemplo, aparece amarelo elétrico).</li>
     <li><strong>Cinemática de golpe final</strong>: no golpe que elimina o último inimigo da onda, o jogo pausa por um instante, a tela escurece nas bordas (estilo jogo de luta), a câmera foca em quem deu o abate com o retrato dele no centro, e um flash de impacto fecha a sequência antes de mostrar o resultado da onda.</li>
@@ -464,6 +485,14 @@
     <div class="finisher-label">GOLPE FINAL</div>
   </div>
   <div class="finisher-flash" id="finisher-flash"></div>
+</div>
+
+<div id="blessing-overlay">
+  <div class="blessing-panel">
+    <h2 style="border:none;text-align:center;">✨ Escolha uma Bênção</h2>
+    <div class="subtitle" style="text-align:center;margin-bottom:14px;">Toda bênção tem um lado bom e um lado ruim — escolha com cuidado.</div>
+    <div id="blessing-cards" style="display:flex;flex-direction:column;gap:10px;"></div>
+  </div>
 </div>
 
 <div id="suggestion-popup">
@@ -854,6 +883,9 @@ const ITEM_CATALOG = {
   precisao_mortal:{name:'Precisão Mortal', kind:'combinado · longa distância', recipe:['mira','luneta'], desc:'Combinação de Mira Telescópica + Luneta de Longo Alcance. +2 de alcance, +30% de dano e +30% de velocidade de ataque — só alcance 2+.', effect:{range:2, atkPct:0.30, speedPct:0.30, appliesTo:'ranged'}},
   brasa_eterna:{name:'Brasa Eterna', kind:'combinado · dano ativo', recipe:['brasa','amplificador'], desc:'Combinação de Brasa Selvagem + Núcleo Amplificador. A Brasa Selvagem ativa 30% mais rápido (a cada 3,5s) e causa 75% mais dano — o efeito elemental de cada personagem continua o mesmo.', effect:{}},
   vigor_absoluto:{name:'Vigor Absoluto', kind:'combinado · vida', recipe:['manto_robusto','coracao_vital'], desc:'Combinação de Manto Robusto + Coração Vital. +20% de HP máximo, e regenera 2% da vida máxima a cada 3 segundos enquanto estiver vivo — ótimo pra batalhas longas, diferente da defesa de impacto da Muralha Viva.', effect:{hpPct:0.20, appliesTo:'all'}},
+  nucleo_rachadura:{name:'Núcleo da Rachadura', kind:'relíquia · chefe', isRelic:true, desc:'Relíquia rara — só dropa de chefe. +35% de dano e +20% de velocidade, em qualquer Stack User. Não tem receita, não dá pra comprar.', effect:{atkPct:0.35, speedPct:0.20, appliesTo:'all'}},
+  fragmento_corrompido:{name:'Fragmento Corrompido', kind:'relíquia · chefe', isRelic:true, desc:'Relíquia rara — só dropa de chefe. A cada abate, 25% de chance de curar 15% da vida máxima na hora. Não tem receita, não dá pra comprar.', effect:{onKillHealChance:0.25, onKillHealPct:0.15, appliesTo:'all'}},
+  coroa_ferro:{name:'Coroa de Ferro', kind:'relíquia · chefe', isRelic:true, desc:'Relíquia rara — só dropa de chefe. +220 de HP máximo e 18% de redução de dano, em qualquer Stack User. Não tem receita, não dá pra comprar.', effect:{hpFlat:220, dmgReductionPct:0.18, appliesTo:'all'}},
 };
 
 // ---- Ícones simples (linha, sem emoji) pros itens ----
@@ -1251,13 +1283,98 @@ function grantCatchUpJoin(champId){
   const veteranLevels = teamP1.filter(id=>id!==champId && owned[id]).map(id=>owned[id].level);
   if(veteranLevels.length===0) return;
   const minVeteranLevel = Math.min(...veteranLevels);
-  const startLevel = Math.max(1, minVeteranLevel-1);
+  let startLevel = Math.max(1, minVeteranLevel-1);
+  if(hasBlessing('reforco_tardio')) startLevel += 3;
   if(startLevel > prog.level){
     prog.level = startLevel;
     prog.xp = 0;
     log(`${CHAMPION_CATALOG[champId].name} entra no time já no nível ${startLevel}, pra não ficar tão atrás do resto do grupo!`, 'hl');
   }
   if(minVeteranLevel - prog.level > 0) newcomerChamps.add(champId);
+}
+
+/* ============ BÊNÇÃOS ============ */
+// A cada 2 chefes derrotados (chefe duplo conta como 1), o jogador escolhe 1 de 3 bênçãos —
+// cada uma tem um lado bom e um lado ruim, sem exceção.
+const BLESSINGS = {
+  furia_coletiva: {name:'Fúria Coletiva', icon:'⚔️', pro:'+15% de dano em todo o time', con:'-10% de vida máxima em todo o time'},
+  passo_leve: {name:'Passo Leve', icon:'💨', pro:'+20% de velocidade de movimento e ataque em todo o time', con:'-15% de redução de dano em todo o time'},
+  forja_barata: {name:'Bênção do Ferreiro', icon:'🔨', pro:'Itens combináveis custam 30% menos moedas pra montar', con:'+10% de dano recebido em todo o time'},
+  vinculo_duplo: {name:'Vínculo Duplo', icon:'🔗', pro:'2 Stack Users aleatórios passam a poder equipar até 5 itens', con:'Esses 2 mesmos Stack Users ganham 25% menos XP'},
+  reforco_tardio: {name:'Reforço Tardio', icon:'📯', pro:'Todo Stack User comprado a partir de agora entra 3 níveis mais alto', con:'Personagens custam 15% mais moedas na loja'},
+  folego_extra: {name:'Fôlego Extra', icon:'❤️', pro:'+18% de vida máxima em todo o time', con:'-10% de velocidade de ataque em todo o time'},
+};
+let activeBlessings = []; // ids das bênçãos escolhidas nessa partida
+let bossDefeatCount = 0;
+let bossCountedThisWave = false;
+let pendingBlessingChoice = false;
+let extraSlotChampIds = []; // preenchido pela bênção Vínculo Duplo
+
+function getItemSlotCount(champId){
+  return extraSlotChampIds.includes(champId) ? 5 : 3;
+}
+function hasBlessing(id){ return activeBlessings.includes(id); }
+// Limitador de economia: quando o time já tá muito completo (estrelas máximas / itens cheios),
+// o ganho de moeda cai — força escolher entre comprar item OU a expansão de time lá pela onda 40.
+function computeCompletionPenalty(){
+  if(teamP1.length===0) return 1;
+  let maxedCount = 0, itemizedCount = 0, counted = 0;
+  teamP1.forEach(id=>{
+    const p = owned[id];
+    if(!p) return;
+    counted++;
+    if(p.stars>=MAX_STARS) maxedCount++;
+    const slots = getItemSlotCount(id);
+    const filled = (p.itemIds||[]).filter(Boolean).length;
+    if(filled>=slots) itemizedCount++;
+  });
+  if(counted===0) return 1;
+  const completion = (maxedCount/counted + itemizedCount/counted) / 2;
+  return 1 - completion*0.45; // até 45% de redução quando o time tá 100% maxado
+}
+
+function championFirstCost(id){
+  let cost = SPECIAL_PASSIVE_CHAMPS.includes(id) ? Math.round(CHAMPION_CATALOG[id].cost*1.2) : CHAMPION_CATALOG[id].cost;
+  if(hasBlessing('reforco_tardio')) cost = Math.round(cost*1.15);
+  return cost;
+}
+
+function showBlessingChoice(onResolved){
+  const pool = Object.keys(BLESSINGS).filter(id=>!activeBlessings.includes(id));
+  if(pool.length===0){ pendingBlessingChoice = false; if(onResolved) onResolved(); return; }
+  const shuffled = pool.sort(()=>Math.random()-0.5).slice(0,3);
+  const el = document.getElementById('blessing-cards');
+  el.innerHTML = shuffled.map(id=>{
+    const b = BLESSINGS[id];
+    return `<div class="champ-card" style="cursor:pointer;" data-blessing="${id}">
+      <div class="champ-name">${b.icon} ${b.name}</div>
+      <div class="champ-stats" style="color:#7bbf6a;">✓ ${b.pro}</div>
+      <div class="champ-stats" style="color:#c94d3d;">✗ ${b.con}</div>
+    </div>`;
+  }).join('');
+  el.querySelectorAll('[data-blessing]').forEach(card=>{
+    card.addEventListener('click', ()=>{
+      applyBlessing(card.dataset.blessing);
+      document.getElementById('blessing-overlay').classList.remove('show');
+      pendingBlessingChoice = false;
+      if(onResolved) onResolved();
+    });
+  });
+  document.getElementById('blessing-overlay').classList.add('show');
+}
+
+function applyBlessing(id){
+  activeBlessings.push(id);
+  const b = BLESSINGS[id];
+  log(`✨ Bênção escolhida: ${b.name} — ${b.pro} / ${b.con}`, 'hl');
+  if(id==='vinculo_duplo'){
+    const pool = teamP1.slice();
+    for(let i=0;i<2 && pool.length>0;i++){
+      const idx = Math.floor(Math.random()*pool.length);
+      extraSlotChampIds.push(pool.splice(idx,1)[0]);
+    }
+    log(`🔗 ${extraSlotChampIds.map(id=>CHAMPION_CATALOG[id].name).join(' e ')} agora podem equipar até 5 itens!`, 'hl');
+  }
 }
 
 const MAX_OWNED_CHAMPS_BASE = 5;
@@ -1302,7 +1419,7 @@ function renderShop(){
     const isOwned = !!owned[id];
     const prog = owned[id];
     const copyCost = Math.round(def.cost*0.5);
-    const firstCost = SPECIAL_PASSIVE_CHAMPS.includes(id) ? Math.round(def.cost*1.2) : def.cost;
+    const firstCost = championFirstCost(id);
     const card = document.createElement('div');
     card.className = 'champ-card ' + (isOwned?'':'locked') + ' bg-'+def.element;
     let ownedBlock = '';
@@ -1342,7 +1459,7 @@ function renderShop(){
   el.querySelectorAll('[data-swapbuy]').forEach(btn=>{
     btn.addEventListener('click', ()=>{
       const newId = btn.dataset.swapbuy;
-      const firstCost = SPECIAL_PASSIVE_CHAMPS.includes(newId) ? Math.round(CHAMPION_CATALOG[newId].cost*1.2) : CHAMPION_CATALOG[newId].cost;
+      const firstCost = championFirstCost(newId);
       const select = el.querySelector(`[data-swaptarget="${newId}"]`);
       const oldId = select.value;
       if(coins < firstCost || !oldId) return;
@@ -1361,7 +1478,7 @@ function renderShop(){
     btn.addEventListener('click', ()=>{
       const id = btn.dataset.buy;
       const isNew = !owned[id];
-      const cost = isNew ? (SPECIAL_PASSIVE_CHAMPS.includes(id) ? Math.round(CHAMPION_CATALOG[id].cost*1.2) : CHAMPION_CATALOG[id].cost) : Math.round(CHAMPION_CATALOG[id].cost*0.5);
+      const cost = isNew ? championFirstCost(id) : Math.round(CHAMPION_CATALOG[id].cost*0.5);
       if(coins < cost) return;
       coins -= cost;
       sfxCoin();
@@ -1391,8 +1508,9 @@ function renderItems(){
   const el = document.getElementById('item-cards');
   el.innerHTML = '';
   const sortedItemEntries = Object.entries(ITEM_CATALOG).sort((a,b)=>{
-    const aRecipe = !!a[1].recipe, bRecipe = !!b[1].recipe;
-    if(aRecipe !== bRecipe) return aRecipe ? 1 : -1; // itens combinados vão pro final
+    const rank = (d)=> d.isRelic ? 2 : (d.recipe ? 1 : 0);
+    const rankDiff = rank(a[1]) - rank(b[1]);
+    if(rankDiff !== 0) return rankDiff;
     return (a[1].cost||0) - (b[1].cost||0);
   });
   sortedItemEntries.forEach(([id,def])=>{
@@ -1400,15 +1518,18 @@ function renderItems(){
     const card = document.createElement('div');
     card.className = 'champ-card';
     let actionBlock;
-    if(def.recipe){
+    if(def.isRelic){
+      actionBlock = `<div class="champ-stats" style="color:var(--gold);">✨ Só dropa de chefe — não dá pra comprar</div>`;
+    } else if(def.recipe){
       const compNames = def.recipe.map(cid=>ITEM_CATALOG[cid].name).join(' + ');
       const canCombine = def.recipe.every(cid => (itemInventory[cid]||0) > 0);
       actionBlock = `<div class="champ-stats" style="color:var(--gold);">Receita: ${compNames}</div>` + (inMatch
         ? `<button class="main-btn buy-btn" data-combine="${id}" ${canCombine?'':'disabled'}>Combinar</button>`
         : `<div class="champ-stats" style="color:var(--steel);">Só dá pra combinar durante uma partida</div>`);
     } else {
+      const itemCost = hasBlessing('forja_barata') ? Math.round(def.cost*0.7) : def.cost;
       actionBlock = inMatch
-        ? `<button class="main-btn buy-btn" data-buyitem="${id}" ${coins<def.cost?'disabled':''}>Comprar — ${def.cost} 🪙</button>`
+        ? `<button class="main-btn buy-btn" data-buyitem="${id}" ${coins<itemCost?'disabled':''}>Comprar — ${itemCost} 🪙</button>`
         : `<div class="champ-stats" style="color:var(--steel);">Só dá pra comprar durante uma partida</div>`;
     }
     card.innerHTML = `
@@ -1427,7 +1548,7 @@ function renderItems(){
   el.querySelectorAll('[data-buyitem]').forEach(btn=>{
     btn.addEventListener('click', ()=>{
       const id = btn.dataset.buyitem;
-      const cost = ITEM_CATALOG[id].cost;
+      const cost = hasBlessing('forja_barata') ? Math.round(ITEM_CATALOG[id].cost*0.7) : ITEM_CATALOG[id].cost;
       if(coins >= cost){
         coins -= cost;
         sfxCoin();
@@ -1501,10 +1622,11 @@ function renderRoster(){
     const card = document.createElement('div');
     card.className = 'champ-card bg-'+def.element;
     if(!prog.itemIds) prog.itemIds = [];
-    while(prog.itemIds.length<3) prog.itemIds.push(null);
+    const slotCount = getItemSlotCount(id);
+    while(prog.itemIds.length<slotCount) prog.itemIds.push(null);
 
     let slotsHtml = '';
-    for(let slot=0; slot<3; slot++){
+    for(let slot=0; slot<slotCount; slot++){
       const current = prog.itemIds[slot];
       let options = `<option value="">Vazio</option>`;
       Object.entries(ITEM_CATALOG).forEach(([iid,idef])=>{
@@ -1586,6 +1708,11 @@ function computeUnitStats(def, prog){
   });
   dmgReduction = Math.min(dmgReduction, 0.6);
 
+  if(hasBlessing('furia_coletiva')){ atk = Math.round(atk*1.15); hp = Math.round(hp*0.90); }
+  if(hasBlessing('passo_leve')){ speed = Math.round(speed*1.20*100)/100; dmgReduction = Math.max(0, dmgReduction-0.15); }
+  if(hasBlessing('folego_extra')){ hp = Math.round(hp*1.18); speed = Math.round(speed*0.90*100)/100; }
+  if(hasBlessing('forja_barata')) dmgReduction = Math.max(0, dmgReduction-0.10);
+
   if(currentWeather==='chuva' && def.element==='agua') atk = Math.round(atk*1.10);
   if(currentWeather==='tempestade_areia' && range>1) range = Math.max(1, range-1);
   if(currentWeather==='nevasca' && def.element!=='vento') speed = Math.round(speed*0.85*100)/100;
@@ -1600,6 +1727,7 @@ function xpToNextLevel(level){
 }
 function awardXp(champId, amount){
   if(!owned[champId]) return;
+  if(extraSlotChampIds.includes(champId)) amount = amount*0.75; // contra do Vínculo Duplo
   const prog = owned[champId];
   prog.xp += amount;
   roundXpGain[champId] = (roundXpGain[champId]||0) + amount;
@@ -2546,30 +2674,38 @@ function randomEnemyWave(waveNum){
   lastWaveEvent = 'none';
 
   if(isBossWave){
-    const k = keys[Math.floor(Math.random()*keys.length)];
-    const base = ENEMY_CATALOG[k];
-    const scale = 1 + 0.12*waveNum;
-    const bossMult = waveNum>15 ? {hp:4.2, atk:1.9, stars:3} : (waveNum===5 ? {hp:2.2, atk:1.1, stars:1} : {hp:3.2, atk:1.5, stars:2});
+    const doubleBoss = waveNum>30 && Math.random()<0.3;
+    const bossCount = doubleBoss ? 2 : 1;
     lastWaveEvent = 'boss';
-    let bossSpecial = base.special || null;
-    let borrowedPower = null;
-    let borrowedChampPower = null;
-    if(waveNum>15){
-      // depois da onda 15, o chefe sempre vem com uma habilidade cíclica emprestada de algum Stack User
-      const SU_POWERS = ['lanca','ima','perfuro','rajada','furia','couraca','explosao','chuva','congelamento'];
-      borrowedPower = SU_POWERS[Math.floor(Math.random()*SU_POWERS.length)];
-      bossSpecial = borrowedPower;
-    }
-    if(waveNum>25){
-      // depois da onda 25, chance extra de vir TAMBÉM com uma passiva de personagem (menos a cura da Glacia, inútil pra um chefe sozinho)
-      const CHAMP_POWERS = ['kael','ferrha','terrus','raio'];
-      const champPowerChance = 0.5;
-      if(Math.random() < champPowerChance){
-        borrowedChampPower = CHAMP_POWERS[Math.floor(Math.random()*CHAMP_POWERS.length)];
+    const results = [];
+    for(let bi=0; bi<bossCount; bi++){
+      const k = keys[Math.floor(Math.random()*keys.length)];
+      const base = ENEMY_CATALOG[k];
+      const scale = 1 + 0.12*waveNum;
+      const bossMult = waveNum>15 ? {hp:4.2, atk:1.9, stars:3} : (waveNum===5 ? {hp:2.2, atk:1.1, stars:1} : {hp:3.2, atk:1.5, stars:2});
+      let bossSpecial = base.special || null;
+      let borrowedPower = null;
+      let borrowedChampPower = null;
+      if(waveNum>15){
+        // depois da onda 15, o chefe sempre vem com uma habilidade cíclica emprestada de algum Stack User
+        const SU_POWERS = ['lanca','ima','perfuro','rajada','furia','couraca','explosao','chuva','congelamento'];
+        borrowedPower = SU_POWERS[Math.floor(Math.random()*SU_POWERS.length)];
+        bossSpecial = borrowedPower;
       }
+      if(waveNum>25){
+        // depois da onda 25, chance extra de vir TAMBÉM com uma passiva de personagem (menos a cura da Glacia, inútil pra um chefe sozinho)
+        const CHAMP_POWERS = ['kael','ferrha','terrus','raio'];
+        const champPowerChance = 0.5;
+        if(Math.random() < champPowerChance){
+          borrowedChampPower = CHAMP_POWERS[Math.floor(Math.random()*CHAMP_POWERS.length)];
+        }
+      }
+      const expansionMultBoss = 1 + teamExpansionTier*0.12;
+      // quando vêm dois juntos, cada um fica um pouco mais fraco individualmente — senão dobra a dificuldade de vez
+      const dualPenalty = doubleBoss ? 0.75 : 1;
+      results.push({key:k, boosted:false, isBoss:true, isDualBoss:doubleBoss, borrowedPower, borrowedChampPower, scaled:{...base, hp:Math.round(base.hp*bossMult.hp*scale*expansionMultBoss*dualPenalty), atk:Math.round(base.atk*bossMult.atk*scale*expansionMultBoss*dualPenalty), stars:bossMult.stars, special:bossSpecial}});
     }
-    const expansionMultBoss = 1 + teamExpansionTier*0.12;
-    return [{key:k, boosted:false, isBoss:true, borrowedPower, borrowedChampPower, scaled:{...base, hp:Math.round(base.hp*bossMult.hp*scale*expansionMultBoss), atk:Math.round(base.atk*bossMult.atk*scale*expansionMultBoss), stars:bossMult.stars, special:bossSpecial}}];
+    return results;
   }
 
   if(waveNum <= 5){
@@ -2649,6 +2785,12 @@ function startPveRun(){
   matchStats = {};
   inMatch = true;
   currentEnemyCount = 3;
+  activeBlessings = [];
+  bossDefeatCount = 0;
+  bossCountedThisWave = false;
+  pendingBlessingChoice = false;
+  extraSlotChampIds = [];
+  document.getElementById('blessing-overlay').classList.remove('show');
   banterNextRoundPve = {};
   if(arenaExpanded){ arenaExpanded = false; RADIUS = 4; regenerateAllHexes(); }
   setupArenaForRound(1);
@@ -2685,13 +2827,19 @@ const BORROWED_CHAMP_POWER_NAMES = {
 };
 function logReinforcements(wavePicks, waveNum){
   if(lastWaveEvent==='boss'){
-    log(`⚠ Onda de chefe! ${ENEMY_CATALOG[wavePicks[0].key].name} apareceu bem mais forte e sozinho.`, 'hl');
-    if(wavePicks[0].borrowedPower){
-      log(`🌀 Esse chefe veio com uma habilidade emprestada: ${BORROWED_POWER_NAMES[wavePicks[0].borrowedPower] || wavePicks[0].borrowedPower}!`, 'hl');
-      if(wavePicks[0].borrowedChampPower){
-        log(`⚠ E também com uma passiva rara: ${BORROWED_CHAMP_POWER_NAMES[wavePicks[0].borrowedChampPower]}! Chefe em dobro.`, 'hl');
-      }
+    if(wavePicks.length>=2){
+      log(`⚠️⚠️ DOIS CHEFES na mesma onda! ${wavePicks.map(w=>ENEMY_CATALOG[w.key].name).join(' e ')} apareceram bem mais fortes.`, 'hl');
+    } else {
+      log(`⚠ Onda de chefe! ${ENEMY_CATALOG[wavePicks[0].key].name} apareceu bem mais forte e sozinho.`, 'hl');
     }
+    wavePicks.forEach(w=>{
+      if(w.borrowedPower){
+        log(`🌀 ${ENEMY_CATALOG[w.key].name} veio com uma habilidade emprestada: ${BORROWED_POWER_NAMES[w.borrowedPower] || w.borrowedPower}!`, 'hl');
+        if(w.borrowedChampPower){
+          log(`⚠ E também com uma passiva rara: ${BORROWED_CHAMP_POWER_NAMES[w.borrowedChampPower]}! Chefe em dobro.`, 'hl');
+        }
+      }
+    });
   } else if(lastWaveEvent==='grow'){
     log(`Reforço da rodada ${waveNum}: um inimigo extra entrou na batalha! (total: ${wavePicks.length})`, 'sys');
   } else if(lastWaveEvent==='boost'){
@@ -2841,6 +2989,7 @@ function saveGameSnapshot(){
   const snapshot = {
     wave, teamP1, owned, coins, itemInventory, teamP1Positions,
     currentStarterChamp, totalCoinsThisRun, bestWaveEver, arenaExpanded, RADIUS, teamExpansionTier,
+    activeBlessings, bossDefeatCount, extraSlotChampIds,
   };
   try{ localStorage.setItem(SAVE_KEY, JSON.stringify(snapshot)); }catch(e){}
 }
@@ -2882,6 +3031,11 @@ function resumeSavedGame(){
   currentStarterChamp = snap.currentStarterChamp || 'ferrha';
   totalCoinsThisRun = snap.totalCoinsThisRun || 0;
   teamExpansionTier = snap.teamExpansionTier || 0;
+  activeBlessings = snap.activeBlessings || [];
+  bossDefeatCount = snap.bossDefeatCount || 0;
+  extraSlotChampIds = snap.extraSlotChampIds || [];
+  bossCountedThisWave = false;
+  pendingBlessingChoice = false;
   if(snap.bestWaveEver > bestWaveEver) bestWaveEver = snap.bestWaveEver;
   if(arenaExpanded !== !!snap.arenaExpanded || RADIUS !== (snap.RADIUS||4)){
     arenaExpanded = !!snap.arenaExpanded;
@@ -3677,6 +3831,11 @@ function applyDamage(attacker, target, baseDmg, tag, ignoreDefense){
         awardXp(attacker.champId, xpAmt);
         spawnFloatText(attacker.rx, attacker.ry-34, `+${formatXp(xpAmt)} xp`, '#e8c250');
         ensureMatchStats(attacker.champId).kills++;
+        if(hasItem(attacker,'fragmento_corrompido') && Math.random()<0.25 && attacker.alive && attacker.hp<attacker.maxhp){
+          const healAmt = Math.round(attacker.maxhp*0.15);
+          attacker.hp = Math.min(attacker.maxhp, attacker.hp+healAmt);
+          spawnFloatText(attacker.rx, attacker.ry-30, `+${healAmt} ✨`, '#9b4fd9');
+        }
         if(target.team==='corrupted'){
           const bonusCoins = 10;
           coins += bonusCoins; totalCoinsThisRun += bonusCoins; updateCoinBadge();
@@ -3687,6 +3846,18 @@ function applyDamage(attacker, target, baseDmg, tag, ignoreDefense){
         if(target.isBoss){
           unlockAchievement('boss_slayer');
           if(target.special && target.borrowedChampPower) unlockAchievement('double_boss_slayer');
+          if(Math.random() < 0.4){
+            const relicIds = Object.keys(ITEM_CATALOG).filter(id=>ITEM_CATALOG[id].isRelic);
+            const relicId = relicIds[Math.floor(Math.random()*relicIds.length)];
+            itemInventory[relicId] = (itemInventory[relicId]||0) + 1;
+            spawnFloatText(target.rx, target.ry-50, `✨ ${ITEM_CATALOG[relicId].name}!`, '#e8c250', 'dramatic');
+            log(`✨ ${target.name} deixou cair uma relíquia: ${ITEM_CATALOG[relicId].name}!`, 'hl');
+          }
+          if(!bossCountedThisWave){
+            bossCountedThisWave = true;
+            bossDefeatCount++;
+            if(bossDefeatCount%2===0) pendingBlessingChoice = true;
+          }
         }
         if(target.team==='enemy' && isPassiveMoment(attacker) && !units.some(o=>o.alive && o.team==='enemy')){
           triggerFinisherSequence(resolveRealAttacker(attacker), ()=>{ checkVictory(); });
@@ -4112,10 +4283,17 @@ function checkVictory(){
         if(wave>5){
           const aliveBonus = aliveUnits.length*3;
           coinGain += aliveBonus;
-          coinBonusMsg = ` (+${aliveBonus} por ${aliveUnits.length} SU vivo${aliveUnits.length>1?'s':''})`;
+          coinBonusMsg = ' (+' + aliveBonus + ' por ' + aliveUnits.length + ' SU vivo' + (aliveUnits.length>1?'s':'') + ')';
           if(teamP1.length>1 && aliveUnits.length===1){
             coinGain += 20;
             coinBonusMsg += ' (+20 bônus de sobrevivente solo)';
+          }
+        }
+        if(wave>30){
+          const penalty = computeCompletionPenalty();
+          if(penalty < 0.98){
+            coinGain = Math.round(coinGain*penalty);
+            coinBonusMsg += ` (-${Math.round((1-penalty)*100)}% por time já muito completo)`;
           }
         }
         coins += coinGain; totalCoinsThisRun += coinGain; updateCoinBadge();
@@ -4145,7 +4323,8 @@ function checkVictory(){
         if(aliveUnits.length===0) log(`Ninguém sobreviveu, mas o time inimigo caiu junto — a onda ${wave} ainda conta como vencida!`, 'hl');
         log(`Onda ${wave} vencida! +${coinGain} moedas${coinBonusMsg}.`, 'sys');
         sfxVictory();
-        startPrepTimer();
+        if(pendingBlessingChoice) showBlessingChoice(startPrepTimer);
+        else startPrepTimer();
       } else {
         bannerEl.className='lose'; bannerEl.textContent=`Derrota na onda ${wave}`;
         log(`Time derrotado na onda ${wave}. Total ganho na run: ${totalCoinsThisRun} moedas.`, 'sys');
@@ -4251,6 +4430,7 @@ function finishPrepContinue(){
   document.getElementById('quit-battle-btn').style.display = 'none';
   document.getElementById('view-summary-btn').style.display = 'none';
   document.getElementById('suggestion-popup').classList.remove('show');
+  bossCountedThisWave = false;
   const wavePicks = randomEnemyWave(wave);
   buildTeams(teamP1, wavePicks.map(w=>w.key), false);
   applyTempEnemyStats(wavePicks);
@@ -4775,17 +4955,22 @@ function triggerFinisherSequence(killer, onDone){
   nameEl.textContent = killer.name;
   overlay.classList.add('show');
   triggerScreenShake(6, 300);
-  setTimeout(()=>{
-    flash.classList.remove('pulse'); void flash.offsetWidth; flash.classList.add('pulse');
-    triggerScreenShake(14, 400);
-  }, 900);
+  const pulseFlash = (shakeStrength, shakeDur, big)=>{
+    flash.classList.remove('pulse','pulse-big'); void flash.offsetWidth; flash.classList.add(big?'pulse-big':'pulse');
+    triggerScreenShake(shakeStrength, shakeDur);
+  };
+  // sequência de flashes tipo raio/estroboscópio, crescendo até o golpe final
+  setTimeout(()=> pulseFlash(6, 150), 900);
+  setTimeout(()=> pulseFlash(8, 180), 1200);
+  setTimeout(()=> pulseFlash(10, 220), 1550);
+  setTimeout(()=> pulseFlash(20, 500, true), 2050); // o flash grande do golpe final
   setTimeout(()=>{
     overlay.classList.remove('show');
     finisherActive = false;
     dramaticActive = false;
     dramaticUnitId = null;
     onDone();
-  }, 1900);
+  }, 3400);
 }
 
 function updateDramaticCheck(){
