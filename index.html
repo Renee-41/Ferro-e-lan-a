@@ -368,6 +368,7 @@
     <button id="patchnotes-close" style="background:none;border:none;color:var(--steel);font-size:16px;cursor:pointer;line-height:1;">×</button>
   </div>
   <ul>
+    <li><strong>Correção: chefe da onda 60 aparecendo cedo demais</strong>: "Eco da Rachadura" tinha entrado no catálogo geral de inimigos, então podia ser sorteado por acaso em QUALQUER onda de chefe (sem os poderes especiais). Agora ele é exclusivo da onda 60, nunca sorteado à toa.</li>
     <li><strong>Onda 60 — chefe secreto</strong>: um encontro fixo com "Eco da Rachadura" (quase 10 mil de vida), que invoca fragmentos corrompidos periodicamente e solta rajadas de energia em área. Chegar nessa onda desbloqueia uma conquista secreta sem descrição, só pra quem chegar lá descobrir.</li>
     <li><strong>Slot de relíquia</strong>: um quadradinho ao lado do nome de cada Stack User em "Meu Time" — equipa uma relíquia mesmo com os 3 itens normais cheios. Também aparece um ✨ em cima de quem tiver relíquia equipada durante a batalha.</li>
     <li><strong>Criaturas corrompidas mais irritantes</strong>: até 8 de uma vez (era 4), viram enxame "morre rápido mas dói muito", não dão mais moeda ao matar, e agora explodem ao morrer, acertando qualquer lado por perto.</li>
@@ -2757,7 +2758,7 @@ function waveHpScale(waveNum){
 }
 
 function randomEnemyWave(waveNum){
-  const keys = Object.keys(ENEMY_CATALOG);
+  const keys = Object.keys(ENEMY_CATALOG).filter(k=>k!=='eco_rachadura'); // exclusivo da onda 60, nunca sorteado à toa
   let count, boostThisWave;
   lastWaveEvent = 'none';
 
