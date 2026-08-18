@@ -368,6 +368,8 @@
     <button id="patchnotes-close" style="background:none;border:none;color:var(--steel);font-size:16px;cursor:pointer;line-height:1;">×</button>
   </div>
   <ul>
+    <li><strong>"Imposto sobre bênçãos"</strong>: quando não sobra mais bênção nova pra escolher, aparece uma notificação cobrando 500 moedas mesmo assim — sem chance de recurso.</li>
+    <li><strong>Chefe da onda 60 sem dó</strong>: vida subiu de quase 10 mil pra 40 mil.</li>
     <li><strong>Correção: chefe da onda 60 aparecendo cedo demais</strong>: "Eco da Rachadura" tinha entrado no catálogo geral de inimigos, então podia ser sorteado por acaso em QUALQUER onda de chefe (sem os poderes especiais). Agora ele é exclusivo da onda 60, nunca sorteado à toa.</li>
     <li><strong>Onda 60 — chefe secreto</strong>: um encontro fixo com "Eco da Rachadura" (quase 10 mil de vida), que invoca fragmentos corrompidos periodicamente e solta rajadas de energia em área. Chegar nessa onda desbloqueia uma conquista secreta sem descrição, só pra quem chegar lá descobrir.</li>
     <li><strong>Slot de relíquia</strong>: um quadradinho ao lado do nome de cada Stack User em "Meu Time" — equipa uma relíquia mesmo com os 3 itens normais cheios. Também aparece um ✨ em cima de quem tiver relíquia equipada durante a batalha.</li>
@@ -971,7 +973,7 @@ const ENEMY_CATALOG = {
   sylv:{name:'Sylv',element:'vento',hp:85,atk:14,range:2,speed:1.3,special:'chuva'},
   kryo:{name:'Kryo',element:'gelo',hp:105,atk:14,range:1,speed:1.1,special:'congelamento'},
   voltz:{name:'Voltz',element:'eletrico',hp:90,atk:15,range:1,speed:1.4,special:'rajada'},
-  eco_rachadura:{name:'Eco da Rachadura',element:'corrupted',hp:9800,atk:55,range:2,speed:0.85},
+  eco_rachadura:{name:'Eco da Rachadura',element:'corrupted',hp:40000,atk:55,range:2,speed:0.85},
 };
 
 /* ============ STATE ============ */
@@ -1375,7 +1377,28 @@ function championFirstCost(id){
 
 function showBlessingChoice(onResolved){
   const pool = Object.keys(BLESSINGS).filter(id=>!activeBlessings.includes(id));
-  if(pool.length===0){ pendingBlessingChoice = false; if(onResolved) onResolved(); return; }
+  if(pool.length===0){
+    const taxCost = 500;
+    const paid = Math.min(taxCost, coins);
+    coins -= paid;
+    updateCoinBadge();
+    const el = document.getElementById('blessing-cards');
+    el.innerHTML = `<div class="champ-card" style="border-color:var(--ember);">
+      <div class="champ-name" style="color:var(--ember);">🏛️ Notificação da Rachadura</div>
+      <div class="champ-desc">Você não tem mais bênçãos novas pra receber — mas ainda precisa pagar imposto sobre as anteriores. Sem direito a recurso.</div>
+      <div class="champ-stats" style="color:var(--ember);">Cobrado: ${paid} moedas${paid<taxCost?' (tudo que você tinha)':''}.</div>
+      <button class="main-btn" style="margin-top:8px;width:100%;">Pagar e seguir em frente</button>
+    </div>`;
+    const okBtn = el.querySelector('button');
+    okBtn.addEventListener('click', ()=>{
+      document.getElementById('blessing-overlay').classList.remove('show');
+      pendingBlessingChoice = false;
+      if(onResolved) onResolved();
+    });
+    log(`🏛️ Imposto sobre bênçãos cobrado: ${paid} moedas.`, 'hl');
+    document.getElementById('blessing-overlay').classList.add('show');
+    return;
+  }
   const shuffled = pool.sort(()=>Math.random()-0.5).slice(0,3);
   const el = document.getElementById('blessing-cards');
   const skipCost = 500;
@@ -2765,7 +2788,7 @@ function randomEnemyWave(waveNum){
   if(waveNum===60){
     lastWaveEvent = 'boss';
     const expansionMultBoss = 1 + teamExpansionTier*0.12;
-    const hp = Math.round(9800*expansionMultBoss);
+    const hp = Math.round(40000*expansionMultBoss);
     const atk = Math.round(55*expansionMultBoss);
     return [{key:'eco_rachadura', boosted:false, isBoss:true, isWave60Boss:true, scaled:{hp, atk, range:2, speed:0.85, stars:1, special:null}}];
   }
