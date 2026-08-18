@@ -347,6 +347,7 @@
     <button id="patchnotes-close" style="background:none;border:none;color:var(--steel);font-size:16px;cursor:pointer;line-height:1;">×</button>
   </div>
   <ul>
+    <li><strong>Ajustes na cinemática de golpe final</strong>: agora só dispara quando o abate vem de uma passiva/habilidade especial em andamento (frenesi do Kael, combo do Raio, tentáculos em frenesi da Nerith, execução da Gélida, explosão da Voltra, etc) — não em qualquer ataque básico. Também corrigi o retrato: agora sempre mostra a cor certa do elemento de quem deu o golpe (o Raio, por exemplo, aparece amarelo elétrico).</li>
     <li><strong>Cinemática de golpe final</strong>: no golpe que elimina o último inimigo da onda, o jogo pausa por um instante, a tela escurece nas bordas (estilo jogo de luta), a câmera foca em quem deu o abate com o retrato dele no centro, e um flash de impacto fecha a sequência antes de mostrar o resultado da onda.</li>
     <li><strong>Catch-up de XP muito mais forte</strong>: recém-chegados agora entram só 1 nível atrás do time (era 3), e o bônus de XP escala até 10x o normal (era 5x) — resolvia mal demais quando o time já tava muito nivelado, principalmente depois da onda 40.</li>
     <li><strong>Zeph com mais alcance</strong>: 2 → 3 blocos — ela tava correndo demais pra perto dos inimigos pra uma "atiradora".</li>
@@ -3602,6 +3603,9 @@ function applyDamage(attacker, target, baseDmg, tag, ignoreDefense){
           if(ghostTarget.team==='player'){ roundDeaths.push(ghostTarget.name); ensureMatchStats(ghostTarget.champId).deaths++; }
           triggerScreenShake(10, 260);
           target.ghostUntil = now + 3000*passiveAmp(target);
+          if(mode==='pve' && ghostTarget.team==='enemy' && !units.some(o=>o.alive && o.team==='enemy')){
+            triggerFinisherSequence(target, ()=>{ checkVictory(); });
+          }
         } else {
           const gelidaUltPhrase = randomPhrase('gelida_ult');
           spawnFloatText(target.rx, target.ry-58, gelidaUltPhrase, '#8fd4e8', 'dramatic');
@@ -3683,7 +3687,7 @@ function applyDamage(attacker, target, baseDmg, tag, ignoreDefense){
           unlockAchievement('boss_slayer');
           if(target.special && target.borrowedChampPower) unlockAchievement('double_boss_slayer');
         }
-        if(target.team==='enemy' && !units.some(o=>o.alive && o.team==='enemy')){
+        if(target.team==='enemy' && isPassiveMoment(attacker) && !units.some(o=>o.alive && o.team==='enemy')){
           triggerFinisherSequence(attacker, ()=>{ checkVictory(); });
         }
       }
@@ -3742,14 +3746,16 @@ function triggerElectricShockwave(voltra, deadUnit){
     applyCC(o, 5000, 'eletrico');
     applyDamage(shockSource, o, shockDmg, '⚡ONDA', true);
   });
-  if(hadTargets && voltra.team==='player' && !units.some(o=>o.alive && o.team!==voltra.team)){
-    unlockAchievement('voltra_wipe');
-  }
+  const isWipe = hadTargets && voltra.team==='player' && !units.some(o=>o.alive && o.team!==voltra.team);
+  if(isWipe) unlockAchievement('voltra_wipe');
   spawnFloatText(deadUnit.rx, deadUnit.ry-40, 'ONDA DE CHOQUE!', '#f5e663');
   spawnShockwaveRing(deadUnit.rx, deadUnit.ry, 520, '#f5e663', 0);
   spawnShockwaveRing(deadUnit.rx, deadUnit.ry, 520, '#fff2a8', 120);
   log(`${voltra.name} morre em Sobrecarga e detona uma onda de choque — puxa e paraliza todos os inimigos por 5s!`, 'hl');
   triggerScreenShake(10, 320);
+  if(mode==='pve' && isWipe){
+    triggerFinisherSequence(voltra, ()=>{ checkVictory(); });
+  }
 }
 
 let tentacleIdCounter = 80000;
@@ -4727,6 +4733,22 @@ let dramaticActive = false;
 let dramaticUnitId = null;
 let camViewBox = {x:0, y:0, w:500, h:460};
 let finisherActive = false; // pausa a lógica de batalha enquanto a cinemática do golpe final roda
+
+// Só considera "golpe final" quando o abate vem de uma passiva/habilidade especial em andamento —
+// não de um ataque básico qualquer.
+function isPassiveMoment(attacker){
+  if(!attacker || !attacker.id) return false; // fontes sintéticas (sem unidade real por trás) não contam
+  const now = performance.now();
+  return !!(
+    (attacker.frenzyUntil && now < attacker.frenzyUntil) || attacker.comboActive ||
+    attacker.tentacleFrenzy || attacker.isTentacle ||
+    (attacker.ghostUntil && now < attacker.ghostUntil) ||
+    (attacker.overchargeUntil && now < attacker.overchargeUntil) ||
+    attacker.voltraDetonating ||
+    (attacker.barrierUntil && now < attacker.barrierUntil) ||
+    (attacker.shecryUltUntil && now < attacker.shecryUltUntil)
+  );
+}
 
 // Dispara a cinemática de "golpe final", estilo jogo de luta: vinheta fechando, retrato do
 // personagem no centro, câmera dramática nele, flash de impacto, e só então libera o resultado.
