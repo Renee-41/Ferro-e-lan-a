@@ -284,6 +284,7 @@
   }
   #intro-canvas{
     position:fixed; inset:0; z-index:8000; pointer-events:none;
+    background:#0a0807;
   }
   #intro-sound-hint{
     position:absolute; bottom:50px; left:50%; transform:translateX(-50%);
@@ -340,14 +341,9 @@
     overflow:hidden;
     animation:intro-fade-in 0.9s ease-out forwards;
   }
-  #intro-screen.intro-skip{ display:none; }
   @keyframes intro-fade-in{
     0%{ opacity:0; }
     100%{ opacity:1; }
-  }
-  @keyframes intro-fade-out{
-    0%{ opacity:1; }
-    100%{ opacity:0; visibility:hidden; pointer-events:none; }
   }
   #intro-glow-wrap{
     opacity:0; transition:opacity 0.6s ease;
