@@ -1099,7 +1099,8 @@
     e.preventDefault();
     clearInterval(tickInterval);
     clockStart = performance.now() - WAIT_DURATION*1000; // realinha o relógio pro instante do clímax
-    if(music){ try{ music.currentTime = CLIMAX_AT; }catch(err){} }
+    tryPlayAudio(); // Espaço também conta como gesto do usuário, libera o áudio se ainda não tinha
+    seekWebAudioTo(CLIMAX_AT);
     triggerClimax();
   });
 
@@ -1113,7 +1114,7 @@
   }
 
   function applyRampedVolume(elapsed){
-    if(!music) return;
+    if(!gainNode) return;
     let ramp;
     if(elapsed < WAIT_DURATION){
       const progress = Math.min(1, Math.max(0, elapsed / WAIT_DURATION));
@@ -1123,7 +1124,7 @@
     } else {
       ramp = 0.35;
     }
-    music.volume = Math.max(0, Math.min(1, ramp * userVolume));
+    gainNode.gain.value = Math.max(0, Math.min(1, ramp * userVolume));
   }
 
   function triggerClimax(){
@@ -1162,54 +1163,73 @@
 
   // relógio próprio (não depende do áudio) — a intro roda automaticamente ao carregar a página
   let clockStart = performance.now();
-  let audioUnlocked = false;
   function currentIntroElapsed(){
     return Math.max(0, (performance.now() - clockStart) / 1000);
   }
-  function reassertAudioPosition(){
-    // alguns navegadores (principalmente no celular) resetam o currentTime pra 0
-    // bem no instante em que o play() de verdade começa — por isso a gente reforça
-    // a posição de novo logo depois que a reprodução realmente arranca.
-    try{ music.currentTime = AUDIO_START_AT + currentIntroElapsed(); }catch(e){}
-  }
-  function tryPlayAudio(){
-    if(!music || audioUnlocked) return;
-    const introElapsed = currentIntroElapsed();
-    try{ music.currentTime = AUDIO_START_AT + introElapsed; }catch(e){}
-    applyRampedVolume(introElapsed);
-    music.addEventListener('playing', reassertAudioPosition, { once:true });
+
+  /* ============ ÁUDIO VIA WEB AUDIO API ============ */
+  // <audio>.currentTime tem comportamento inconsistente entre navegadores (seek
+  // ignorado, reset sozinho pro 0:00, etc). A Web Audio API agenda a reprodução
+  // de um jeito preciso e não sofre desses bugs — uma vez iniciado no ponto
+  // certo, ele NUNCA volta sozinho.
+  let audioCtx = null, audioBuffer = null, gainNode = null, sourceNode = null;
+  let webAudioReady = false, audioIsPlaying = false, decodingStarted = false;
+
+  function initWebAudio(){
+    if(decodingStarted || !music) return;
+    decodingStarted = true;
     try{
-      const playResult = music.play();
-      reassertAudioPosition(); // reforça de novo logo após o play() ser chamado
-      if(playResult && typeof playResult.then === 'function'){
-        playResult.then(()=>{
-          audioUnlocked = true;
-          reassertAudioPosition();
-          if(soundHint) soundHint.style.opacity = '0';
-        }).catch(()=>{
-          if(soundHint) soundHint.style.opacity = '0.8';
-        });
-      } else {
-        audioUnlocked = true;
-        reassertAudioPosition();
-        if(soundHint) soundHint.style.opacity = '0';
-      }
-    }catch(e){ /* autoplay bloqueado — a sequência visual segue por conta própria */ }
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if(!AudioContextClass) return;
+      audioCtx = new AudioContextClass();
+      gainNode = audioCtx.createGain();
+      gainNode.gain.value = 0.1 * userVolume;
+      gainNode.connect(audioCtx.destination);
+      const sourceEl = music.querySelector('source');
+      const dataUri = sourceEl ? sourceEl.getAttribute('src') : '';
+      const base64 = dataUri.slice(dataUri.indexOf(',')+1);
+      const binary = atob(base64);
+      const bytes = new Uint8Array(binary.length);
+      for(let i=0;i<binary.length;i++){ bytes[i] = binary.charCodeAt(i); }
+      audioCtx.decodeAudioData(bytes.buffer, (buffer)=>{
+        audioBuffer = buffer;
+        webAudioReady = true;
+        if(audioUnlockRequested) startWebAudioAt(AUDIO_START_AT + currentIntroElapsed());
+      }, ()=>{ /* falha ao decodificar — segue sem música, o visual continua normal */ });
+    }catch(e){ /* Web Audio não suportado — segue sem música */ }
   }
-  tryPlayAudio();
-  if(music){
-    music.addEventListener('loadedmetadata', ()=>{ if(!audioUnlocked) tryPlayAudio(); });
-    // trava de segurança: a música NUNCA pode tocar a partir do 0:00 — se cair
-    // pra perto disso por qualquer motivo (bug de navegador, seek ignorado, etc),
-    // força de volta pro ponto certo na hora.
-    music.addEventListener('timeupdate', ()=>{
-      if(music.currentTime < AUDIO_START_AT - 1){
-        reassertAudioPosition();
-      }
-    });
+
+  function startWebAudioAt(offsetSeconds){
+    if(!audioCtx || !audioBuffer) return false;
+    if(audioCtx.state === 'suspended'){ audioCtx.resume().catch(()=>{}); }
+    try{ if(sourceNode){ sourceNode.onended = null; sourceNode.stop(); } }catch(e){}
+    sourceNode = audioCtx.createBufferSource();
+    sourceNode.buffer = audioBuffer;
+    sourceNode.connect(gainNode);
+    const safeOffset = Math.max(0, Math.min(offsetSeconds, audioBuffer.duration - 0.05));
+    try{ sourceNode.start(0, safeOffset); }catch(e){ return false; }
+    audioIsPlaying = true;
+    if(soundHint) soundHint.style.opacity = '0';
+    return true;
   }
+
+  let audioUnlockRequested = false;
+  function tryPlayAudio(){
+    audioUnlockRequested = true;
+    if(audioIsPlaying) return;
+    if(!decodingStarted){ initWebAudio(); return; } // começa a tocar sozinho assim que terminar de decodificar
+    if(webAudioReady){ startWebAudioAt(AUDIO_START_AT + currentIntroElapsed()); }
+    else if(audioCtx && audioCtx.state === 'suspended'){ audioCtx.resume().catch(()=>{}); }
+  }
+
+  // pula a música direto pro ponto certo (usado no clímax via Espaço, por exemplo)
+  function seekWebAudioTo(offsetSeconds){
+    if(webAudioReady){ startWebAudioAt(offsetSeconds); }
+  }
+
+  initWebAudio(); // já começa a decodificar em segundo plano, sem precisar de gesto do usuário
   document.addEventListener('click', function unlockOnce(){
-    if(!audioUnlocked) tryPlayAudio();
+    tryPlayAudio();
     document.removeEventListener('click', unlockOnce);
   });
 
