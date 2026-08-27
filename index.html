@@ -882,6 +882,7 @@
   ];
   let titleTriggered = false;
   let introEnded = false;
+  let introBattleActive = false; // as bolinhas só lutam a partir do clímax (nome do jogo)
 
   /* ============ CANVAS: simulação de guerra + brasa + feixe de luz ============ */
   const canvas = document.getElementById('intro-canvas');
@@ -1075,8 +1076,10 @@
       const dt = Math.min(0.05, (now-lastFrameTime)/1000);
       lastFrameTime = now;
       ctx.clearRect(0,0,canvas.width,canvas.height);
-      updateSoldiers(now, dt);
-      soldiers.forEach(s=>drawSoldier(s));
+      if(introBattleActive){
+        updateSoldiers(now, dt);
+        soldiers.forEach(s=>drawSoldier(s));
+      }
       updateAndDrawProjectiles(dt);
       updateAndDrawEmbers(dt);
       drawBeamIfActive(now);
@@ -1128,6 +1131,7 @@
 
   function triggerClimax(){
     titleTriggered = true;
+    introBattleActive = true;
     splashEl.style.opacity = '0';
     if(introScreen) introScreen.style.display = 'flex';
     triggerBeam();
