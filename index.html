@@ -963,19 +963,21 @@
   if(startBtn){
     startBtn.addEventListener('click', ()=>{
       document.getElementById('intro-start-gate').style.display = 'none';
+      const clockStart = performance.now();
       if(music){
         music.volume = 0.1 * userVolume;
-        music.play().catch(()=>{ /* autoplay bloqueado — segue sem música, o resto continua normal */ });
+        music.play().catch(()=>{ /* autoplay bloqueado ou falhou — a sequência visual segue por conta própria */ });
       }
       const tick = ()=>{
-        if(!music) return;
-        const t = music.currentTime;
+        // relógio próprio, independente do áudio — funciona mesmo se a música travar/falhar no celular
+        const t = (performance.now() - clockStart) / 1000;
         applyRampedVolume(t);
         if(titleTriggered) return;
         if(t >= TITLE_REVEAL_AT){
           titleTriggered = true;
           splashEl.style.opacity = '0';
           if(introScreen) introScreen.style.display = 'flex';
+          clearInterval(tickInterval);
           setTimeout(endIntroSequence, 4200); // dá tempo da animação de título (que já se auto-esmaece) terminar
           return;
         }
@@ -983,9 +985,8 @@
         splashEl.textContent = card ? card.text : '';
         splashEl.style.opacity = card ? '1' : '0';
       };
-      if(music) music.addEventListener('timeupdate', tick);
-      // se a música falhar/travar por algum motivo, ainda assim libera o jogo depois de um tempo razoável
-      setTimeout(()=>{ if(!titleTriggered) endIntroSequence(); }, (TITLE_REVEAL_AT+8)*1000);
+      const tickInterval = setInterval(tick, 200);
+      tick();
     });
   }
 })();
