@@ -1516,6 +1516,30 @@ function setSuggestionsEnabled(on){
 document.getElementById('suggestions-toggle-btn').addEventListener('click', ()=> setSuggestionsEnabled(!suggestionsEnabled));
 setSuggestionsEnabled(suggestionsEnabled);
 
+/* ============ FEEDBACK ============ */
+(function(){
+  const overlay = document.getElementById('feedback-overlay');
+  const openBtn = document.getElementById('feedback-btn');
+  const closeBtn = document.getElementById('feedback-close-btn');
+  const sendBtn = document.getElementById('feedback-send-btn');
+  const subjectEl = document.getElementById('feedback-subject');
+  const bodyEl = document.getElementById('feedback-body');
+  const FB_TARGET_B64 = 'RW56b2RlamVzdXNwZW5pY2hlQGdtYWlsLmNvbQ==';
+  if(openBtn) openBtn.addEventListener('click', ()=> overlay.classList.add('show'));
+  if(closeBtn) closeBtn.addEventListener('click', ()=> overlay.classList.remove('show'));
+  if(sendBtn) sendBtn.addEventListener('click', ()=>{
+    const subject = (subjectEl.value || 'Sugestão para Ferro & Lança').trim();
+    const body = (bodyEl.value || '').trim();
+    if(!body){ bodyEl.focus(); return; }
+    const target = atob(FB_TARGET_B64);
+    const mailUrl = `mailto:${target}?subject=${encodeURIComponent('[Ferro & Lança] '+subject)}&body=${encodeURIComponent(body)}`;
+    window.location.href = mailUrl;
+    overlay.classList.remove('show');
+    subjectEl.value = '';
+    bodyEl.value = '';
+  });
+})();
+
 function showTeamSuggestion(teamIds){
   document.getElementById('suggestion-popup').classList.remove('show');
   if(!suggestionsEnabled) return;
