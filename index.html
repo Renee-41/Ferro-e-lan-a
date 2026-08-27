@@ -487,6 +487,7 @@
     <button id="patchnotes-close" style="background:none;border:none;color:var(--steel);font-size:16px;cursor:pointer;line-height:1;">×</button>
   </div>
   <ul>
+    <li><strong>Navegação por teclado removida</strong>: o jogo agora é 100% no mouse/toque. Setas, WASD, Espaço e Q não fazem mais nada — todo controle é por clique.</li>
     <li><strong>XP de abate agora é compartilhado</strong>: em vez de ir só pra quem deu o golpe final, todo XP de abate da onda é somado e dividido igualmente entre TODO o time no fim da rodada (recém-chegados ainda recebem o bônus extra de catch-up por cima da parte deles). Resolve o problema de um único personagem virar absurdamente mais forte que o resto só por concentrar os abates.</li>
     <li><strong>Nerf na Zeph e na Pyra</strong>: velocidade base caiu 30% nas duas (Zeph: 1.6→1.12, Pyra: 1→0.7) — combinada com estrelas altas e a Precisão Mortal, a velocidade de ataque delas tava saindo do controle.</li>
     <li><strong>"Imposto sobre bênçãos"</strong>: quando não sobra mais bênção nova pra escolher, aparece uma notificação cobrando 500 moedas mesmo assim — sem chance de recurso.</li>
@@ -5464,73 +5465,6 @@ function renderFrame(){
     svg.appendChild(ringGlow2);
   });
 }
-
-/* ============ NAVEGAÇÃO POR TECLADO ============ */
-// Setas ou WASD navegam entre os botões da tela/pop-up atual, Espaço confirma o que estiver
-// focado (equivale a um clique), e Q volta/fecha — sempre priorizando qualquer pop-up aberto.
-function getKeyboardContext(){
-  const overlayIds = ['blessing-cards', 'suggestion-popup', 'patchnotes-panel', 'tutorial-panel', 'achievement-toast-container'];
-  const blessing = document.getElementById('blessing-overlay');
-  if(blessing && blessing.classList.contains('show')) return document.getElementById('blessing-cards');
-  const suggestion = document.getElementById('suggestion-popup');
-  if(suggestion && suggestion.classList.contains('show')) return suggestion;
-  const patchnotes = document.getElementById('patchnotes-panel');
-  if(patchnotes && patchnotes.classList.contains('open')) return patchnotes;
-  const tutorial = document.getElementById('tutorial-panel');
-  if(tutorial && tutorial.classList.contains('open')) return tutorial;
-  return document.querySelector('.screen.active') || document.body;
-}
-function getFocusableElements(){
-  const overlayOpen = document.querySelector('#blessing-overlay.show, #suggestion-popup.show, #patchnotes-panel.open, #tutorial-panel.open');
-  const visible = el=>{
-    const rect = el.getBoundingClientRect();
-    return rect.width>0 && rect.height>0;
-  };
-  if(overlayOpen){
-    const root = getKeyboardContext();
-    return root ? Array.from(root.querySelectorAll('button:not([disabled]), select, [data-blessing]')).filter(visible) : [];
-  }
-  const topbar = document.querySelector('.topbar');
-  const screen = document.querySelector('.screen.active');
-  const nodes = [];
-  if(screen) nodes.push(...screen.querySelectorAll('button:not([disabled]), select, [data-blessing]'));
-  if(topbar) nodes.push(...topbar.querySelectorAll('button:not([disabled])'));
-  return nodes.filter(visible);
-}
-function moveKeyboardFocus(dir){
-  const els = getFocusableElements();
-  if(els.length===0) return;
-  let idx = els.indexOf(document.activeElement);
-  idx = idx===-1 ? 0 : (idx + dir + els.length) % els.length;
-  els[idx].focus();
-}
-function keyboardBack(){
-  const blessing = document.getElementById('blessing-overlay');
-  if(blessing && blessing.classList.contains('show')) return; // bênção é obrigatória, Q não fecha ela
-  const suggestion = document.getElementById('suggestion-popup');
-  if(suggestion && suggestion.classList.contains('show')){ suggestion.classList.remove('show'); return; }
-  const patchnotes = document.getElementById('patchnotes-panel');
-  if(patchnotes && patchnotes.classList.contains('open')){ patchnotes.classList.remove('open'); return; }
-  const tutorial = document.getElementById('tutorial-panel');
-  if(tutorial && tutorial.classList.contains('open')){ tutorial.classList.remove('open'); return; }
-  const activeScreen = document.querySelector('.screen.active');
-  const backBtn = activeScreen && activeScreen.querySelector('#cancel-starter-btn, #cancel-team-btn, #summary-back-btn, #quit-battle-btn');
-  if(backBtn && backBtn.offsetParent !== null){ backBtn.click(); return; }
-  const menuBtn = document.querySelector('.nav-btn[data-screen="menu"]');
-  if(menuBtn && !menuBtn.disabled) menuBtn.click();
-}
-document.addEventListener('keydown', (e)=>{
-  const activeTag = (document.activeElement.tagName||'').toLowerCase();
-  const key = e.key.toLowerCase();
-  if(activeTag==='select' && (key==='arrowup'||key==='arrowdown')) return; // deixa o <select> nativo funcionar
-  const navKeys = ['arrowup','arrowdown','arrowleft','arrowright','w','a','s','d',' ','q'];
-  if(!navKeys.includes(key)) return;
-  e.preventDefault();
-  if(key==='arrowup' || key==='w' || key==='arrowleft' || key==='a') moveKeyboardFocus(-1);
-  else if(key==='arrowdown' || key==='s' || key==='arrowright' || key==='d') moveKeyboardFocus(1);
-  else if(key===' '){ if(document.activeElement && document.activeElement.click) document.activeElement.click(); }
-  else if(key==='q') keyboardBack();
-});
 
 let rafRunning = false;
 let dramaticActive = false;
