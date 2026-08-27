@@ -1168,8 +1168,11 @@
   let audioUnlocked = false;
   function tryPlayAudio(){
     if(!music || audioUnlocked) return;
-    try{ music.currentTime = AUDIO_START_AT; }catch(e){}
-    music.volume = 0.1 * userVolume;
+    // sincroniza com o relógio da introdução: se o clique demorou, a música já entra
+    // no ponto certo em vez de voltar pro início configurado
+    const introElapsed = Math.max(0, (performance.now() - clockStart) / 1000);
+    try{ music.currentTime = AUDIO_START_AT + introElapsed; }catch(e){}
+    applyRampedVolume(introElapsed);
     try{
       const playResult = music.play();
       if(playResult && typeof playResult.then === 'function'){
