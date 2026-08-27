@@ -278,7 +278,7 @@
   }
   #intro-preshow{
     position:fixed; inset:0; z-index:9000;
-    background:#000;
+    background:transparent;
     display:flex; align-items:center; justify-content:center;
     overflow:hidden;
   }
@@ -335,10 +335,10 @@
   #intro-volume-control input{ width:90px; }
   #intro-screen{
     position:fixed; inset:0; z-index:9100;
-    background:radial-gradient(circle at 50% 55%, #2a2118 0%, #14100c 55%, #0a0807 100%);
+    background:radial-gradient(circle at 50% 55%, rgba(42,33,24,0.6) 0%, rgba(20,16,12,0.72) 55%, rgba(10,8,7,0.85) 100%);
     display:flex; flex-direction:column; align-items:center; justify-content:center;
     overflow:hidden;
-    animation:intro-fade-in 0.9s ease-out, intro-fade-out 0.9s ease-in 2.9s forwards;
+    animation:intro-fade-in 0.9s ease-out forwards;
   }
   #intro-screen.intro-skip{ display:none; }
   @keyframes intro-fade-in{
@@ -363,7 +363,7 @@
     80%{ transform:translate(3px,4px); }
     100%{ transform:translate(0,0); }
   }
-  #intro-screen.impact-shake{ animation:intro-shake 0.35s ease-out, intro-fade-in 0.9s ease-out, intro-fade-out 0.9s ease-in 2.9s forwards; }
+  #intro-screen.impact-shake{ animation:intro-shake 0.35s ease-out, intro-fade-in 0.9s ease-out forwards; }
   #intro-glow{
     position:absolute; width:520px; height:520px; border-radius:50%;
     background:radial-gradient(circle, rgba(242,165,65,0.35) 0%, rgba(224,105,58,0.12) 45%, transparent 70%);
