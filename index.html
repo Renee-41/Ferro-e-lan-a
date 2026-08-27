@@ -372,6 +372,21 @@
     0%{ opacity:1; }
     100%{ opacity:0; visibility:hidden; pointer-events:none; }
   }
+  #intro-glow-wrap{
+    opacity:0; transition:opacity 0.6s ease;
+    display:flex; align-items:center; justify-content:center;
+    position:absolute;
+  }
+  #intro-glow-wrap.show{ opacity:1; }
+  @keyframes intro-shake{
+    0%{ transform:translate(0,0); }
+    20%{ transform:translate(-6px,3px); }
+    40%{ transform:translate(5px,-4px); }
+    60%{ transform:translate(-4px,-2px); }
+    80%{ transform:translate(3px,4px); }
+    100%{ transform:translate(0,0); }
+  }
+  #intro-screen.impact-shake{ animation:intro-shake 0.35s ease-out, intro-fade-in 0.9s ease-out, intro-fade-out 0.9s ease-in 2.9s forwards; }
   #intro-glow{
     position:absolute; width:520px; height:520px; border-radius:50%;
     background:radial-gradient(circle, rgba(242,165,65,0.35) 0%, rgba(224,105,58,0.12) 45%, transparent 70%);
@@ -466,7 +481,7 @@
   <div id="intro-light-beam"></div>
   <div id="intro-battle-silhouettes"></div>
   <div id="intro-sparks-container"></div>
-  <div id="intro-glow"></div>
+  <div id="intro-glow-wrap"><div id="intro-glow"></div></div>
   <div id="intro-title">
     <span class="intro-word" id="intro-word1">FERRO</span>
     <span class="intro-amp">&amp;</span>
@@ -876,16 +891,19 @@
   const preshow = document.getElementById('intro-preshow');
   const splashEl = document.getElementById('intro-splash-text');
   const introScreen = document.getElementById('intro-screen');
+  const glowWrap = document.getElementById('intro-glow-wrap');
   const volSlider = document.getElementById('intro-volume-slider');
-  const TITLE_REVEAL_AT = 127; // 2:07 — o clímax da música
+
+  const AUDIO_START_AT = 105;   // 1:45 — pula direto pra reta final da música
+  const CLIMAX_AT = 127;        // 2:07 — clímax exato
+  const WAIT_DURATION = CLIMAX_AT - AUDIO_START_AT; // ~22s de logos antes do clímax
+  const BG_REVEAL_DELAY = 700;  // ms — o "fundo" da logo entra este tempo depois das letras
+
+  // 3 logos fictícias, comprimidas nesses ~22s (cada uma com fade-in/hold/fade-out)
   const SPLASH_CARDS = [
-    {start:2,  end:9,   text:'RACHADURA STUDIOS apresenta'},
-    {start:12, end:19,  text:'em parceria com FORJA COLETIVA'},
-    {start:24, end:32,  text:'Um jogo criado por'},
-    {start:35, end:43,  text:'Enzo D. Jesus (Renee41)'},
-    {start:55, end:64,  text:'Com a colaboração de todo mundo que jogou, testou e ajudou a moldar cada detalhe'},
-    {start:80, end:88,  text:'Baseado no universo da Rachadura'},
-    {start:108,end:117, text:'Apresenta'},
+    {start:1,  end:7,  text:'RACHADURA STUDIOS'},
+    {start:8,  end:14, text:'em parceria com FORJA COLETIVA'},
+    {start:15, end:21, text:'Enzo D. Jesus apresenta'},
   ];
   let titleTriggered = false;
 
@@ -933,23 +951,41 @@
   if(volSlider){
     volSlider.addEventListener('input', ()=>{
       userVolume = volSlider.value/100;
-      if(music && !music.paused) applyRampedVolume(music.currentTime);
+      if(music && !music.paused) applyRampedVolume(music.currentTime - AUDIO_START_AT);
     });
   }
 
-  function applyRampedVolume(t){
+  function applyRampedVolume(elapsed){
     if(!music) return;
     let ramp;
-    if(t < TITLE_REVEAL_AT){
+    if(elapsed < WAIT_DURATION){
       // começa baixinho e sobe gradualmente até o clímax
-      const progress = Math.min(1, t / TITLE_REVEAL_AT);
+      const progress = Math.min(1, elapsed / WAIT_DURATION);
       ramp = 0.10 + progress*progress*0.85; // easing quadrático, sobe mais forte perto do fim
-    } else if(t < TITLE_REVEAL_AT + 6){
+    } else if(elapsed < WAIT_DURATION + 6){
       ramp = 0.95; // segura no pico durante a revelação do título
     } else {
       ramp = 0.35; // depois do clímax, acalma pro volume de fundo do menu
     }
     music.volume = Math.max(0, Math.min(1, ramp * userVolume));
+  }
+
+  function triggerClimax(){
+    titleTriggered = true;
+    splashEl.style.opacity = '0';
+    if(introScreen) introScreen.style.display = 'flex';
+    // corte + tremor de tela no exato instante do clímax
+    if(introScreen){
+      introScreen.classList.add('impact-shake');
+      setTimeout(()=> introScreen.classList.remove('impact-shake'), 350);
+    }
+    // camada 1: letras (já entram no display:flex acima, via animação própria)
+    // camada 2: fundo/glow entra por trás, com atraso proposital
+    if(glowWrap){
+      glowWrap.classList.remove('show');
+      setTimeout(()=> glowWrap.classList.add('show'), BG_REVEAL_DELAY);
+    }
+    setTimeout(endIntroSequence, 4200); // dá tempo da animação de título (que já se auto-esmaece) terminar
   }
 
   const startBtn = document.getElementById('intro-start-btn');
@@ -959,6 +995,9 @@
       const clockStart = performance.now();
       if(music){
         music.volume = 0.1 * userVolume;
+        try{ music.currentTime = AUDIO_START_AT; }catch(e){}
+        // se o metadata ainda não tinha carregado no momento do clique, tenta de novo assim que carregar
+        music.addEventListener('loadedmetadata', ()=>{ try{ music.currentTime = AUDIO_START_AT; }catch(e){} });
         try{
           const playResult = music.play();
           if(playResult && typeof playResult.catch === 'function'){
@@ -968,18 +1007,15 @@
       }
       const tick = ()=>{
         // relógio próprio, independente do áudio — funciona mesmo se a música travar/falhar no celular
-        const t = (performance.now() - clockStart) / 1000;
-        applyRampedVolume(t);
+        const elapsed = (performance.now() - clockStart) / 1000;
+        applyRampedVolume(elapsed);
         if(titleTriggered) return;
-        if(t >= TITLE_REVEAL_AT){
-          titleTriggered = true;
-          splashEl.style.opacity = '0';
-          if(introScreen) introScreen.style.display = 'flex';
+        if(elapsed >= WAIT_DURATION){
           clearInterval(tickInterval);
-          setTimeout(endIntroSequence, 4200); // dá tempo da animação de título (que já se auto-esmaece) terminar
+          triggerClimax();
           return;
         }
-        const card = SPLASH_CARDS.find(c=> t>=c.start && t<=c.end);
+        const card = SPLASH_CARDS.find(c=> elapsed>=c.start && elapsed<=c.end);
         splashEl.textContent = card ? card.text : '';
         splashEl.style.opacity = card ? '1' : '0';
       };
