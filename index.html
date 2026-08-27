@@ -296,13 +296,6 @@
     opacity:0; pointer-events:none; transition:opacity 0.8s ease;
   }
   #intro-overall-fade.show{ opacity:1; }
-  #intro-skip-btn{
-    position:absolute; top:18px; right:18px; z-index:5;
-    background:rgba(0,0,0,0.3); border:1px solid #3a3f47; color:var(--steel);
-    padding:8px 14px; border-radius:4px; font-family:'JetBrains Mono',monospace;
-    font-size:11px; cursor:pointer; letter-spacing:1px;
-  }
-  #intro-skip-btn:hover{ color:#fff2e6; border-color:var(--molten); }
   #intro-press-start-btn{
     position:relative; z-index:3; margin-top:26px; display:block;
     background:var(--iron-mid); border:1px solid var(--molten); color:var(--molten);
@@ -440,7 +433,6 @@
 <canvas id="intro-canvas"></canvas>
 
 <div id="intro-preshow">
-  <button id="intro-skip-btn">Pular introdução ⏭</button>
   <div id="intro-splash-text"></div>
   <div id="intro-sound-hint">🔇 Toque em qualquer lugar pra ativar o som</div>
   <div id="intro-volume-control">
@@ -1099,12 +1091,17 @@
     if(canvas && canvas.parentNode) canvas.remove();
   }
 
-  function skipIntro(){
-    if(music){ music.pause(); }
-    endIntroSequence();
-  }
-  const skipBtn = document.getElementById('intro-skip-btn');
-  if(skipBtn) skipBtn.addEventListener('click', skipIntro);
+  // atalho silencioso: Espaço pula direto pro clímax (nome do jogo + Press Start),
+  // sem nenhuma dica visual — sem botão de pular introdução.
+  document.addEventListener('keydown', (e)=>{
+    if(e.code !== 'Space' && e.key !== ' ') return;
+    if(introEnded || titleTriggered) return;
+    e.preventDefault();
+    clearInterval(tickInterval);
+    clockStart = performance.now() - WAIT_DURATION*1000; // realinha o relógio pro instante do clímax
+    if(music){ try{ music.currentTime = CLIMAX_AT; }catch(err){} }
+    triggerClimax();
+  });
 
   // volume base (0-1) ajustável pelo slider a qualquer momento
   let userVolume = 0.7;
@@ -1164,7 +1161,7 @@
   }
 
   // relógio próprio (não depende do áudio) — a intro roda automaticamente ao carregar a página
-  const clockStart = performance.now();
+  let clockStart = performance.now();
   let audioUnlocked = false;
   function currentIntroElapsed(){
     return Math.max(0, (performance.now() - clockStart) / 1000);
