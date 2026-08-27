@@ -1166,24 +1166,35 @@
   // relógio próprio (não depende do áudio) — a intro roda automaticamente ao carregar a página
   const clockStart = performance.now();
   let audioUnlocked = false;
+  function currentIntroElapsed(){
+    return Math.max(0, (performance.now() - clockStart) / 1000);
+  }
+  function reassertAudioPosition(){
+    // alguns navegadores (principalmente no celular) resetam o currentTime pra 0
+    // bem no instante em que o play() de verdade começa — por isso a gente reforça
+    // a posição de novo logo depois que a reprodução realmente arranca.
+    try{ music.currentTime = AUDIO_START_AT + currentIntroElapsed(); }catch(e){}
+  }
   function tryPlayAudio(){
     if(!music || audioUnlocked) return;
-    // sincroniza com o relógio da introdução: se o clique demorou, a música já entra
-    // no ponto certo em vez de voltar pro início configurado
-    const introElapsed = Math.max(0, (performance.now() - clockStart) / 1000);
+    const introElapsed = currentIntroElapsed();
     try{ music.currentTime = AUDIO_START_AT + introElapsed; }catch(e){}
     applyRampedVolume(introElapsed);
+    music.addEventListener('playing', reassertAudioPosition, { once:true });
     try{
       const playResult = music.play();
+      reassertAudioPosition(); // reforça de novo logo após o play() ser chamado
       if(playResult && typeof playResult.then === 'function'){
         playResult.then(()=>{
           audioUnlocked = true;
+          reassertAudioPosition();
           if(soundHint) soundHint.style.opacity = '0';
         }).catch(()=>{
           if(soundHint) soundHint.style.opacity = '0.8';
         });
       } else {
         audioUnlocked = true;
+        reassertAudioPosition();
         if(soundHint) soundHint.style.opacity = '0';
       }
     }catch(e){ /* autoplay bloqueado — a sequência visual segue por conta própria */ }
@@ -1191,6 +1202,14 @@
   tryPlayAudio();
   if(music){
     music.addEventListener('loadedmetadata', ()=>{ if(!audioUnlocked) tryPlayAudio(); });
+    // trava de segurança: a música NUNCA pode tocar a partir do 0:00 — se cair
+    // pra perto disso por qualquer motivo (bug de navegador, seek ignorado, etc),
+    // força de volta pro ponto certo na hora.
+    music.addEventListener('timeupdate', ()=>{
+      if(music.currentTime < AUDIO_START_AT - 1){
+        reassertAudioPosition();
+      }
+    });
   }
   document.addEventListener('click', function unlockOnce(){
     if(!audioUnlocked) tryPlayAudio();
