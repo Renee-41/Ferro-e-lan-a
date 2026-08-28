@@ -3343,7 +3343,7 @@ function randomEnemyWave(waveNum){
       const base = ENEMY_CATALOG[k];
       const scale = 1 + 0.12*waveNum;
       let bossMult;
-      if(waveNum===5) bossMult = {hp:2.2, atk:1.1, stars:1};
+      if(waveNum===5) bossMult = {hp:0.7, atk:0.4, stars:1}; // primeiro chefe: bem fraco de propósito, dá pra passar com qualquer time
       else if(waveNum<=15) bossMult = {hp:3.2, atk:1.5, stars:2};
       else if(Math.random()<0.35) bossMult = {hp:5.5, atk:2.4, stars:4}; // chance de vir MUITO mais forte
       else bossMult = {hp:4.2, atk:1.9, stars:3};
