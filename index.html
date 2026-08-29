@@ -147,6 +147,7 @@
     margin-left:8px;
   }
   #suggestions-toggle-btn.on{ border-color:var(--frost); color:var(--frost); }
+  .item-filter-btn.active{ border-color:var(--gold); color:var(--gold); background:rgba(232,194,80,0.1); }
   #achievement-toast-container{
     position:fixed; top:60px; right:14px; z-index:30000;
     display:flex; flex-direction:column; gap:8px; pointer-events:none;
@@ -738,6 +739,13 @@
 <div class="screen" id="screen-items">
   <div class="panel">
     <h2>Itens</h2>
+    <div id="item-class-filters" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">
+      <button class="ghost-btn item-filter-btn active" data-itemfilter="todos">Todos</button>
+      <button class="ghost-btn item-filter-btn" data-itemfilter="tanque">🛡 Tanque</button>
+      <button class="ghost-btn item-filter-btn" data-itemfilter="corpo_a_corpo">⚔ Corpo a corpo</button>
+      <button class="ghost-btn item-filter-btn" data-itemfilter="longa_distancia">🏹 Longa distância</button>
+      <button class="ghost-btn item-filter-btn" data-itemfilter="suporte">✨ Suporte</button>
+    </div>
     <div class="grid-cards" id="item-cards"></div>
   </div>
 </div>
@@ -1390,12 +1398,12 @@ const CHAMPION_CATALOG = {
   pyra:{name:'Pyra',element:'fogo',role:'Maga',cost:85,hp:100,atk:21,range:3,speed:0.7,special:'explosao',desc:'A cada 3 golpes, sua explosão também atinge o inimigo mais próximo do alvo com dano total. Como todo Stack User de longa distância, causa mais dano quanto mais longe estiver do alvo (+8% por bloco além do 1º).'},
   glacia:{name:'Glacia',element:'agua',role:'Suporte',cost:70,hp:100,atk:11,range:2,speed:1,special:'cura',desc:'A cada 4 ataques, cura 25% da vida do aliado mais ferido. Como todo Stack User de longa distância, causa mais dano quanto mais longe estiver do alvo (+8% por bloco além do 1º).'},
   zeph:{name:'Zeph',element:'vento',role:'Arqueira veloz',cost:95,hp:80,atk:14,range:3,speed:1.12,special:'chuva',desc:'A cada 4 tiros, dispara uma flecha extra em outro inimigo aleatório. Como todo Stack User de Vento, tem 20% de chance de esquivar de ataques físicos (sobe pra 30% com menos de 40% de vida). Não vale contra habilidades/passivas. Como todo Stack User de longa distância, causa mais dano quanto mais longe estiver do alvo (+8% por bloco além do 1º).'},
-  ima:{name:'Ímã',element:'metal',role:'Controladora',cost:100,hp:105,atk:15,range:2,speed:1,special:'ima',desc:'A cada 4 golpes, magnetiza o alvo, puxando-o pra perto dela e causando dano extra. Passiva: aliados de metal adjacentes a ela ganham +8% de defesa. Como todo Stack User de longa distância, causa mais dano quanto mais longe estiver do alvo (+8% por bloco além do 1º).'},
+  ima:{name:'Ímã',element:'metal',role:'Controladora',cost:100,hp:105,atk:15,range:1,speed:1,special:'ima',desc:'A cada 4 golpes, magnetiza o alvo, puxando-o pra perto dela e causando dano extra. Passiva: aliados de metal adjacentes a ela ganham +8% de defesa.'},
   frosk:{name:'Frosk',element:'gelo',role:'Lutador Congelante',cost:70,hp:115,atk:16,range:1,speed:1,special:'congelamento',desc:'A cada 5 golpes, congela o alvo, paralisando por 0,5s — e causa 30% de dano extra nesse golpe.'},
-  gelida:{name:'Gélida',element:'gelo',role:'Espectro Glacial',cost:115,hp:130,atk:20,range:1,speed:1,special:'congelamento',desc:'A cada 5 golpes, congela o alvo, paralisando por 0,5s. Passiva: ao morrer, fica em espectro por 5s — mira o inimigo com MENOS vida da arena inteira. Se ele já estiver com 5% de vida ou menos, ela o executa na hora (só demora 3s pra trocar de lugar); senão, arremessa um pilar de gelo nele, jogando-o até a parede, atordoando-o por 3s (imóvel até acabar) e causando 8 de dano a cada 0,5s. Se o alvo morrer antes do espectro acabar, ela toma o lugar dele, volta à batalha com 60% de vida E dobra o próprio dano até o fim da onda. Só pode renascer 2 vezes por partida — depois disso, se morrer de novo, é de vez.'},
+  gelida:{name:'Gélida',element:'gelo',role:'Espectro Glacial',cost:115,hp:130,atk:20,range:1,speed:1,special:'congelamento',desc:'A cada 5 golpes, congela o alvo, paralisando por 0,5s. Passiva: ao morrer, fica em espectro por 5s — mira o inimigo com MENOS vida da arena inteira. Se ele já estiver com 5% de vida ou menos, ela o executa na hora (só demora 3s pra trocar de lugar); senão, arremessa um pilar de gelo nele, jogando-o até a parede, atordoando-o por 3s (imóvel até acabar) e causando 30 de dano a cada 0,5s. Se o alvo morrer antes do espectro acabar, ela toma o lugar dele, volta à batalha com 60% de vida E dobra o próprio dano até o fim da onda. Só pode renascer 2 vezes por partida — depois disso, se morrer de novo, é de vez.'},
   raio:{name:'Raio',element:'eletrico',role:'Combatente Elétrico',cost:140,hp:104,atk:17,range:1,speed:1.2,special:null,desc:'Habilidade única: a cada 5 golpes acertados, OU sempre que chegar a 10% de vida (pode repetir depois que curar), dispara um combo relâmpago de 8 golpes em ~3 segundos — empurra o inimigo pra longe, se teleporta do lado dele, bate e repete. Fica imune a todo dano durante o combo. Cada golpe consome 5% da vida dele mesmo como combustível, e quanto menos vida ele tiver, mais forte ele bate (até +150%). O 8º golpe não empurra, atordoa (se o inimigo sobreviver) e causa 10x o dano dos outros golpes (+10% se tiver item de dano equipado). Se terminar com 3% de vida ou menos, fica atordoado por 3s (ainda imune) e depois sofre uma sobrecarga: cura 10% da vida e ganha velocidade de ataque por 5s.'},
   shecry:{name:'Shecry',element:'gelo',role:'Colosso Glacial',cost:125,hp:245,atk:18,range:1,speed:0.85,special:null,desc:'Quanto mais vida ela perdeu, mais dano ela causa (até +120%); quanto mais vida ela ainda tem, mais resistente ela fica (até +35% de redução de dano). Passiva: ao cair abaixo de 30% de vida (uma vez por batalha), ganha um escudo baseado na vida máxima e cria uma aura que reduz a velocidade de movimento e ataque de quem estiver a até 2 blocos dela — o efeito da aura vai enfraquecendo aos poucos ao longo de 6 segundos.'},
-  nerith:{name:'Nerith',element:'agua',role:'Profetisa das Marés',cost:135,hp:300,atk:5,range:1,speed:0.9,special:null,desc:'Bate muito fraco sozinha — sua força de verdade são os tentáculos. Invoca um tentáculo perto dela mesma, num ritmo que cresce a cada um (5s, 6s, 7s, 8s), até um limite de 4 vivos ao mesmo tempo — se um for destruído, o próximo demora só 3s. Os tentáculos não se movem, atacam com alcance de 3 blocos, causam dano considerável, mas têm pouca vida — fáceis de destruir. Se Nerith morrer, todos os tentáculos vivos entram em frenesi: atacam mais rápido e miram inimigos aleatórios até serem destruídos.'},
+  nerith:{name:'Nerith',element:'agua',role:'Profetisa das Marés',cost:135,hp:300,atk:5,range:1,speed:0.9,special:null,desc:'Bate muito fraco sozinha — sua força de verdade são os tentáculos. Invoca um tentáculo perto dela mesma, num ritmo que cresce a cada um (2,5s, 3s, 3,5s, 4s), até um limite de 4 vivos ao mesmo tempo — se um for destruído, o próximo demora só 1,5s. Os tentáculos não se movem, atacam com alcance de 3 blocos, causam dano considerável, mas têm pouca vida — fáceis de destruir. Se Nerith morrer, todos os tentáculos vivos entram em frenesi: atacam mais rápido e miram inimigos aleatórios até serem destruídos.'},
   voltra:{name:'Voltra',element:'eletrico',role:'Tecelã de Correntes',cost:135,hp:110,atk:16,range:3,speed:1,special:null,desc:'Corrente Elétrica: cada ataque eletrifica o alvo, reduzindo a velocidade dele com base no seu ataque — e se outro inimigo estiver a até 3 blocos, o efeito se propaga pra ele também (25% mais fraco a cada salto). Reação em Cadeia: cada inimigo tocado pela corrente dá 1 carga; ao acumular 10, ela entra em Sobrecarga por 5s. Se ela morrer durante esse período, fica imune por 4s carregando energia ao máximo antes de explodir numa onda de choque que atinge a arena inteira — puxa todo inimigo pra perto de onde ela caiu, paralisa todos por 5s e causa dano extra (mais forte quanto mais inimigos estiverem eletrificados/por perto).'},
 };
 const STARTER_OWNED = ['ferrha'];
@@ -1404,12 +1412,19 @@ const ITEM_CATALOG = {
   luneta:{name:'Luneta de Longo Alcance', kind:'longa distância', cost:60, desc:'+1 de alcance e +15% de dano — só faz efeito em Stack Users de alcance 2+.', effect:{range:1, atkPct:0.15, appliesTo:'ranged'}},
   mira:{name:'Mira Telescópica', kind:'longa distância', cost:65, desc:'+20% de velocidade de ataque — só faz efeito em Stack Users de alcance 2+.', effect:{speedPct:0.20, appliesTo:'ranged'}},
   manopla:{name:'Manopla de Aço', kind:'corpo a corpo', cost:60, desc:'+35% de dano — só faz efeito em Stack Users corpo a corpo (alcance 1).', effect:{atkPct:0.35, appliesTo:'melee'}},
+  punho_serra:{name:'Punho de Serra', kind:'corpo a corpo', cost:70, desc:'Ignora 15% da redução de dano do alvo a cada golpe — só corpo a corpo (alcance 1). Ótimo contra tanques.', effect:{appliesTo:'melee'}},
+  presas_sangrentas:{name:'Presas Sangrentas', kind:'corpo a corpo', cost:75, desc:'Cura 8% do dano causado como vida a cada golpe — só corpo a corpo (alcance 1). Vampirismo bem mais forte que o Amuleto Vital, mas exclusivo de quem luta de perto.', effect:{appliesTo:'melee'}},
+  furia_crescente:{name:'Fúria Crescente', kind:'corpo a corpo', cost:70, desc:'18% de chance a cada golpe de causar 50% de dano bônus — só corpo a corpo (alcance 1).', effect:{appliesTo:'melee'}},
+  botas_lutador:{name:'Botas de Lutador', kind:'corpo a corpo', cost:65, desc:'+22% de velocidade de ataque — só corpo a corpo (alcance 1). Mais forte que as Botas Aceleradas normais, mas exclusiva de quem luta de perto.', effect:{speedPct:0.22, appliesTo:'melee'}},
   brasa:{name:'Brasa Selvagem', kind:'dano ativo', cost:80, desc:'A cada 5s, queima os inimigos ao redor por 4 de dano mágico. Efeito varia pelo elemento de quem usa: Fogo e Vento formam uma onda que se espalha pelos blocos (1s de atraso por bloco de distância — Vento alcança 6 blocos, Fogo alcança 3), Água vaporiza (+20% da vida atual do alvo após 2s), Terra atordoa por 0,5s, Metal marca o alvo (vulnerável, +15% de dano por 3s), Gelo aplica queimadura gelada (dano contínuo que não para até o fim da rodada), Elétrico causa sobrecarga (-20% de velocidade por 4s, com chance de saltar pra outro inimigo perto).', effect:{}},
   placa:{name:'Placa de Blindagem', kind:'tanque', cost:70, desc:'+40 de HP máximo e reduz 10% do dano recebido.', effect:{hpFlat:40, dmgReductionPct:0.10, appliesTo:'all'}},
   botas:{name:'Botas Aceleradas', kind:'velocidade', cost:65, desc:'+15% de velocidade de ataque, em qualquer Stack User.', effect:{speedPct:0.15, appliesTo:'all'}},
   amuleto:{name:'Amuleto Vital', kind:'vampirismo', cost:75, desc:'Cura 3 de vida a cada golpe acertado, em qualquer Stack User. Empilha se equipar mais de um.', effect:{}},
   amplificador:{name:'Núcleo Amplificador', kind:'passiva', cost:90, desc:'+20% de força em toda passiva especial do usuário (duração, cura, dano bônus, defesa permanente). Empilha até 3x.', effect:{}},
   furia_blindada:{name:'Fúria Blindada', kind:'combinado · corpo a corpo', recipe:['manopla','placa'], desc:'Combinação de Manopla de Aço + Placa de Blindagem. +35% de dano, +30 de HP e 5% de redução de dano — só corpo a corpo.', effect:{atkPct:0.35, hpFlat:30, dmgReductionPct:0.05, appliesTo:'melee'}},
+  carniceiro:{name:'Carniceiro', kind:'combinado · corpo a corpo', recipe:['punho_serra','presas_sangrentas'], desc:'Combinação de Punho de Serra + Presas Sangrentas. Ignora 25% da redução de dano do alvo e cura 12% do dano causado como vida — só corpo a corpo.', effect:{appliesTo:'melee'}},
+  fio_mortal:{name:'Fio Mortal', kind:'combinado · corpo a corpo', recipe:['manopla','punho_serra'], desc:'Combinação de Manopla de Aço + Punho de Serra. +35% de dano e ignora 25% da redução de dano do alvo — só corpo a corpo. Build de dano puro.', effect:{atkPct:0.35, appliesTo:'melee'}},
+  investida_feroz:{name:'Investida Feroz', kind:'combinado · corpo a corpo', recipe:['manopla','botas_lutador'], desc:'Combinação de Manopla de Aço + Botas de Lutador. +35% de dano e +22% de velocidade de ataque — só corpo a corpo. Build agressiva, ótima pra quem depende de acertar vários golpes rápido pra ativar a habilidade (Raio, Frosk, Nyx).', effect:{atkPct:0.35, speedPct:0.22, appliesTo:'melee'}},
   olho_falcao:{name:'Olho de Falcão', kind:'combinado · longa distância', recipe:['luneta','botas'], desc:'Combinação de Luneta de Longo Alcance + Botas Aceleradas. +1 de alcance e +15% de dano — mas o efeito de verdade é a mira: em vez de atacar o inimigo mais próximo, sempre foca automaticamente em quem estiver com MENOS vida dentro do alcance. Só alcance 2+.', effect:{range:1, atkPct:0.15, appliesTo:'ranged'}},
   coracao_ferro:{name:'Coração de Ferro', kind:'combinado · tanque', recipe:['amuleto','placa'], desc:'Combinação de Amuleto Vital + Placa de Blindagem. +60 de HP e 15% de redução de dano, em qualquer Stack User.', effect:{hpFlat:60, dmgReductionPct:0.15, appliesTo:'all'}},
   nucleo_eterno:{name:'Núcleo Eterno', kind:'combinado · passiva', recipe:['amplificador','placa'], desc:'Combinação de Núcleo Amplificador + Placa de Blindagem. +30% de força em toda passiva especial (mais forte que o Amplificador sozinho), +40 de HP e 10% de redução de dano.', effect:{hpFlat:40, dmgReductionPct:0.10, appliesTo:'all'}},
@@ -1437,12 +1452,16 @@ const ITEM_ICON_SHAPES = {
   eye: '<path d="M3 16C8 8 24 8 29 16 24 24 8 24 3 16Z"/><circle cx="16" cy="16" r="4"/>',
   heart: '<path d="M16 27C6 19 3 13 3 9a6 6 0 0 1 13-2 6 6 0 0 1 13 2c0 4-3 10-13 18z"/>',
   cloak: '<path d="M16 4 6 28Q16 22 26 28Z"/>',
+  fang: '<path d="M10 4 14 20 10 28 6 20Z"/><path d="M22 4 26 20 22 28 18 20Z"/>',
+  burst: '<path d="M16 2 19 12 29 9 21 16 29 23 19 20 16 30 13 20 3 23 11 16 3 9 13 12Z"/>',
 };
 const ITEM_ICON_SHAPE_BY_ID = {
   luneta:'telescope', mira:'crosshair', manopla:'fist', brasa:'flame', placa:'shield', botas:'boot',
   amuleto:'gem', amplificador:'core', furia_blindada:'fist', olho_falcao:'crosshair', coracao_ferro:'heart',
   nucleo_eterno:'core', coracao_vital:'heart', manto_robusto:'cloak', muralha_viva:'heart',
   precisao_mortal:'crosshair', brasa_eterna:'flame', vigor_absoluto:'heart',
+  punho_serra:'fist', presas_sangrentas:'fang', furia_crescente:'burst', carniceiro:'fang', fio_mortal:'fist',
+  botas_lutador:'boot', investida_feroz:'boot',
 };
 function itemIconSVG(itemId, size){
   size = size || 32;
@@ -1777,6 +1796,15 @@ function setSuggestionsEnabled(on){
   if(!on) document.getElementById('suggestion-popup').classList.remove('show');
 }
 document.getElementById('suggestions-toggle-btn').addEventListener('click', ()=> setSuggestionsEnabled(!suggestionsEnabled));
+
+document.querySelectorAll('.item-filter-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    currentItemFilter = btn.dataset.itemfilter;
+    document.querySelectorAll('.item-filter-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    renderItems();
+  });
+});
 setSuggestionsEnabled(suggestionsEnabled);
 
 /* ============ FEEDBACK ============ */
@@ -2119,10 +2147,29 @@ function renderShop(){
 }
 
 /* ============ ITEMS ============ */
+// Classes recomendadas por item, pra filtrar na loja (separado do ITEM_CATALOG
+// pra não precisar editar cada item existente — é só uma camada de "curadoria").
+const ITEM_CLASS_TAGS = {
+  luneta:['longa_distancia'], mira:['longa_distancia'], olho_falcao:['longa_distancia'], precisao_mortal:['longa_distancia'],
+  manopla:['corpo_a_corpo'], punho_serra:['corpo_a_corpo'], presas_sangrentas:['corpo_a_corpo'], furia_crescente:['corpo_a_corpo'],
+  furia_blindada:['corpo_a_corpo'], carniceiro:['corpo_a_corpo'], fio_mortal:['corpo_a_corpo'],
+  botas_lutador:['corpo_a_corpo'], investida_feroz:['corpo_a_corpo'],
+  placa:['tanque'], coracao_ferro:['tanque'], muralha_viva:['tanque'],
+  nucleo_eterno:['tanque','suporte'], amplificador:['tanque','suporte'],
+  botas:['longa_distancia','corpo_a_corpo'], amuleto:['corpo_a_corpo'],
+  brasa:['tanque','corpo_a_corpo'], brasa_eterna:['tanque','corpo_a_corpo'],
+  coracao_vital:['tanque','suporte'], manto_robusto:['tanque','suporte'], vigor_absoluto:['tanque','suporte'],
+  // relíquias de chefe não entram em nenhum filtro de classe — só aparecem em "Todos"
+};
+let currentItemFilter = 'todos';
+
 function renderItems(){
   const el = document.getElementById('item-cards');
   el.innerHTML = '';
-  const sortedItemEntries = Object.entries(ITEM_CATALOG).sort((a,b)=>{
+  const sortedItemEntries = Object.entries(ITEM_CATALOG).filter(([id])=>{
+    if(currentItemFilter==='todos') return true;
+    return (ITEM_CLASS_TAGS[id]||[]).includes(currentItemFilter);
+  }).sort((a,b)=>{
     const rank = (d)=> d.isRelic ? 2 : (d.recipe ? 1 : 0);
     const rankDiff = rank(a[1]) - rank(b[1]);
     if(rankDiff !== 0) return rankDiff;
@@ -3060,7 +3107,7 @@ function makeUnit(id, team, champId, def, level, q, r, statOverride, stars, item
     comboUsed: false, comboActive: false, comboHitsDone: 0, comboTargetId: null, comboNextAt: 0, comboBaseDmg: 0, comboHpArmed: true,
     comboPhase: null, overloadUntil: 0,
     shecryUltUsed: false, shecryUltStartAt: 0, shecryUltUntil: 0, shecryShield: 0,
-    tentacleCooldown: 5000, isTentacle: false, cantMove: false, tentacleParentId: null, tentacleFrenzy: false,
+    tentacleCooldown: 2500, isTentacle: false, cantMove: false, tentacleParentId: null, tentacleFrenzy: false,
     electroSlowUntil: 0, electroSlowPct: 0, chainCharge: 0, overchargeUntil: 0, overchargeTickAt: 0,
     voltraDetonating: false, voltraDetonateUntil: 0,
     borrowedChampPower: null, vigorRegenAt: 0, imaProcAt: 0,
@@ -4371,6 +4418,10 @@ function applyDamage(attacker, target, baseDmg, tag, ignoreDefense){
   }
   const mult = elemMultiplier(attacker.element, target.element);
   let dmg = Math.round(baseDmg * mult);
+  if(countItem(attacker,'furia_crescente')>0 && Math.random()<0.18){
+    dmg = Math.round(dmg*1.5);
+    spawnFloatText(attacker.rx, attacker.ry-36, 'CRÍTICO!', '#e8c250');
+  }
   if(attacker.champId==='gelida' && attacker.gelidaDmgBuffUntil && now < attacker.gelidaDmgBuffUntil) dmg = Math.round(dmg*2); // fúria glacial pós-renascimento
   if(target.vulnerableUntil && now < target.vulnerableUntil) dmg = Math.round(dmg*1.15);
   if(!ignoreDefense){
@@ -4385,6 +4436,11 @@ function applyDamage(attacker, target, baseDmg, tag, ignoreDefense){
     }
     if(target.crateShieldUntil && now < target.crateShieldUntil) effectiveReduction += 0.10;
     if(target.special==='couraca') dmg = Math.round(dmg*0.8);
+    let armorPenPct = 0;
+    if(countItem(attacker,'punho_serra')>0) armorPenPct = Math.max(armorPenPct, 0.15*countItem(attacker,'punho_serra'));
+    if(countItem(attacker,'carniceiro')>0) armorPenPct = Math.max(armorPenPct, 0.25);
+    if(countItem(attacker,'fio_mortal')>0) armorPenPct = Math.max(armorPenPct, 0.25);
+    if(armorPenPct>0) effectiveReduction = effectiveReduction * (1-Math.min(1,armorPenPct));
     if(effectiveReduction) dmg = Math.round(dmg*(1-effectiveReduction));
     if(target.special==='couraca' || effectiveReduction) spawnCastEffect(target.rx, target.ry, target.color);
   }
@@ -4456,6 +4512,14 @@ function applyDamage(attacker, target, baseDmg, tag, ignoreDefense){
     attacker.hp = Math.min(attacker.maxhp, attacker.hp + healAmt);
     spawnFloatText(attacker.rx, attacker.ry-46, `+${healAmt} vida`, '#7bbf6a');
   }
+  if(dmg>0 && (countItem(attacker,'presas_sangrentas')>0 || countItem(attacker,'carniceiro')>0)){
+    const lifestealPct = countItem(attacker,'carniceiro')>0 ? 0.12 : 0.08*countItem(attacker,'presas_sangrentas');
+    const healAmt = Math.round(dmg*lifestealPct);
+    if(healAmt>0){
+      attacker.hp = Math.min(attacker.maxhp, attacker.hp + healAmt);
+      spawnFloatText(attacker.rx, attacker.ry-52, `+${healAmt} vida`, '#c2445a');
+    }
+  }
   if(target.hp<=0){
     if((target.champId==='kael' || target.borrowedChampPower==='kael') && !target.frenzyUsed){
       target.hp = 1;
@@ -4519,7 +4583,7 @@ function applyDamage(attacker, target, baseDmg, tag, ignoreDefense){
           spawnCastEffect(ghostTarget.rx, ghostTarget.ry, '#8fd4e8');
           spawnIcePrison({q:ghostTarget.q, r:ghostTarget.r}, 3000);
           triggerScreenShake(8, 260);
-          const pillarDmg = Math.round(8*passiveAmp(target));
+          const pillarDmg = Math.round(30*passiveAmp(target));
           for(let i=1;i<=6;i++){
             emberEvents.push({time: now + i*500, targetId: ghostTarget.id, type:'iceTick', dmg: pillarDmg});
           }
@@ -4581,7 +4645,7 @@ function applyDamage(attacker, target, baseDmg, tag, ignoreDefense){
         const parent = units.find(x=>x.id===target.tentacleParentId);
         if(parent && parent.alive){
           const remaining = units.filter(o=>o.alive && o.isTentacle && o.tentacleParentId===parent.id).length;
-          if(remaining===3) parent.tentacleCooldown = 3000; // ela tinha o limite de 4, abriu vaga — reabastece rápido
+          if(remaining===3) parent.tentacleCooldown = 1500; // ela tinha o limite de 4, abriu vaga — reabastece rápido
         }
       }
       if(mode==='pve' && attacker.team==='player' && (target.team==='enemy' || target.team==='corrupted')){
@@ -4664,7 +4728,8 @@ function triggerElectricShockwave(voltra, deadUnit){
   const now = performance.now();
   const chainedCount = units.filter(o=>o.alive && o.team!==voltra.team && o.electroSlowUntil && now<o.electroSlowUntil).length;
   const nearbyCount = units.filter(o=>o.alive && o.team!==voltra.team && hexDistance(o,deadUnit)<=3).length;
-  const shockDmg = 35 + (chainedCount+nearbyCount)*12;
+  const speedBonus = 1 + Math.max(0, voltra.speed - 1) * 2; // quanto mais velocidade de ataque, mais forte a onda
+  const shockDmg = Math.round((90 + (chainedCount+nearbyCount)*25) * speedBonus);
   const targets = units.filter(o=>o.alive && o.team!==voltra.team);
   const hadTargets = targets.length>0;
   const shockSource = {element:'eletrico', team:voltra.team, champId:voltra.champId, name:voltra.name};
@@ -4999,7 +5064,7 @@ function updateBattleLogic(dt){
         if(u.tentacleCooldown<=0){
           spawnNerithTentacle(u);
           const newCount = units.filter(o=>o.alive && o.isTentacle && o.tentacleParentId===u.id).length;
-          u.tentacleCooldown = 5000 + newCount*1000; // 1º:5s, 2º:6s, 3º:7s, 4º:8s
+          u.tentacleCooldown = 2500 + newCount*500; // 1º:2.5s, 2º:3s, 3º:3.5s, 4º:4s
         }
       }
     }
