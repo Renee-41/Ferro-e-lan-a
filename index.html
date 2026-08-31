@@ -118,6 +118,82 @@
     white-space:nowrap;
   }
   #patchnotes-btn:hover, #tutorial-btn:hover{ border-color:var(--molten); }
+  #global-prep-timer{
+    background:var(--iron-mid); border:1px solid #3a3f47; color:var(--steel);
+    padding:6px 12px; border-radius:4px; font-family:'JetBrains Mono',monospace;
+    font-size:12px; white-space:nowrap; align-self:center;
+  }
+  #global-prep-timer.danger{ animation: prep-timer-pulse 1s ease-in-out infinite; }
+  @keyframes prep-timer-pulse{
+    0%,100%{ box-shadow:0 0 2px rgba(220,50,50,var(--danger-glow,0.3)); }
+    50%{ box-shadow:0 0 16px rgba(220,50,50,var(--danger-glow,0.3)); }
+  }
+  #roster-layout{ display:flex; gap:16px; align-items:flex-start; }
+  #inventory-panel{
+    width:190px; flex-shrink:0; background:rgba(0,0,0,0.2); border:1px solid #3a3f47;
+    border-radius:6px; padding:10px; position:sticky; top:14px;
+  }
+  #inventory-grid{
+    display:grid; grid-template-columns:repeat(3,1fr); gap:6px;
+    max-height:68vh; overflow-y:auto; padding-right:2px;
+  }
+  .inv-tile{
+    position:relative; aspect-ratio:1; background:var(--iron-mid); border:1.5px solid #3a3f47;
+    border-radius:6px; display:flex; align-items:center; justify-content:center; color:var(--gold);
+    cursor:grab; touch-action:none; user-select:none;
+  }
+  .inv-tile:hover{ border-color:var(--gold); }
+  .inv-tile.dragging{ opacity:0.35; }
+  .inv-tile .inv-count{
+    position:absolute; bottom:1px; right:2px; font-size:9px; font-family:'JetBrains Mono',monospace;
+    color:#eae4d8; background:rgba(0,0,0,0.65); padding:0 3px; border-radius:3px; line-height:1.4;
+  }
+  .inv-empty-msg{ font-size:11px; color:var(--steel); text-align:center; padding:12px 4px; grid-column:1/-1; }
+  .equip-slot{
+    width:34px; height:34px; background:#111; border:1.5px dashed #3a3f47; border-radius:5px;
+    display:inline-flex; align-items:center; justify-content:center; color:var(--gold);
+    cursor:pointer; position:relative; touch-action:none; margin-top:4px;
+  }
+  .equip-slot.filled{ border-style:solid; border-color:var(--gold); background:rgba(232,194,80,0.1); cursor:pointer; }
+  .equip-slot.drop-hover{ border-color:#7bbf6a; box-shadow:0 0 10px rgba(123,191,106,0.6); }
+  #drag-ghost{
+    position:fixed; z-index:9999; pointer-events:none; width:36px; height:36px;
+    display:none; align-items:center; justify-content:center; color:var(--gold);
+    background:rgba(42,46,53,0.92); border:1.5px solid var(--gold); border-radius:6px;
+    transform:translate(-50%,-50%);
+  }
+  @media (max-width:760px){
+    #roster-layout{ flex-direction:column; }
+    #inventory-panel{ width:100%; position:static; }
+    #inventory-grid{ max-height:220px; grid-template-columns:repeat(6,1fr); }
+    #position-layout{ flex-direction:column; }
+    #position-inventory-panel{ width:100%; }
+    #position-inventory-grid{ max-height:180px; grid-template-columns:repeat(6,1fr); }
+  }
+  #item-trash-zone{
+    display:none; position:fixed; left:50%; bottom:28px; transform:translateX(-50%);
+    z-index:9998; background:rgba(42,20,20,0.92); border:2px dashed #7a3a3a; color:#e8a0a0;
+    padding:14px 22px; border-radius:8px; font-family:'Oswald',sans-serif; font-size:13px;
+    text-transform:uppercase; letter-spacing:1px; pointer-events:none;
+  }
+  #item-trash-zone.trash-hover{ background:rgba(90,30,30,0.95); border-color:#c2445a; color:#fff; }
+  #sell-confirm-overlay, #sell-relic-overlay{
+    display:none; position:fixed; inset:0; z-index:7000;
+    background:rgba(0,0,0,0.75); align-items:center; justify-content:center;
+  }
+  #sell-confirm-overlay.show, #sell-relic-overlay.show{ display:flex; }
+  .sell-relic-champ-row{
+    display:flex; align-items:center; gap:8px; padding:6px 8px; background:var(--iron-mid);
+    border:1px solid #3a3f47; border-radius:5px; cursor:pointer; font-size:12px;
+  }
+  .sell-relic-champ-row input{ cursor:pointer; }
+  #unit-drag-ghost{
+    display:none; position:fixed; z-index:9999; pointer-events:none;
+    transform:translate(-50%,-130%); background:rgba(42,46,53,0.92); border:1.5px solid var(--gold);
+    color:var(--gold); padding:4px 10px; border-radius:5px; font-family:'Oswald',sans-serif;
+    font-size:12px; white-space:nowrap;
+  }
+  .position-hex-hover{ stroke:#e8c250 !important; stroke-width:3 !important; }
   #patchnotes-panel{
     display:none; position:fixed; top:50px; right:14px; z-index:50;
     width:280px; max-width:calc(100vw - 28px); max-height:70vh; overflow-y:auto;
@@ -456,6 +532,7 @@
 </div>
 
 <div id="top-utility-bar">
+  <span id="global-prep-timer" style="display:none;"></span>
   <button id="patchnotes-btn" title="Notas de atualização">📋 Notas</button>
   <button id="tutorial-btn" title="Tutorial">📖 Tutorial</button>
   <button id="guided-tutorial-btn" title="Tutorial guiado">🧭 Tutorial guiado</button>
@@ -600,6 +677,35 @@
 
 <div id="achievement-toast-container"></div>
 <div id="wave-transition-fade"></div>
+<div id="drag-ghost"></div>
+<div id="unit-drag-ghost"></div>
+<div id="item-trash-zone">🗑️ Soltar aqui pra vender</div>
+
+<div id="sell-confirm-overlay">
+  <div class="blessing-panel" style="width:320px;text-align:center;">
+    <div id="sell-confirm-icon" style="margin:0 auto 8px;width:44px;height:44px;color:var(--gold);"></div>
+    <h2 style="border:none;font-size:16px;" id="sell-confirm-name"></h2>
+    <div class="subtitle" id="sell-confirm-detail" style="margin-bottom:14px;"></div>
+    <div style="display:flex;gap:8px;">
+      <button class="ghost-btn" id="sell-confirm-cancel" style="flex:1;">Cancelar</button>
+      <button class="main-btn" id="sell-confirm-ok" style="flex:1;">Vender</button>
+    </div>
+  </div>
+</div>
+
+<div id="sell-relic-overlay">
+  <div class="blessing-panel" style="width:380px;">
+    <h2 style="border:none;font-size:16px;text-align:center;" id="sell-relic-name"></h2>
+    <div class="subtitle" style="text-align:center;margin-bottom:10px;">Relíquia não vale moedas — escolha quem recebe o XP (dividido igualmente entre quem você marcar).</div>
+    <div id="sell-relic-champs" style="display:flex;flex-direction:column;gap:6px;max-height:260px;overflow-y:auto;"></div>
+    <div class="subtitle" id="sell-relic-preview" style="text-align:center;margin:10px 0;font-size:13px;color:var(--gold);"></div>
+    <div style="display:flex;gap:8px;">
+      <button class="ghost-btn" id="sell-relic-cancel" style="flex:1;">Cancelar</button>
+      <button class="main-btn" id="sell-relic-ok" style="flex:1;" disabled>Confirmar</button>
+    </div>
+  </div>
+</div>
+
 
 <div id="finisher-overlay">
   <div class="finisher-vignette"></div>
@@ -713,7 +819,14 @@
 <div class="screen" id="screen-roster">
   <div class="panel">
     <h2>Meu Time (Stack Users possuídos)</h2>
-    <div class="grid-cards" id="roster-cards"></div>
+    <div id="roster-layout">
+      <div id="inventory-panel">
+        <h3 style="margin:0 0 4px 0;border:none;padding:0;font-size:14px;">🎒 Inventário</h3>
+        <div class="subtitle" style="margin-bottom:8px;font-size:11px;">Arraste um item até um Stack User pra equipar. Clica num slot equipado pra tirar o item.</div>
+        <div id="inventory-grid"></div>
+      </div>
+      <div class="grid-cards" id="roster-cards" style="flex:1;"></div>
+    </div>
   </div>
 </div>
 
@@ -779,11 +892,19 @@
   <div class="panel">
     <h2 id="position-title">Posicione seu time</h2>
     <div id="position-timer-label" style="display:none;font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--ember);margin-bottom:6px;"></div>
-    <div class="subtitle" style="margin-bottom:10px;">Clica num Stack User (na lista ou na arena) e depois clica no bloco onde quer colocar ele. Clicar num bloco ocupado troca os dois de lugar.</div>
-    <div style="display:flex; justify-content:center;">
-      <svg id="position-arena" width="500" height="460" viewBox="0 0 500 460"></svg>
+    <div class="subtitle" style="margin-bottom:10px;">Clica num Stack User (na lista ou na arena) e depois clica no bloco onde quer colocar ele. Clicar num bloco ocupado troca os dois de lugar. Arraste um item do inventário até um Stack User pra equipar.</div>
+    <div id="position-layout" style="display:flex; gap:16px; align-items:flex-start;">
+      <div id="position-inventory-panel" style="width:170px;flex-shrink:0;background:rgba(0,0,0,0.2);border:1px solid #3a3f47;border-radius:6px;padding:10px;">
+        <h3 style="margin:0 0 6px 0;border:none;padding:0;font-size:13px;">🎒 Inventário</h3>
+        <div id="position-inventory-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;max-height:60vh;overflow-y:auto;"></div>
+      </div>
+      <div style="flex:1;min-width:0;">
+        <div style="display:flex; justify-content:center;">
+          <svg id="position-arena" width="500" height="460" viewBox="0 0 500 460"></svg>
+        </div>
+        <div class="grid-cards" id="position-chips" style="margin-top:12px;"></div>
+      </div>
     </div>
-    <div class="grid-cards" id="position-chips" style="margin-top:12px;"></div>
     <div style="margin-top:14px;display:flex;gap:10px;">
       <button class="main-btn" id="confirm-position-btn">Confirmar posições</button>
       <button class="ghost-btn" id="reset-position-btn">Posições padrão</button>
@@ -1393,8 +1514,10 @@ const CHAMPION_CATALOG = {
   ferrha:{name:'Ferrha',element:'metal',role:'Tanque · Lança',cost:90,hp:210,atk:15,range:1,speed:0.9,taunt:2,special:'lanca',desc:'Provoca inimigos próximos e crava a lança com dano extra a cada 3º golpe. Passiva: ao chegar a 1 de HP, ergue uma barreira de ferro — fica imune a todo dano e imóvel, empurra inimigos adjacentes 2 blocos pra trás, cura 45% da vida e ganha +15% de defesa por estrela por 2s (uma vez por batalha). Assim que a barreira acaba, ela puxa todo inimigo num raio de 5 blocos de volta pra perto dela e os atordoa por 1,6s.'},
   voss:{name:'Voss',element:'agua',role:'Atiradora',cost:80,hp:95,atk:19,range:3,speed:1,special:'perfuro',desc:'A cada 4 tiros, dispara um disparo perfurante que ignora parte da defesa do alvo. Como todo Stack User de longa distância, causa mais dano quanto mais longe estiver do alvo (+8% por bloco além do 1º).'},
   nyx:{name:'Nyx',element:'vento',role:'Assassina',cost:90,hp:100,atk:15,range:1,speed:1.8,special:'rajada',desc:'A cada 3 golpes, ataca duas vezes seguidas no mesmo alvo. Como todo Stack User de Vento, tem 20% de chance de esquivar de ataques físicos (sobe pra 30% com menos de 40% de vida). Não vale contra habilidades/passivas.'},
+  shava:{name:'Shava',element:'vento',role:'Lutadora de Capoeira',cost:120,hp:140,atk:16,range:1,speed:1.3,special:'shava',desc:'Quando um inimigo está a 3+ blocos, avança até ele (dano dobrado), priorizando quem tem mais vida — recarrega em 10s e só ativa com o alvo a até 5 blocos. Se o alvo estiver abaixo de 10% de vida, executa na hora e arremessa o corpo em outro inimigo próximo (atordoa 2s, reduz dano dele por 5s). Senão, empurra o alvo até 5 blocos — se bater em parede/obstáculo, atordoa 4s e reduz armadura por 3s. A cada 3 golpes, cura 10% do dano causado. A cada 6 golpes no mesmo alvo, cria um vórtice que atordoa (0,8s, sem dano) inimigos num raio de 2 blocos, exceto o próprio alvo.'},
   kael:{name:'Kael',element:'fogo',role:'Berserker',cost:110,hp:120,atk:18,range:1,speed:1,special:'furia',desc:'Quanto menor a vida dele, mais forte ataca — e a cada 4 golpes solta um golpe flamejante ainda mais forte. Passiva: ao chegar a 1 de HP, entra em frenesi por 3s (uma vez por batalha) — fica imortal, mais rápido, com dano ainda maior (escala com estrela) e vampirismo de 9 de vida por golpe.'},
   terrus:{name:'Terrus',element:'terra',role:'Guardião',cost:110,hp:230,atk:11,range:1,speed:0.8,special:'couraca',desc:'Reduz todo dano recebido em 20% — e a cada 4 golpes causa um tremor que dá mais dano e cura um pouco dele mesmo. Passiva: ao cair pela primeira vez abaixo de 30% de vida, petrifica a pele — fica imune por 2s, cura 20% da vida e ganha defesa extra permanente pro resto da batalha (uma vez por batalha).'},
+  jedegar:{name:'Jedegar',element:'terra',role:'Pilar da Perseverança',cost:130,hp:190,atk:10,range:1,speed:0.9,special:'jedegar',desc:'A cada 1,5s ergue um pilar de pedra ao lado dela (prioriza ficar perto de aliados) — pilares amplificam o dano de aliados num raio de 2 blocos, e cada um aguenta 2 golpes de inimigo comum (1 de chefe) antes de cair. Ao ser atingido, um pilar libera energia que fortalece os pilares próximos por 3s. Ao erguer o 5º pilar da partida, o efeito de todos dobra permanentemente e inimigos perto de pilares perdem 30% de defesa. Na primeira vez que cai abaixo de 30% de vida, ergue um pilar debaixo do inimigo mais próximo (arremessando ele longe) e foge sobre uma fileira de pedra recém-criada. Ao morrer, ergue um círculo protetor ao redor do aliado mais ferido (escudo, dano e velocidade de ataque por 5s) — os pilares dela desmoronam 5s depois da sua morte.'},
   pyra:{name:'Pyra',element:'fogo',role:'Maga',cost:85,hp:100,atk:21,range:3,speed:0.7,special:'explosao',desc:'A cada 3 golpes, sua explosão também atinge o inimigo mais próximo do alvo com dano total. Como todo Stack User de longa distância, causa mais dano quanto mais longe estiver do alvo (+8% por bloco além do 1º).'},
   glacia:{name:'Glacia',element:'agua',role:'Suporte',cost:70,hp:100,atk:11,range:2,speed:1,special:'cura',desc:'A cada 4 ataques, cura 25% da vida do aliado mais ferido. Como todo Stack User de longa distância, causa mais dano quanto mais longe estiver do alvo (+8% por bloco além do 1º).'},
   zeph:{name:'Zeph',element:'vento',role:'Arqueira veloz',cost:95,hp:80,atk:14,range:3,speed:1.12,special:'chuva',desc:'A cada 4 tiros, dispara uma flecha extra em outro inimigo aleatório. Como todo Stack User de Vento, tem 20% de chance de esquivar de ataques físicos (sobe pra 30% com menos de 40% de vida). Não vale contra habilidades/passivas. Como todo Stack User de longa distância, causa mais dano quanto mais longe estiver do alvo (+8% por bloco além do 1º).'},
@@ -1406,7 +1529,6 @@ const CHAMPION_CATALOG = {
   nerith:{name:'Nerith',element:'agua',role:'Profetisa das Marés',cost:135,hp:300,atk:5,range:1,speed:0.9,special:null,desc:'Bate muito fraco sozinha — sua força de verdade são os tentáculos. Invoca um tentáculo perto dela mesma, num ritmo que cresce a cada um (2,5s, 3s, 3,5s, 4s), até um limite de 4 vivos ao mesmo tempo — se um for destruído, o próximo demora só 1,5s. Os tentáculos não se movem, atacam com alcance de 3 blocos, causam dano considerável, mas têm pouca vida — fáceis de destruir. Se Nerith morrer, todos os tentáculos vivos entram em frenesi: atacam mais rápido e miram inimigos aleatórios até serem destruídos.'},
   voltra:{name:'Voltra',element:'eletrico',role:'Tecelã de Correntes',cost:135,hp:110,atk:16,range:3,speed:1,special:null,desc:'Corrente Elétrica: cada ataque eletrifica o alvo, reduzindo a velocidade dele com base no seu ataque — e se outro inimigo estiver a até 3 blocos, o efeito se propaga pra ele também (25% mais fraco a cada salto). Reação em Cadeia: cada inimigo tocado pela corrente dá 1 carga; ao acumular 10, ela entra em Sobrecarga por 5s. Se ela morrer durante esse período, fica imune por 4s carregando energia ao máximo antes de explodir numa onda de choque que atinge a arena inteira — puxa todo inimigo pra perto de onde ela caiu, paralisa todos por 5s e causa dano extra (mais forte quanto mais inimigos estiverem eletrificados/por perto).'},
 };
-const STARTER_OWNED = ['ferrha'];
 
 const ITEM_CATALOG = {
   luneta:{name:'Luneta de Longo Alcance', kind:'longa distância', cost:60, desc:'+1 de alcance e +15% de dano — só faz efeito em Stack Users de alcance 2+.', effect:{range:1, atkPct:0.15, appliesTo:'ranged'}},
@@ -1490,6 +1612,8 @@ const ROLE_STAR_PROFILE = {
   'Colosso Glacial': {hp:0.24, atk:0.14, speed:0, defFlat:0.04},
   'Profetisa das Marés': {hp:0.20, atk:0.08, speed:0.05, defFlat:0.03},
   'Tecelã de Correntes': {hp:0.14, atk:0.18, speed:0.10, defFlat:0},
+  'Pilar da Perseverança': {hp:0.20, atk:0.10, speed:0.03, defFlat:0.04},
+  'Lutadora de Capoeira': {hp:0.12, atk:0.20, speed:0.10, defFlat:0},
 };
 const MAX_STARS = 4;
 const STAR_BORDER_COLORS = {1:'#b0743a', 2:'#c7cdd6', 3:'#e8c250', 4:'#d3e6f0'};
@@ -1512,7 +1636,9 @@ const ENEMY_CATALOG = {
 /* ============ STATE ============ */
 let coins = 120;
 let owned = {}; // champId -> {stars, copies, level, xp, itemIds: [até 3]}
-STARTER_OWNED.forEach(id => owned[id] = {stars:1, copies:0, level:1, xp:0, itemIds:[]});
+// (a seed do personagem inicial acontece no fluxo de verdade — openStarterPick/hardResetProgress
+// pro PvE, startPvpSetup pro PvP, ou resumeSavedGame — não aqui, senão a Ferrha aparecia em
+// "Meu Time" antes até da pessoa começar a primeira partida.)
 let itemInventory = {}; // itemId -> quantity owned, unequipped
 
 let mode = null; // 'pve' | 'pvp'
@@ -2287,30 +2413,19 @@ function renderRoster(){
     const slotCount = getItemSlotCount(id);
     while(prog.itemIds.length<slotCount) prog.itemIds.push(null);
 
-    let slotsHtml = '';
+    let slotsHtml = '<div style="display:flex;gap:6px;margin-top:6px;">';
     for(let slot=0; slot<slotCount; slot++){
       const current = prog.itemIds[slot];
-      let options = `<option value="">Vazio</option>`;
-      Object.entries(ITEM_CATALOG).forEach(([iid,idef])=>{
-        const available = (itemInventory[iid]||0) + (current===iid?1:0);
-        if(available>0){
-          options += `<option value="${iid}" ${current===iid?'selected':''}>${idef.name} (${available} livre${available>1?'s':''})</option>`;
-        }
-      });
-      slotsHtml += `<select data-equip="${id}" data-slot="${slot}" style="width:100%;margin-top:4px;background:#111;color:#eae4d8;border:1px solid #3a3f47;border-radius:3px;padding:4px;font-family:'JetBrains Mono',monospace;font-size:10px;">${options}</select>`;
+      const icon = current ? itemIconSVG(current, 20) : '';
+      const title = current ? ITEM_CATALOG[current].name : 'Slot vazio — arraste um item aqui';
+      slotsHtml += `<div class="equip-slot${current?' filled':''}" data-equip-slot="${id}" data-slot-index="${slot}" title="${title}">${icon}</div>`;
     }
+    slotsHtml += '</div>';
 
     const equippedNames = prog.itemIds.filter(Boolean).map(iid=>ITEM_CATALOG[iid].name);
-    const relicOptions = Object.entries(ITEM_CATALOG).filter(([iid,idef])=>idef.isRelic).map(([iid,idef])=>{
-      const available = (itemInventory[iid]||0) + (prog.relicId===iid?1:0);
-      if(available<=0) return '';
-      return `<option value="${iid}" ${prog.relicId===iid?'selected':''}>${idef.name} (${available} livre${available>1?'s':''})</option>`;
-    }).join('');
+    const relicIcon = prog.relicId ? itemIconSVG(prog.relicId, 18) : '▢';
     const relicSlotHtml = `
-      <select data-relic="${id}" title="Slot de relíquia — funciona mesmo com os 3 itens normais cheios" style="width:34px;height:34px;background:${prog.relicId?'rgba(232,194,80,0.15)':'#111'};color:var(--gold);border:1.5px dashed ${prog.relicId?'var(--gold)':'#3a3f47'};border-radius:5px;text-align:center;font-size:14px;padding:0;">
-        <option value="" ${!prog.relicId?'selected':''}>▢</option>
-        ${relicOptions}
-      </select>
+      <div class="equip-slot${prog.relicId?' filled':''}" data-equip-relic="${id}" title="${prog.relicId?ITEM_CATALOG[prog.relicId].name:'Slot de relíquia — funciona mesmo com os 3 itens normais cheios'}">${relicIcon}</div>
     `;
     card.innerHTML = `
       <div style="display:flex;align-items:center;gap:8px;justify-content:space-between;">
@@ -2327,31 +2442,254 @@ function renderRoster(){
     `;
     el.appendChild(card);
   });
-  el.querySelectorAll('[data-relic]').forEach(sel=>{
-    sel.addEventListener('change', ()=>{
-      const champId = sel.dataset.relic;
-      const newRelicId = sel.value || null;
-      const prog = owned[champId];
-      const oldRelicId = prog.relicId;
-      if(oldRelicId){ itemInventory[oldRelicId] = (itemInventory[oldRelicId]||0) + 1; }
-      if(newRelicId){ itemInventory[newRelicId] = Math.max(0, (itemInventory[newRelicId]||0) - 1); }
-      prog.relicId = newRelicId;
-      renderRoster();
-    });
-  });
-  el.querySelectorAll('[data-equip]').forEach(sel=>{
-    sel.addEventListener('change', ()=>{
-      const champId = sel.dataset.equip;
-      const slot = parseInt(sel.dataset.slot,10);
-      const newItemId = sel.value || null;
+  el.querySelectorAll('[data-equip-slot]').forEach(slotEl=>{
+    slotEl.addEventListener('click', ()=>{
+      const champId = slotEl.dataset.equipSlot;
+      const slot = parseInt(slotEl.dataset.slotIndex,10);
       const prog = owned[champId];
       const oldItemId = prog.itemIds[slot];
-      if(oldItemId){ itemInventory[oldItemId] = (itemInventory[oldItemId]||0) + 1; }
-      if(newItemId){ itemInventory[newItemId] = Math.max(0, (itemInventory[newItemId]||0) - 1); }
-      prog.itemIds[slot] = newItemId;
+      if(!oldItemId) return; // slot vazio — clique não faz nada, é só pra arrastar
+      itemInventory[oldItemId] = (itemInventory[oldItemId]||0) + 1;
+      prog.itemIds[slot] = null;
       renderRoster();
     });
   });
+  el.querySelectorAll('[data-equip-relic]').forEach(slotEl=>{
+    slotEl.addEventListener('click', ()=>{
+      const champId = slotEl.dataset.equipRelic;
+      const prog = owned[champId];
+      if(!prog.relicId) return;
+      itemInventory[prog.relicId] = (itemInventory[prog.relicId]||0) + 1;
+      prog.relicId = null;
+      renderRoster();
+    });
+  });
+  renderInventoryPanel();
+}
+
+function equipItemFromDrag(itemId, champId, targetSlotEl){
+  const prog = owned[champId];
+  if(!prog) return false;
+  const isRelic = !!ITEM_CATALOG[itemId].isRelic;
+  if(targetSlotEl.dataset.equipRelic){
+    if(!isRelic) return false; // só relíquia entra no slot de relíquia
+    if((itemInventory[itemId]||0)<=0) return false;
+    if(prog.relicId) itemInventory[prog.relicId] = (itemInventory[prog.relicId]||0) + 1;
+    itemInventory[itemId] -= 1;
+    prog.relicId = itemId;
+    return true;
+  }
+  if(targetSlotEl.dataset.equipSlot){
+    if(isRelic) return false; // relíquia não entra em slot normal
+    if((itemInventory[itemId]||0)<=0) return false;
+    const slot = parseInt(targetSlotEl.dataset.slotIndex,10);
+    const oldItemId = prog.itemIds[slot];
+    if(oldItemId) itemInventory[oldItemId] = (itemInventory[oldItemId]||0) + 1;
+    itemInventory[itemId] -= 1;
+    prog.itemIds[slot] = itemId;
+    return true;
+  }
+  return false;
+}
+
+// gera o HTML dos slots de equipamento (itens + relíquia) de um personagem —
+// usado tanto em "Meu Time" quanto na tela de posicionamento, pro visual bater.
+function buildEquipSlotsHtml(champId){
+  const prog = owned[champId];
+  const slotCount = getItemSlotCount(champId);
+  while(prog.itemIds.length<slotCount) prog.itemIds.push(null);
+  let html = '<div style="display:flex;gap:5px;margin-top:6px;flex-wrap:wrap;align-items:center;">';
+  for(let slot=0; slot<slotCount; slot++){
+    const current = prog.itemIds[slot];
+    const icon = current ? itemIconSVG(current, 18) : '';
+    const title = current ? ITEM_CATALOG[current].name : 'Slot vazio — arraste um item aqui';
+    html += `<div class="equip-slot${current?' filled':''}" data-equip-slot="${champId}" data-slot-index="${slot}" title="${title}">${icon}</div>`;
+  }
+  const relicIcon = prog.relicId ? itemIconSVG(prog.relicId, 16) : '▢';
+  html += `<div class="equip-slot${prog.relicId?' filled':''}" data-equip-relic="${champId}" title="${prog.relicId?ITEM_CATALOG[prog.relicId].name:'Slot de relíquia'}">${relicIcon}</div>`;
+  html += '</div>';
+  return html;
+}
+
+function renderInventoryPanel(gridId){
+  gridId = gridId || 'inventory-grid';
+  const grid = document.getElementById(gridId);
+  if(!grid) return;
+  grid.dataset.renderTarget = gridId==='position-inventory-grid' ? 'position' : 'roster';
+  grid.innerHTML = '';
+  const entries = Object.entries(itemInventory).filter(([iid,count])=>count>0 && ITEM_CATALOG[iid]);
+  if(entries.length===0){
+    grid.innerHTML = '<div class="inv-empty-msg">Nenhum item livre no momento — compre na Loja.</div>';
+    return;
+  }
+  entries.forEach(([iid,count])=>{
+    const tile = document.createElement('div');
+    tile.className = 'inv-tile';
+    tile.dataset.itemId = iid;
+    tile.title = ITEM_CATALOG[iid].name + ' — clique pra vender, ou arraste pra equipar';
+    tile.innerHTML = itemIconSVG(iid, 24) + `<span class="inv-count">${count}</span>`;
+    tile.addEventListener('pointerdown', (e)=> onInvTilePointerDown(e, iid, grid.dataset.renderTarget));
+    grid.appendChild(tile);
+  });
+}
+
+/* ============ ARRASTAR ITEM (ponteiro — funciona no mouse e no toque) ============ */
+/* Distingue clique (abre venda) de arraste (equipar ou soltar na lixeira pra vender)
+   por um limiar de movimento — só vira "arraste de verdade" depois de mexer uns pixels. */
+let dragState = null;
+const DRAG_RENDER_TARGETS = { roster: renderRoster, position: renderPositionScreen };
+const RELIC_SELL_XP = 30; // XP total dado ao vender uma relíquia de chefe, dividido entre quem for escolhido
+
+function onInvTilePointerDown(e, itemId, renderTargetKey){
+  e.preventDefault();
+  const tileEl = e.target.closest('.inv-tile');
+  const startX = e.clientX, startY = e.clientY;
+  let started = false;
+  function moveCheck(ev){
+    if(started) return;
+    if(Math.abs(ev.clientX-startX)>6 || Math.abs(ev.clientY-startY)>6){
+      started = true;
+      window.removeEventListener('pointermove', moveCheck);
+      window.removeEventListener('pointerup', upCheck);
+      beginItemDrag(ev, itemId, tileEl, renderTargetKey);
+    }
+  }
+  function upCheck(){
+    window.removeEventListener('pointermove', moveCheck);
+    window.removeEventListener('pointerup', upCheck);
+    if(!started) openSellFlow(itemId); // foi só um toque/clique — abre a opção de vender
+  }
+  window.addEventListener('pointermove', moveCheck);
+  window.addEventListener('pointerup', upCheck, { once:true });
+}
+function beginItemDrag(e, itemId, tileEl, renderTargetKey){
+  const ghost = document.getElementById('drag-ghost');
+  ghost.innerHTML = itemIconSVG(itemId, 26);
+  ghost.style.display = 'flex';
+  ghost.style.left = e.clientX+'px';
+  ghost.style.top = e.clientY+'px';
+  dragState = { itemId, hoverEl: null, renderTargetKey: renderTargetKey || 'roster' };
+  tileEl.classList.add('dragging');
+  document.getElementById('item-trash-zone').style.display = 'flex';
+  window.addEventListener('pointermove', onItemDragMove);
+  window.addEventListener('pointerup', onItemDragEnd, { once:true });
+}
+function onItemDragMove(e){
+  if(!dragState) return;
+  const ghost = document.getElementById('drag-ghost');
+  ghost.style.left = e.clientX+'px';
+  ghost.style.top = e.clientY+'px';
+  const under = document.elementFromPoint(e.clientX, e.clientY);
+  const trashEl = under ? under.closest('#item-trash-zone') : null;
+  const slotEl = !trashEl && under ? under.closest('.equip-slot') : null;
+  const hoverEl = trashEl || slotEl;
+  if(dragState.hoverEl && dragState.hoverEl !== hoverEl){
+    dragState.hoverEl.classList.remove('drop-hover');
+    document.getElementById('item-trash-zone').classList.remove('trash-hover');
+  }
+  if(trashEl){ trashEl.classList.add('trash-hover'); }
+  else if(slotEl){ slotEl.classList.add('drop-hover'); }
+  dragState.hoverEl = hoverEl;
+}
+function onItemDragEnd(e){
+  window.removeEventListener('pointermove', onItemDragMove);
+  if(!dragState){
+    document.getElementById('drag-ghost').style.display = 'none';
+    document.getElementById('item-trash-zone').style.display = 'none';
+    return;
+  }
+  // checa o que está embaixo do ponteiro ANTES de esconder a lixeira/fantasma,
+  // senão o hit-test não encontra mais nada ali (era a causa do item "voltar sozinho")
+  const under = document.elementFromPoint(e.clientX, e.clientY);
+  const trashEl = under ? under.closest('#item-trash-zone') : null;
+  const slotEl = (!trashEl && under) ? under.closest('.equip-slot') : null;
+
+  document.getElementById('drag-ghost').style.display = 'none';
+  document.getElementById('item-trash-zone').style.display = 'none';
+  document.getElementById('item-trash-zone').classList.remove('trash-hover');
+  document.querySelectorAll('.inv-tile.dragging').forEach(t=>t.classList.remove('dragging'));
+
+  if(trashEl){
+    openSellFlow(dragState.itemId);
+    dragState = null;
+    return;
+  }
+  if(slotEl){
+    slotEl.classList.remove('drop-hover');
+    const champId = slotEl.dataset.equipSlot || slotEl.dataset.equipRelic;
+    const equipped = equipItemFromDrag(dragState.itemId, champId, slotEl);
+    if(equipped){
+      const renderFn = DRAG_RENDER_TARGETS[dragState.renderTargetKey] || renderRoster;
+      renderFn();
+    }
+  }
+  dragState = null;
+}
+
+/* ============ VENDER ITEM ============ */
+function refreshAllInventoryPanels(){
+  if(document.getElementById('inventory-grid')) renderInventoryPanel('inventory-grid');
+  if(document.getElementById('position-inventory-grid')) renderInventoryPanel('position-inventory-grid');
+}
+function openSellFlow(itemId){
+  if((itemInventory[itemId]||0)<=0) return;
+  const idef = ITEM_CATALOG[itemId];
+  if(idef.isRelic) openRelicSellPicker(itemId);
+  else openNormalSellConfirm(itemId);
+}
+function openNormalSellConfirm(itemId){
+  const idef = ITEM_CATALOG[itemId];
+  const sellValue = Math.round((idef.cost||0) * 0.2);
+  document.getElementById('sell-confirm-icon').innerHTML = itemIconSVG(itemId, 44);
+  document.getElementById('sell-confirm-name').textContent = idef.name;
+  document.getElementById('sell-confirm-detail').textContent = `Vender por ${sellValue} 🪙 (20% do valor original)`;
+  const overlay = document.getElementById('sell-confirm-overlay');
+  overlay.classList.add('show');
+  const okBtn = document.getElementById('sell-confirm-ok');
+  okBtn.onclick = ()=>{
+    itemInventory[itemId] -= 1;
+    coins += sellValue;
+    updateCoinBadge();
+    refreshAllInventoryPanels();
+    overlay.classList.remove('show');
+  };
+  document.getElementById('sell-confirm-cancel').onclick = ()=> overlay.classList.remove('show');
+}
+function openRelicSellPicker(itemId){
+  const idef = ITEM_CATALOG[itemId];
+  document.getElementById('sell-relic-name').textContent = `Vender ${idef.name}`;
+  const listEl = document.getElementById('sell-relic-champs');
+  listEl.innerHTML = '';
+  const okBtn = document.getElementById('sell-relic-ok');
+  const previewEl = document.getElementById('sell-relic-preview');
+  function updatePreview(){
+    const checked = Array.from(listEl.querySelectorAll('input:checked'));
+    okBtn.disabled = checked.length===0;
+    previewEl.textContent = checked.length ? `${(RELIC_SELL_XP/checked.length).toFixed(1)} XP pra cada um (${checked.length} escolhido${checked.length>1?'s':''})` : 'Escolha pelo menos um Stack User.';
+  }
+  Object.keys(owned).forEach(cid=>{
+    const def = CHAMPION_CATALOG[cid];
+    const row = document.createElement('label');
+    row.className = 'sell-relic-champ-row';
+    row.innerHTML = `<input type="checkbox" value="${cid}"> ${def.name} <span style="color:var(--steel);margin-left:auto;">Nv.${owned[cid].level}</span>`;
+    row.querySelector('input').addEventListener('change', updatePreview);
+    listEl.appendChild(row);
+  });
+  updatePreview();
+  const overlay = document.getElementById('sell-relic-overlay');
+  overlay.classList.add('show');
+  okBtn.onclick = ()=>{
+    const checked = Array.from(listEl.querySelectorAll('input:checked')).map(i=>i.value);
+    if(checked.length===0) return;
+    itemInventory[itemId] -= 1;
+    const xpEach = RELIC_SELL_XP/checked.length;
+    checked.forEach(cid=> awardXp(cid, xpEach));
+    refreshAllInventoryPanels();
+    if(document.getElementById('screen-roster').classList.contains('active')) renderRoster();
+    if(document.getElementById('screen-position').classList.contains('active')) renderPositionScreen();
+    overlay.classList.remove('show');
+  };
+  document.getElementById('sell-relic-cancel').onclick = ()=> overlay.classList.remove('show');
 }
 function scaledStat(base, level){ return Math.round(base * (1 + 0.08*(level-1))); }
 
@@ -2589,6 +2927,7 @@ function startPvpSetup(isTest){
   testMode = isTest;
   TEAM_MAX = isTest ? 5 : 3;
   pvpRound = 1;
+  jedegarProgress = {};
   logHistory = [];
   banterNextRoundP1 = {};
   banterNextRoundP2 = {};
@@ -2944,9 +3283,11 @@ function healFracture(now){
   scheduleNextFracture(now);
 }
 
+// Pilares da Jedegar: hexKey -> {q, r, ownerId, hitsTaken, hitsNeeded, boostUntil, createdAt}
+let jedegarStructures = {};
 function isBlockedTile(h){
   const k = hexKey(h);
-  return obstacleHexes.has(k) || voidHexes.has(k) || fractureHexes.has(k);
+  return obstacleHexes.has(k) || voidHexes.has(k) || fractureHexes.has(k) || jedegarStructures[k] !== undefined;
 }
 function triggerScreenShake(intensity, durationMs){
   shakeUntil = performance.now() + durationMs;
@@ -2965,6 +3306,7 @@ function setupArenaForRound(roundNum){
   obstacleHexes = new Set();
   hazardHexes = new Set();
   voidHexes = new Set();
+  jedegarStructures = {};
   icePrisonHexes = [];
   portalPairs = [];
   supplyCrate = null;
@@ -3112,8 +3454,22 @@ function makeUnit(id, team, champId, def, level, q, r, statOverride, stars, item
     voltraDetonating: false, voltraDetonateUntil: 0,
     borrowedChampPower: null, vigorRegenAt: 0, imaProcAt: 0,
     lastPortalOrigin: null, portalCooldownUntil: 0,
-    isWave60Boss: false, ecoSummonAt: 0, ecoBlastAt: 0
+    isWave60Boss: false, ecoSummonAt: 0, ecoBlastAt: 0,
+    jedegarPillarTimer: 1500, jedegarShieldUntil: 0, jedegarDeathBuffUntil: 0, jedegarSecretBonus: false,
+    shavaSecretBonus: false,
+    shavaKickCooldown: 0, shavaHitCount: 0, shavaComboTargetId: null, shavaComboTargetHits: 0,
+    shavaWeakenUntil: 0, shavaArmorDebuffUntil: 0
   };
+}
+
+// Progresso da Jedegar que precisa sobreviver entre rodadas (as unidades são recriadas
+// do zero a cada rodada, mas "5 pilares no total" e o gatilho de 30% de vida são
+// marcos de PARTIDA inteira, não de uma rodada só).
+let jedegarProgress = {}; // "time_jedegar" -> {pillarsBuilt, milestoneReached, lowHpUsed, firstPillarAnnounced}
+function getJedegarProgress(u){
+  const key = u.team+'_jedegar';
+  if(!jedegarProgress[key]) jedegarProgress[key] = {pillarsBuilt:0, milestoneReached:false, lowHpUsed:false, firstPillarAnnounced:false};
+  return jedegarProgress[key];
 }
 
 /* ============ POSITION SELECT ============ */
@@ -3275,6 +3631,7 @@ function renderPositionScreen(){
     if(!pos) return;
     const p = hexToPixel(pos.q, pos.r);
     const g = document.createElementNS('http://www.w3.org/2000/svg','g');
+    g.dataset.champId = cid;
     g.style.cursor = 'pointer';
     const circ = document.createElementNS('http://www.w3.org/2000/svg','circle');
     circ.setAttribute('cx',p.x); circ.setAttribute('cy',p.y); circ.setAttribute('r',15);
@@ -3287,7 +3644,7 @@ function renderPositionScreen(){
     label.setAttribute('class','hex-label');
     label.textContent = def.name;
     g.appendChild(label);
-    g.addEventListener('click', (e)=>{ e.stopPropagation(); posSelectedChamp = cid; renderPositionScreen(); });
+    g.addEventListener('pointerdown', (e)=> onUnitPointerDown(e, cid));
     svgEl.appendChild(g);
   });
 
@@ -3297,10 +3654,39 @@ function renderPositionScreen(){
     const def = CHAMPION_CATALOG[cid];
     const chip = document.createElement('div');
     chip.className = 'champ-card bg-'+def.element + (posSelectedChamp===cid ? ' selected' : '');
-    chip.innerHTML = `<div class="champ-name">${def.name}</div><span class="champ-tag elem-${def.element}">${def.element.toUpperCase()}</span>`;
-    chip.addEventListener('click', ()=>{ posSelectedChamp = (posSelectedChamp===cid ? null : cid); renderPositionScreen(); });
+    chip.innerHTML = `<div class="champ-name">${def.name}</div><span class="champ-tag elem-${def.element}">${def.element.toUpperCase()}</span>${buildEquipSlotsHtml(cid)}`;
+    chip.addEventListener('click', (e)=>{
+      if(e.target.closest('.equip-slot')) return; // clique num slot não seleciona pra posicionar
+      posSelectedChamp = (posSelectedChamp===cid ? null : cid);
+      renderPositionScreen();
+    });
     chipsEl.appendChild(chip);
   });
+  chipsEl.querySelectorAll('[data-equip-slot]').forEach(slotEl=>{
+    slotEl.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      const champId = slotEl.dataset.equipSlot;
+      const slot = parseInt(slotEl.dataset.slotIndex,10);
+      const prog = owned[champId];
+      const oldItemId = prog.itemIds[slot];
+      if(!oldItemId) return;
+      itemInventory[oldItemId] = (itemInventory[oldItemId]||0) + 1;
+      prog.itemIds[slot] = null;
+      renderPositionScreen();
+    });
+  });
+  chipsEl.querySelectorAll('[data-equip-relic]').forEach(slotEl=>{
+    slotEl.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      const champId = slotEl.dataset.equipRelic;
+      const prog = owned[champId];
+      if(!prog.relicId) return;
+      itemInventory[prog.relicId] = (itemInventory[prog.relicId]||0) + 1;
+      prog.relicId = null;
+      renderPositionScreen();
+    });
+  });
+  renderInventoryPanel('position-inventory-grid');
 }
 
 function onPositionHexClick(q, r){
@@ -3312,6 +3698,80 @@ function onPositionHexClick(q, r){
   }
   posDraft[posSelectedChamp] = {q, r};
   posSelectedChamp = null;
+  renderPositionScreen();
+}
+
+/* ============ ARRASTAR STACK USER PELA ARENA (fase de posicionamento) ============ */
+function onUnitPointerDown(e, cid){
+  e.stopPropagation();
+  e.preventDefault();
+  const startX = e.clientX, startY = e.clientY;
+  let started = false;
+  function moveCheck(ev){
+    if(started) return;
+    if(Math.abs(ev.clientX-startX)>6 || Math.abs(ev.clientY-startY)>6){
+      started = true;
+      window.removeEventListener('pointermove', moveCheck);
+      window.removeEventListener('pointerup', upCheck);
+      beginUnitDrag(ev, cid);
+    }
+  }
+  function upCheck(){
+    window.removeEventListener('pointermove', moveCheck);
+    window.removeEventListener('pointerup', upCheck);
+    if(!started){
+      // foi só um clique — mantém o comportamento original (seleciona, clica no hex depois)
+      posSelectedChamp = (posSelectedChamp===cid ? null : cid);
+      renderPositionScreen();
+    }
+  }
+  window.addEventListener('pointermove', moveCheck);
+  window.addEventListener('pointerup', upCheck, { once:true });
+}
+let unitDragState = null;
+function beginUnitDrag(e, cid){
+  const ghost = document.getElementById('unit-drag-ghost');
+  ghost.textContent = CHAMPION_CATALOG[cid].name;
+  ghost.style.display = 'block';
+  ghost.style.left = e.clientX+'px';
+  ghost.style.top = e.clientY+'px';
+  unitDragState = { cid, hoverHex: null };
+  window.addEventListener('pointermove', onUnitDragMove);
+  window.addEventListener('pointerup', onUnitDragEnd, { once:true });
+}
+function onUnitDragMove(e){
+  if(!unitDragState) return;
+  const ghost = document.getElementById('unit-drag-ghost');
+  ghost.style.left = e.clientX+'px';
+  ghost.style.top = e.clientY+'px';
+  const under = document.elementFromPoint(e.clientX, e.clientY);
+  const hexEl = under ? under.closest('polygon') : null;
+  const validHex = (hexEl && hexEl.dataset.q!==undefined) ? hexEl : null;
+  if(unitDragState.hoverHex && unitDragState.hoverHex !== validHex){
+    unitDragState.hoverHex.classList.remove('position-hex-hover');
+  }
+  if(validHex){ validHex.classList.add('position-hex-hover'); }
+  unitDragState.hoverHex = validHex;
+}
+function onUnitDragEnd(e){
+  window.removeEventListener('pointermove', onUnitDragMove);
+  if(!unitDragState) return;
+  const under = document.elementFromPoint(e.clientX, e.clientY);
+  const hexEl = under ? under.closest('polygon') : null;
+  document.getElementById('unit-drag-ghost').style.display = 'none';
+  if(hexEl) hexEl.classList.remove('position-hex-hover');
+  if(hexEl && hexEl.dataset.q!==undefined){
+    const q = parseInt(hexEl.dataset.q,10), r = parseInt(hexEl.dataset.r,10);
+    if(isZoneHex({q,r}, posSide)){
+      const cid = unitDragState.cid;
+      const occupantId = Object.keys(posDraft).find(oid => posDraft[oid].q===q && posDraft[oid].r===r);
+      const oldPos = posDraft[cid];
+      if(occupantId && occupantId!==cid){ posDraft[occupantId] = oldPos; }
+      posDraft[cid] = {q, r};
+    }
+  }
+  posSelectedChamp = null;
+  unitDragState = null;
   renderPositionScreen();
 }
 
@@ -3333,6 +3793,7 @@ function buildTeams(playerIds1, playerIds2OrEnemies, mode2p, ownedSrc1, ownedSrc
     const slot = teamP1Positions[cid] || playerSlots[i] || playerSlots[playerSlots.length-1];
     units.push(makeUnit(id++, 'player', cid, def, prog.level, slot.q, slot.r, statOverride, prog.stars, effectiveItemIds(prog)));
   });
+  applySecretPassives(units.filter(u=>u.team==='player'));
 
   if(mode2p){
     playerIds2OrEnemies.forEach((cid,i)=>{
@@ -3342,11 +3803,34 @@ function buildTeams(playerIds1, playerIds2OrEnemies, mode2p, ownedSrc1, ownedSrc
       const slot = teamP2Positions[cid] || enemySlots[i] || enemySlots[enemySlots.length-1];
       units.push(makeUnit(id++, 'enemy', cid, def, prog.level, slot.q, slot.r, statOverride, prog.stars, effectiveItemIds(prog)));
     });
+    applySecretPassives(units.filter(u=>u.team==='enemy'));
   } else {
     playerIds2OrEnemies.forEach((cid,i)=>{
       const def = ENEMY_CATALOG[cid];
       units.push(makeUnit(id++, 'enemy', cid, def, 1, enemySlots[i].q, enemySlots[i].r));
     });
+  }
+}
+
+// Passivas secretas entre duplas específicas — como as unidades são recriadas do zero a cada
+// rodada/formação de time, isso já "desativa sozinho" se o jogador tirar alguém do time (a
+// próxima vez que buildTeams rodar, a dupla simplesmente não vai mais estar junta).
+function applySecretPassives(sideUnits){
+  const jedegar = sideUnits.find(u=>u.champId==='jedegar');
+  const terrus = sideUnits.find(u=>u.champId==='terrus');
+  if(jedegar && terrus){
+    jedegar.jedegarSecretBonus = true;
+    terrus.dmgReduction = Math.min(0.75, (terrus.dmgReduction||0) + 0.10);
+    log('Jedegar e Terrus receberam bônus.', 'sys');
+  }
+  const shava = sideUnits.find(u=>u.champId==='shava');
+  const kael = sideUnits.find(u=>u.champId==='kael');
+  if(shava && kael){
+    shava.shavaSecretBonus = true;
+    shava.hp = Math.round(shava.hp*1.10); shava.maxhp = shava.hp;
+    kael.shavaSecretBonus = true;
+    kael.hp = Math.round(kael.hp*1.10); kael.maxhp = kael.hp;
+    log('Shava e Kael receberam bônus.', 'sys');
   }
 }
 
@@ -3506,6 +3990,7 @@ function startPveRun(){
   inMatch = true;
   currentEnemyCount = 3;
   activeBlessings = [];
+  jedegarProgress = {};
   bossDefeatCount = 0;
   bossCountedThisWave = false;
   interactionFiredThisRound = false;
@@ -3995,6 +4480,37 @@ function countItem(u, itemId){ return (u.itemIds||[]).filter(x=>x===itemId).leng
 // Multiplicador de força de passiva — cresce com o Núcleo Amplificador equipado (até 3x, +20% cada).
 function passiveAmp(u){ return 1 + 0.20*countItem(u,'amplificador') + 0.30*countItem(u,'nucleo_eterno'); }
 
+// Pilares da Jedegar amplificam o dano de aliados no raio de 2 blocos (15%, 30% depois do
+// marco de 5 pilares), e o golpe que atinge um pilar libera +15% temporário por 3s.
+// Não empilha entre pilares diferentes — pega sempre o melhor bônus disponível.
+function jedegarAuraMultiplier(u){
+  const now = performance.now();
+  let mult = 1;
+  Object.values(jedegarStructures).forEach(s=>{
+    if(s.ownerTeam !== u.team) return;
+    if(hexDistance(s, u) > 2) return;
+    const owner = units.find(o=>o.id===s.ownerId);
+    const milestoneUp = owner ? getJedegarProgress(owner).milestoneReached : false;
+    let bonus = milestoneUp ? 0.30 : 0.15;
+    if(s.boostUntil && now < s.boostUntil) bonus += 0.15;
+    mult = Math.max(mult, 1+bonus);
+  });
+  if(u.jedegarSecretBonus) mult += 0.10;
+  return mult;
+}
+// Depois do marco de 5 pilares, inimigos perto de QUALQUER pilar perdem 30% de defesa.
+function jedegarEnemyDefenseDebuff(u){
+  const now = performance.now();
+  let found = false;
+  Object.values(jedegarStructures).forEach(s=>{
+    if(s.ownerTeam === u.team) return; // só afeta quem NÃO é do time da Jedegar
+    if(hexDistance(s, u) > 2) return;
+    const owner = units.find(o=>o.id===s.ownerId);
+    if(owner && getJedegarProgress(owner).milestoneReached) found = true;
+  });
+  return found;
+}
+
 // ---- Brasa Selvagem: item ativo independente do ciclo de ataque normal ----
 let emberEvents = []; // {time, targetId, type}
 function emberBaseDmg(u){
@@ -4287,6 +4803,16 @@ const DUO_BANTER = [
     {speaker:'kael', text:'Eu posso calar sua boca com um soco. Isso resolveria.'},
     {speaker:'terrus', text:'Tenta a sorte.'},
   ]},
+  {pair:['jedegar','terrus'], lines:[
+    {speaker:'jedegar', text:'Terrus... é você mesmo? O guardião que protegeu minha vila?'},
+    {speaker:'terrus', text:'...não me lembro de você.'},
+    {speaker:'jedegar', text:'Não precisa lembrar. Eu nunca esqueci.'},
+  ]},
+  {pair:['shava','kael'], lines:[
+    {speaker:'shava', text:'Sei de onde você vem. Minha vila nunca esqueceu o que a sua fez.'},
+    {speaker:'kael', text:'Eu nem tinha nascido. Mas se quer briga, eu aceito.'},
+    {speaker:'shava', text:'Não é briga. É questão de honra.'},
+  ]},
   {pair:['terrus','shecry'], lines:[
     {speaker:'shecry', text:'Você nunca perde a paciência, Terrus.'},
     {speaker:'terrus', text:'Pressa é o que quebra pedra antes da hora.'},
@@ -4417,7 +4943,7 @@ function applyDamage(attacker, target, baseDmg, tag, ignoreDefense){
     }
   }
   const mult = elemMultiplier(attacker.element, target.element);
-  let dmg = Math.round(baseDmg * mult);
+  let dmg = Math.round(baseDmg * mult * jedegarAuraMultiplier(attacker) * (attacker.jedegarDeathBuffUntil && now < attacker.jedegarDeathBuffUntil ? 1.25 : 1) * (attacker.shavaSecretBonus ? 1.15 : 1) * (attacker.shavaWeakenUntil && now < attacker.shavaWeakenUntil ? 0.75 : 1));
   if(countItem(attacker,'furia_crescente')>0 && Math.random()<0.18){
     dmg = Math.round(dmg*1.5);
     spawnFloatText(attacker.rx, attacker.ry-36, 'CRÍTICO!', '#e8c250');
@@ -4441,6 +4967,9 @@ function applyDamage(attacker, target, baseDmg, tag, ignoreDefense){
     if(countItem(attacker,'carniceiro')>0) armorPenPct = Math.max(armorPenPct, 0.25);
     if(countItem(attacker,'fio_mortal')>0) armorPenPct = Math.max(armorPenPct, 0.25);
     if(armorPenPct>0) effectiveReduction = effectiveReduction * (1-Math.min(1,armorPenPct));
+    if(jedegarEnemyDefenseDebuff(target)) effectiveReduction = Math.max(0, effectiveReduction - 0.30);
+    if(target.jedegarShieldUntil && now < target.jedegarShieldUntil) effectiveReduction = Math.min(0.9, effectiveReduction + 0.20);
+    if(target.shavaArmorDebuffUntil && now < target.shavaArmorDebuffUntil) effectiveReduction = Math.max(0, effectiveReduction - 0.20);
     if(effectiveReduction) dmg = Math.round(dmg*(1-effectiveReduction));
     if(target.special==='couraca' || effectiveReduction) spawnCastEffect(target.rx, target.ry, target.color);
   }
@@ -4486,6 +5015,22 @@ function applyDamage(attacker, target, baseDmg, tag, ignoreDefense){
     triggerScreenShake(6, 180);
   }
 
+  if(target.champId==='jedegar' && target.hp>0 && target.hp/target.maxhp<=0.30){
+    const jprog = getJedegarProgress(target);
+    if(!jprog.lowHpUsed){
+      jprog.lowHpUsed = true;
+      const nearEnemy = units.filter(o=>o.alive && o.team!==target.team).sort((a,b)=>hexDistance(target,a)-hexDistance(target,b))[0];
+      if(nearEnemy){
+        knockbackUnit(target, nearEnemy, 8); // ergue um pilar debaixo dele, arremessando longe
+        knockbackUnit(nearEnemy, target, 4); // ela foge sobre uma fileira de pedra recém-criada
+      }
+      spawnCastEffect(target.rx, target.ry, '#8a6a4a');
+      spawnFloatText(target.rx, target.ry-40, 'PILAR DE FUGA!', '#8a6a4a');
+      log(`${target.name} ergue um pilar sob o inimigo mais próximo, arremessando-o longe, e foge sobre uma fileira de pedra recém-criada!`, 'hl');
+      triggerScreenShake(8, 260);
+    }
+  }
+
   if((target.champId==='raio' || target.borrowedChampPower==='raio') && !target.comboActive && target.comboHpArmed && target.hp>0 && target.hp/target.maxhp<=0.10){
     target.comboHpArmed = false;
     triggerComboUltimate(target, attacker);
@@ -4518,6 +5063,31 @@ function applyDamage(attacker, target, baseDmg, tag, ignoreDefense){
     if(healAmt>0){
       attacker.hp = Math.min(attacker.maxhp, attacker.hp + healAmt);
       spawnFloatText(attacker.rx, attacker.ry-52, `+${healAmt} vida`, '#c2445a');
+    }
+  }
+  if(dmg>0 && attacker.champId==='shava'){
+    attacker.shavaHitCount = (attacker.shavaHitCount||0) + 1;
+    if(attacker.shavaHitCount % 3 === 0){
+      const shavaHealAmt = Math.round(dmg*0.10);
+      attacker.hp = Math.min(attacker.maxhp, attacker.hp + shavaHealAmt);
+      spawnFloatText(attacker.rx, attacker.ry-52, `+${shavaHealAmt} vida`, '#c9d9e8');
+    }
+    if(attacker.shavaComboTargetId === target.id){
+      attacker.shavaComboTargetHits = (attacker.shavaComboTargetHits||0) + 1;
+    } else {
+      attacker.shavaComboTargetId = target.id;
+      attacker.shavaComboTargetHits = 1;
+    }
+    if(attacker.shavaComboTargetHits % 6 === 0){
+      spawnFloatText(attacker.rx, attacker.ry-58, 'Ápice da tormenta!', '#c9d9e8', 'dramatic');
+      log(`${attacker.name}: "Ápice da tormenta!"`, 'hl');
+      const vortexNearby = units.filter(o=>o.alive && o.team!==attacker.team && o.id!==target.id && hexDistance(attacker,o)<=2);
+      if(vortexNearby.length){
+        vortexNearby.forEach(o=>{ applyCC(o, 800, attacker.element); knockbackUnit(attacker, o, 1); });
+        spawnCastEffect(attacker.rx, attacker.ry, '#c9d9e8');
+        triggerScreenShake(6, 200);
+        log(`${attacker.name} cria um vórtice, empurrando e atordoando ${vortexNearby.length} inimigo${vortexNearby.length>1?'s':''} ao redor!`, 'hl');
+      }
     }
   }
   if(target.hp<=0){
@@ -4640,6 +5210,28 @@ function applyDamage(attacker, target, baseDmg, tag, ignoreDefense){
           triggerScreenShake(8, 260);
           log(`Os tentáculos de ${target.name} entram em frenesi!`, 'hl');
         }
+      }
+      if(target.champId==='jedegar'){
+        const jedegarDeathPhrase = 'A morte é apenas uma nova etapa de nossa ascensão!';
+        spawnFloatText(target.rx, target.ry-64, jedegarDeathPhrase, '#8a6a4a', 'dramatic');
+        log(`${target.name}: "${jedegarDeathPhrase}"`, 'hl');
+        const jedegarAllies = units.filter(o=>o.alive && o.team===target.team && o.id!==target.id);
+        if(jedegarAllies.length){
+          jedegarAllies.sort((a,b)=>(a.hp/a.maxhp)-(b.hp/b.maxhp));
+          const jedegarChosen = jedegarAllies[0];
+          jedegarChosen.jedegarShieldUntil = now + 5000;
+          jedegarChosen.jedegarDeathBuffUntil = now + 5000;
+          spawnCastEffect(jedegarChosen.rx, jedegarChosen.ry, '#8a6a4a');
+          spawnFloatText(jedegarChosen.rx, jedegarChosen.ry-34, 'BÊNÇÃO DE JEDEGAR', '#8a6a4a');
+          log(`${target.name} ergue um círculo protetor ao redor de ${jedegarChosen.name} — escudo, dano e velocidade de ataque por 5 segundos!`, 'hl');
+        }
+        const jedegarDeadId = target.id;
+        setTimeout(()=>{
+          Object.keys(jedegarStructures).forEach(k=>{
+            if(jedegarStructures[k].ownerId === jedegarDeadId) delete jedegarStructures[k];
+          });
+        }, 5000);
+        triggerScreenShake(6, 220);
       }
       if(target.isTentacle){
         const parent = units.find(x=>x.id===target.tentacleParentId);
@@ -4785,9 +5377,33 @@ function getTentacleTarget(t){
   return inRange[Math.floor(Math.random()*inRange.length)];
 }
 
+function tryAttackNearbyStructure(u){
+  const now = performance.now();
+  const entries = Object.entries(jedegarStructures).filter(([k,s])=> s.ownerTeam !== u.team && hexDistance(u,s) <= u.range);
+  if(entries.length===0) return false;
+  const [key, s] = entries[0];
+  s.hitsTaken += 1;
+  const p = hexToPixel(s.q, s.r);
+  spawnFloatText(p.x, p.y-20, 'PILAR ATINGIDO', '#c9a53a');
+  triggerScreenShake(3, 150);
+  // libera energia: fortalece os pilares aliados próximos por 3s
+  Object.values(jedegarStructures).forEach(other=>{
+    if(other===s || other.ownerTeam!==s.ownerTeam) return;
+    if(hexDistance(other, s) <= 2) other.boostUntil = now + 3000;
+  });
+  const needed = u.isBoss ? 1 : s.hitsNeeded;
+  if(s.hitsTaken >= needed){
+    delete jedegarStructures[key];
+    log('Um pilar de Jedegar foi destruído.', 'sys');
+  }
+  return true;
+}
 function doAction(u){
   const target = u.isTentacle ? getTentacleTarget(u) : nearestEnemy(u);
-  if(!target) return;
+  if(!target){
+    tryAttackNearbyStructure(u);
+    return;
+  }
   const dist = hexDistance(u,target);
   if(dist <= u.range){
     if(u.range>1 && dist===1 && !u.cantMove && performance.now() >= (u.kiteCooldownUntil||0)){
@@ -5069,6 +5685,103 @@ function updateBattleLogic(dt){
       }
     }
 
+    if(u.champId==='shava' && u.alive){
+      u.shavaKickCooldown -= dt;
+      if(u.shavaKickCooldown<=0){
+        const enemies = units.filter(o=>o.alive && o.team!==u.team);
+        const inRange = enemies.filter(o=>{ const d=hexDistance(u,o); return d>=3 && d<=5; });
+        if(inRange.length){
+          inRange.sort((a,b)=>b.hp-a.hp); // prioriza quem tem mais vida
+          const kickTarget = inRange[0];
+          u.shavaKickCooldown = 10000;
+
+          // avança até perto do alvo
+          const occ = occupiedMap();
+          const adjacentFree = neighbors(kickTarget).filter(n=>inGrid(n) && !isBlockedTile(n) && occ[hexKey(n)]===undefined);
+          if(adjacentFree.length){
+            adjacentFree.sort((a,b)=>hexDistance(a,u)-hexDistance(b,u));
+            u.q = adjacentFree[0].q; u.r = adjacentFree[0].r;
+            const p = hexToPixel(u.q,u.r);
+            u.rx=p.x; u.ry=p.y; u.targetRx=p.x; u.targetRy=p.y;
+            checkPortalTeleport(u);
+          }
+          spawnFloatText(u.rx, u.ry-40, 'Golpe aéreo', '#c9d9e8', 'dramatic');
+          log(`${u.name}: "Golpe aéreo"`, 'hl');
+          spawnCastEffect(u.rx, u.ry, '#c9d9e8');
+          triggerScreenShake(5, 180);
+
+          if(kickTarget.hp>0 && kickTarget.hp/kickTarget.maxhp < 0.10){
+            // execução na hora
+            kickTarget.hp = 0; kickTarget.alive = false;
+            spawnFloatText(u.rx, u.ry-58, 'Golpe aéreo: último sopro', '#c9d9e8', 'dramatic');
+            log(`${u.name}: "Golpe aéreo: último sopro"`, 'hl');
+            log(`${u.name} executa ${kickTarget.name}!`, 'hl');
+            if(kickTarget.team==='player'){ roundDeaths.push(kickTarget.name); ensureMatchStats(kickTarget.champId).deaths++; }
+            spawnCastEffect(kickTarget.rx, kickTarget.ry, '#c9d9e8');
+            // arremessa o corpo em outro inimigo próximo — atordoa, sem causar dano
+            const others = units.filter(o=>o.alive && o.team===kickTarget.team && o.id!==kickTarget.id && hexDistance(kickTarget,o)<=2);
+            if(others.length){
+              const thrown = others[Math.floor(Math.random()*others.length)];
+              applyCC(thrown, 2000, u.element);
+              thrown.shavaWeakenUntil = now + 5000;
+              spawnFloatText(thrown.rx, thrown.ry-30, 'ATINGIDO PELO CORPO', '#c9d9e8');
+              log(`O corpo de ${kickTarget.name} acerta ${thrown.name} — atordoado, com dano reduzido por 5s.`, 'hl');
+            }
+            if(mode==='pve' && kickTarget.team==='enemy' && !units.some(o=>o.alive && o.team==='enemy')){
+              triggerFinisherSequence(u, ()=>{ checkVictory(); });
+            }
+          } else {
+            // repulsão — dano dobrado, e se bater em algo, atordoa + reduz armadura
+            spawnFloatText(u.rx, u.ry-58, 'Golpe aéreo: onda de ar', '#c9d9e8', 'dramatic');
+            log(`${u.name}: "Golpe aéreo: onda de ar"`, 'hl');
+            applyDamage(u, kickTarget, u.atk*2, '💨', false);
+            if(kickTarget.alive){
+              const beforeQ = kickTarget.q, beforeR = kickTarget.r;
+              knockbackUnit(u, kickTarget, 5);
+              const traveled = hexDistance({q:beforeQ,r:beforeR}, kickTarget);
+              if(traveled < 5){
+                // não percorreu a distância inteira — bateu em obstáculo/parede/estrutura/fenda
+                applyCC(kickTarget, 4000, u.element);
+                kickTarget.shavaArmorDebuffUntil = now + 3000;
+                spawnFloatText(kickTarget.rx, kickTarget.ry-30, 'BATEU NA PAREDE!', '#c9d9e8');
+                log(`${kickTarget.name} bate contra um obstáculo — atordoado, com armadura reduzida por 3s.`, 'hl');
+                triggerScreenShake(6, 200);
+              }
+            }
+          }
+        }
+      }
+    }
+
+    if(u.champId==='jedegar' && u.alive){
+      u.jedegarPillarTimer -= dt;
+      if(u.jedegarPillarTimer<=0){
+        u.jedegarPillarTimer = 1500;
+        const occ = occupiedMap();
+        const freeNeighbors = neighbors(u).filter(n=> inGrid(n) && !isBlockedTile(n) && occ[hexKey(n)]===undefined);
+        if(freeNeighbors.length>0){
+          // prioriza um hex livre que também fique colado num aliado vivo (além dela mesma)
+          const allies = units.filter(o=>o.alive && o.team===u.team && o.id!==u.id);
+          let chosen = freeNeighbors.find(n=> allies.some(a=> hexDistance(n,a)===1));
+          if(!chosen) chosen = freeNeighbors[0];
+          jedegarStructures[hexKey(chosen)] = {q:chosen.q, r:chosen.r, ownerId:u.id, ownerTeam:u.team, hitsTaken:0, hitsNeeded:2, boostUntil:0, createdAt:now};
+          const prog = getJedegarProgress(u);
+          prog.pillarsBuilt++;
+          if(!prog.firstPillarAnnounced){
+            prog.firstPillarAnnounced = true;
+            spawnFloatText(u.rx, u.ry-40, 'Ascensão do pico celeste', '#c9a53a');
+            log(`${u.name}: "Ascensão do pico celeste"`, 'hl');
+          }
+          if(prog.pillarsBuilt>=5 && !prog.milestoneReached){
+            prog.milestoneReached = true;
+            spawnFloatText(u.rx, u.ry-56, 'Estamos a um passo do paraíso!', '#e8c250');
+            log(`${u.name}: "Estamos a um passo do paraíso!" — os pilares dela ficam permanentemente muito mais fortes!`, 'hl');
+            triggerScreenShake(6, 300);
+          }
+        }
+      }
+    }
+
     if(u.frostburnActive && u.alive){
       u.frostburnTimer -= dt;
       if(u.frostburnTimer<=0){
@@ -5114,6 +5827,7 @@ function updateBattleLogic(dt){
       if(u.electroSlowUntil && now < u.electroSlowUntil) effSpeed *= (1 - u.electroSlowPct);
       if(u.tentacleFrenzy) effSpeed *= 1.6;
       if(u.overloadUntil && now < u.overloadUntil) effSpeed *= 1.3;
+      if(u.jedegarDeathBuffUntil && now < u.jedegarDeathBuffUntil) effSpeed *= 1.25;
       const nearbyShecry = units.find(o=>o.alive && o.champId==='shecry' && o.team!==u.team && o.shecryUltUntil && now<o.shecryUltUntil && hexDistance(o,u)<=2);
       if(nearbyShecry){
         const totalDur = 6000*passiveAmp(nearbyShecry);
@@ -5247,6 +5961,30 @@ function renderPrepStats(){
   el.innerHTML = html || '<div style="opacity:.6;">Sem eventos nesta rodada.</div>';
 }
 
+function updateGlobalPrepTimer(t){
+  const badge = document.getElementById('global-prep-timer');
+  if(!badge) return;
+  badge.style.display = 'inline-block';
+  badge.textContent = `⏱ Próxima onda: ${t}s`;
+  if(t<=10){
+    badge.classList.add('danger');
+    const intensity = Math.max(0, Math.min(1, (10-t)/10));
+    const steel = [139,149,163], red = [232,57,74];
+    const mix = steel.map((c,i)=> Math.round(c + (red[i]-c)*intensity));
+    badge.style.color = `rgb(${mix.join(',')})`;
+    badge.style.borderColor = `rgb(${mix.join(',')})`;
+    badge.style.setProperty('--danger-glow', (0.2 + intensity*0.7).toFixed(2));
+    badge.style.animationDuration = Math.max(0.28, (t/10)).toFixed(2)+'s';
+  } else {
+    badge.classList.remove('danger');
+    badge.style.color = '';
+    badge.style.borderColor = '';
+  }
+}
+function hideGlobalPrepTimer(){
+  const badge = document.getElementById('global-prep-timer');
+  if(badge){ badge.style.display = 'none'; badge.classList.remove('danger'); }
+}
 function startPrepTimer(){
   const overlay = document.getElementById('prep-overlay');
   const timerEl = document.getElementById('prep-timer');
@@ -5254,8 +5992,9 @@ function startPrepTimer(){
   renderPrepStats();
   overlay.style.display = 'flex';
   showTeamSuggestion(teamP1);
-  let t = wave>=5 ? 40 : 15;
+  let t = wave>=5 ? 40 : 20;
   timerEl.textContent = t;
+  updateGlobalPrepTimer(t);
   let paused = false;
   const readLogBtn = document.getElementById('read-log-btn');
   readLogBtn.textContent = 'Ler registro';
@@ -5263,6 +6002,7 @@ function startPrepTimer(){
     if(paused) return;
     t--;
     timerEl.textContent = t;
+    updateGlobalPrepTimer(t);
     if(t<=0){ finishPrep(); return; }
     prepTimerHandle = setTimeout(tick, 1000);
   }
@@ -5281,6 +6021,7 @@ function startPrepTimer(){
 }
 function finishPrep(){
   document.getElementById('prep-overlay').style.display='none';
+  hideGlobalPrepTimer();
   activeXpDebuffs = pendingXpDebuffChamp ? [pendingXpDebuffChamp] : [];
   pendingXpDebuffChamp = null;
   recomputeNewcomerBuffs();
@@ -5386,6 +6127,21 @@ function renderFrame(){
       tower.setAttribute('fill', '#5a5f68');
       tower.setAttribute('stroke', '#8a8f99');
       svg.appendChild(tower);
+    }
+    if(jedegarStructures[hk]){
+      const s = jedegarStructures[hk];
+      const boosted = s.boostUntil && performance.now() < s.boostUntil;
+      const dmgFrac = s.hitsTaken / s.hitsNeeded; // 0 = intacto, se aproxima de 1 = quase caindo
+      const pillar = document.createElementNS('http://www.w3.org/2000/svg','polygon');
+      pillar.setAttribute('points', `${p.x-7},${p.y+11} ${p.x-9},${p.y-9} ${p.x},${p.y-16} ${p.x+9},${p.y-9} ${p.x+7},${p.y+11}`);
+      pillar.setAttribute('fill', boosted ? '#c9a53a' : '#8a6a4a');
+      pillar.setAttribute('stroke', boosted ? '#e8c250' : '#5a4530');
+      pillar.setAttribute('stroke-width', '1.5');
+      pillar.setAttribute('opacity', (1 - dmgFrac*0.35).toFixed(2));
+      if(boosted){
+        pillar.style.filter = 'drop-shadow(0 0 4px rgba(232,194,80,0.85))';
+      }
+      svg.appendChild(pillar);
     }
     if(hazardHexes.has(hk)){
       const pulse = 0.5 + 0.3*Math.sin(now0/200);
