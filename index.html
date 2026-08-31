@@ -25,6 +25,7 @@
     --hp-good:#7bbf6a; --hp-bad:#c94d3d; --gold:#e8c250;
   }
   *{box-sizing:border-box;}
+  html, body{ overflow-x:hidden; }
   body{
     margin:0; background:radial-gradient(circle at 20% 10%, #24272d 0%, var(--iron-dark) 55%);
     color:var(--steel); font-family:'Oswald',sans-serif; min-height:100vh; padding:20px;
@@ -84,6 +85,14 @@
     body{padding:8px;}
     .topbar{margin-bottom:8px;}
     .arena-wrap{min-height:260px;}
+    .battle-layout{grid-template-columns:1fr;}
+  }
+  @media (max-width:900px), (max-height:520px){
+    #top-utility-bar{
+      position:static; display:flex; flex-wrap:wrap; justify-content:center;
+      margin:0 0 10px 0; max-width:100%;
+    }
+    #roster-layout, #position-layout{ max-width:100%; }
   }
   #fps{position:absolute;top:8px;left:10px;font-family:'JetBrains Mono',monospace;font-size:10px;color:#556;}
   #roundinfo{position:absolute;top:6px;left:50%;transform:translateX(-50%);font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--molten);text-align:center;}
@@ -1342,6 +1351,24 @@
     if(soundHint) soundHint.style.opacity = '0';
     return true;
   }
+
+  // usado quando a partida de verdade começa — a música do lobby não faz sentido continuar
+  // tocando durante a batalha, então some com um fade curtinho em vez de cortar seco.
+  window.stopIntroMusic = function(fadeMs){
+    if(!audioIsPlaying || !sourceNode) return;
+    fadeMs = fadeMs || 600;
+    try{
+      if(gainNode && audioCtx){
+        const now2 = audioCtx.currentTime;
+        gainNode.gain.cancelScheduledValues(now2);
+        gainNode.gain.setValueAtTime(gainNode.gain.value, now2);
+        gainNode.gain.linearRampToValueAtTime(0, now2 + fadeMs/1000);
+      }
+      const nodeToStop = sourceNode;
+      setTimeout(()=>{ try{ nodeToStop.stop(); }catch(e){} }, fadeMs + 50);
+      audioIsPlaying = false;
+    }catch(e){}
+  };
 
   let audioUnlockRequested = false;
   function tryPlayAudio(){
@@ -2852,6 +2879,7 @@ function openStarterPick(){
 }
 
 document.getElementById('mode-pve').addEventListener('click', ()=>{
+  if(typeof window.stopIntroMusic === 'function') window.stopIntroMusic();
   mode = 'pve'; teamSelectStage='solo'; teamP1=[]; wave=1; totalCoinsThisRun=0;
   editingMidRun=false; editingMidRunSide='solo'; newcomerChamps=new Set(); activeXpDebuffs=[]; pendingXpDebuffChamp=null;
   testMode=false; TEAM_MAX=3;
@@ -2962,7 +2990,7 @@ function startPvpSetup(isTest){
     });
   });
 }
-document.getElementById('mode-pvp').addEventListener('click', ()=>{ setMenuLocked(true); startPvpSetup(false); });
+document.getElementById('mode-pvp').addEventListener('click', ()=>{ if(typeof window.stopIntroMusic === 'function') window.stopIntroMusic(); setMenuLocked(true); startPvpSetup(false); });
 
 let teamDraft = [];
 function openTeamSelect(title){
@@ -4239,6 +4267,7 @@ function refreshContinueCard(){
 function resumeSavedGame(){
   const snap = loadGameSnapshot();
   if(!snap) return;
+  if(typeof window.stopIntroMusic === 'function') window.stopIntroMusic();
   mode = 'pve'; testMode = false; TEAM_MAX = 3;
   wave = snap.wave;
   teamP1 = snap.teamP1;
