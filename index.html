@@ -153,6 +153,8 @@
   }
   .inv-tile:hover{ border-color:var(--gold); }
   .inv-tile.dragging{ opacity:0.35; }
+  .inv-tile.selected-for-equip{ border-color:var(--gold); box-shadow:0 0 8px rgba(232,194,80,0.6); }
+  .ghost-btn.on{ border-color:var(--frost); color:var(--frost); }
   .inv-tile .inv-count{
     position:absolute; bottom:1px; right:2px; font-size:9px; font-family:'JetBrains Mono',monospace;
     color:#eae4d8; background:rgba(0,0,0,0.65); padding:0 3px; border-radius:3px; line-height:1.4;
@@ -784,11 +786,11 @@
   <button class="nav-btn" data-screen="roster">Meu Time</button>
   <button class="nav-btn" data-screen="recommended">Itens Recomendados</button>
   <button class="nav-btn" data-screen="achievements">Conquistas</button>
+  <button class="nav-btn" data-screen="profile">Perfil</button>
+  <button class="nav-btn" data-screen="settings">⚙️ Configurações</button>
   <button class="nav-btn" data-screen="battle" id="nav-battle-btn" style="display:none;">Batalha</button>
   <div class="coin-badge">🪙 <span id="coin-count">0</span> moedas</div>
   <button id="sound-toggle-btn" title="Som (desligado)">🔇 Som</button>
-  <button id="suggestions-toggle-btn" class="on" title="Sugestões de time (ligadas)">💡 Dicas</button>
-  <button id="feedback-btn" title="Mandar sugestão">💬 Feedback</button>
 </div>
 
 <!-- MENU -->
@@ -854,6 +856,49 @@
     <h2>Conquistas</h2>
     <div class="subtitle" style="margin-bottom:10px;" id="achievements-progress"></div>
     <div id="achievements-list" style="display:flex; flex-direction:column; gap:8px;"></div>
+  </div>
+</div>
+
+<!-- PERFIL -->
+<div class="screen" id="screen-profile">
+  <div class="panel">
+    <h2>Perfil</h2>
+    <div class="subtitle" style="margin-bottom:14px;">Seu nome fica só nesse navegador — ele não é enviado pra lugar nenhum.</div>
+    <label style="display:block; font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--molten); margin-bottom:4px;">Nome do jogador</label>
+    <input id="profile-name-input" type="text" maxlength="24" placeholder="Como você quer ser chamado?" style="width:100%; max-width:320px; box-sizing:border-box; padding:9px; background:#111; border:1px solid #3a3f47; border-radius:4px; color:#eae4d8; font-family:inherit; font-size:14px; margin-bottom:20px;">
+    <h2 style="font-size:16px;">🏅 Emblemas de conquista</h2>
+    <div class="subtitle" style="margin-bottom:10px;" id="profile-badges-progress"></div>
+    <div id="profile-badges-grid" style="display:grid; grid-template-columns:repeat(auto-fill,minmax(72px,1fr)); gap:10px;"></div>
+  </div>
+</div>
+
+<!-- CONFIGURAÇÕES -->
+<div class="screen" id="screen-settings">
+  <div class="panel">
+    <h2>Configurações</h2>
+    <div style="display:flex; flex-direction:column; gap:14px; max-width:420px;">
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; padding:12px; background:rgba(0,0,0,0.15); border:1px solid #3a3f47; border-radius:6px;">
+        <div>
+          <div style="font-family:'Oswald',sans-serif; font-size:14px; color:#eae4d8;">📱 Modo celular</div>
+          <div class="subtitle" style="margin:2px 0 0 0;">Troca o arrastar por clicar: clica no item, depois clica no Stack User pra equipar.</div>
+        </div>
+        <button id="mobile-mode-toggle-btn" class="ghost-btn">Desligado</button>
+      </div>
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; padding:12px; background:rgba(0,0,0,0.15); border:1px solid #3a3f47; border-radius:6px;">
+        <div>
+          <div style="font-family:'Oswald',sans-serif; font-size:14px; color:#eae4d8;">💡 Dicas de time</div>
+          <div class="subtitle" style="margin:2px 0 0 0;">Sugestões automáticas de composição de time.</div>
+        </div>
+        <button id="suggestions-toggle-btn" class="ghost-btn on">Ligado</button>
+      </div>
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; padding:12px; background:rgba(0,0,0,0.15); border:1px solid #3a3f47; border-radius:6px;">
+        <div>
+          <div style="font-family:'Oswald',sans-serif; font-size:14px; color:#eae4d8;">💬 Feedback</div>
+          <div class="subtitle" style="margin:2px 0 0 0;">Tem uma ideia ou sugestão? Manda pra gente.</div>
+        </div>
+        <button id="feedback-btn" class="ghost-btn">Mandar sugestão</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -1725,6 +1770,7 @@ document.querySelectorAll('.nav-btn').forEach(btn=>{
     if(s==='roster') renderRoster();
     if(s==='recommended') renderRecommended();
     if(s==='achievements') renderAchievementsList();
+    if(s==='profile') renderProfile();
     showScreen(s);
   });
 });
@@ -1847,6 +1893,35 @@ function trackCorruptedKill(){
   if(corruptedKillCount>=10) unlockAchievement('corrupted_hunter');
 }
 
+/* ============ PERFIL ============ */
+const PROFILE_NAME_KEY = 'ferroLancaPlayerName';
+function renderProfile(){
+  const nameInput = document.getElementById('profile-name-input');
+  try{
+    const savedName = localStorage.getItem(PROFILE_NAME_KEY);
+    if(savedName!==null) nameInput.value = savedName;
+  }catch(e){}
+  const ids = Object.keys(ACHIEVEMENTS);
+  const unlockedCount = ids.filter(id=>unlockedAchievements.has(id)).length;
+  document.getElementById('profile-badges-progress').textContent = `${unlockedCount} de ${ids.length} emblemas desbloqueados`;
+  const gridEl = document.getElementById('profile-badges-grid');
+  gridEl.innerHTML = ids.map(id=>{
+    const def = ACHIEVEMENTS[id];
+    const unlocked = unlockedAchievements.has(id);
+    const icon = (def.secret && !unlocked) ? '❓' : def.icon;
+    const label = (def.secret && !unlocked) ? '???' : def.name;
+    return `
+      <div title="${label}" style="display:flex; flex-direction:column; align-items:center; gap:4px; padding:8px 4px; background:${unlocked?'rgba(232,194,80,0.08)':'rgba(0,0,0,0.15)'}; border:1px solid ${unlocked?'var(--gold)':'#3a3f47'}; border-radius:6px;">
+        <div style="font-size:22px; opacity:${unlocked?1:0.25};">${icon}</div>
+        <div style="font-family:'JetBrains Mono',monospace; font-size:9px; text-align:center; color:${unlocked?'var(--gold)':'#8b95a3'}; line-height:1.2;">${label}</div>
+      </div>
+    `;
+  }).join('');
+}
+document.getElementById('profile-name-input').addEventListener('input', (e)=>{
+  try{ localStorage.setItem(PROFILE_NAME_KEY, e.target.value); }catch(err){}
+});
+
 function renderAchievementsList(){
   const ids = Object.keys(ACHIEVEMENTS);
   const unlockedCount = ids.filter(id=>unlockedAchievements.has(id)).length;
@@ -1944,11 +2019,21 @@ function setSuggestionsEnabled(on){
   suggestionsEnabled = on;
   const btn = document.getElementById('suggestions-toggle-btn');
   btn.classList.toggle('on', on);
+  btn.textContent = on ? 'Ligado' : 'Desligado';
   btn.title = on ? 'Sugestões de time (ligadas)' : 'Sugestões de time (desligadas)';
   try{ localStorage.setItem('ferroLancaSuggestionsEnabled', on?'1':'0'); }catch(e){}
   if(!on) document.getElementById('suggestion-popup').classList.remove('show');
 }
 document.getElementById('suggestions-toggle-btn').addEventListener('click', ()=> setSuggestionsEnabled(!suggestionsEnabled));
+
+document.getElementById('mobile-mode-toggle-btn').addEventListener('click', ()=>{
+  mobileEquipMode = !mobileEquipMode;
+  const btn = document.getElementById('mobile-mode-toggle-btn');
+  btn.textContent = mobileEquipMode ? 'Ligado' : 'Desligado';
+  btn.classList.toggle('on', mobileEquipMode);
+  selectedInventoryItem = null;
+  document.querySelectorAll('.inv-tile.selected-for-equip').forEach(t=>t.classList.remove('selected-for-equip'));
+});
 
 document.querySelectorAll('.item-filter-btn').forEach(btn=>{
   btn.addEventListener('click', ()=>{
@@ -2471,6 +2556,7 @@ function renderRoster(){
   });
   el.querySelectorAll('[data-equip-slot]').forEach(slotEl=>{
     slotEl.addEventListener('click', ()=>{
+      if(tryEquipSelectedItem(slotEl)) return;
       const champId = slotEl.dataset.equipSlot;
       const slot = parseInt(slotEl.dataset.slotIndex,10);
       const prog = owned[champId];
@@ -2483,6 +2569,7 @@ function renderRoster(){
   });
   el.querySelectorAll('[data-equip-relic]').forEach(slotEl=>{
     slotEl.addEventListener('click', ()=>{
+      if(tryEquipSelectedItem(slotEl)) return;
       const champId = slotEl.dataset.equipRelic;
       const prog = owned[champId];
       if(!prog.relicId) return;
@@ -2567,9 +2654,38 @@ let dragState = null;
 const DRAG_RENDER_TARGETS = { roster: renderRoster, position: renderPositionScreen };
 const RELIC_SELL_XP = 30; // XP total dado ao vender uma relíquia de chefe, dividido entre quem for escolhido
 
+let mobileEquipMode = false;
+let selectedInventoryItem = null; // { itemId, renderTargetKey } — usado só no modo celular
+function onInvTileClickSelect(itemId, tileEl, renderTargetKey){
+  if(selectedInventoryItem && selectedInventoryItem.itemId===itemId && selectedInventoryItem.tileEl===tileEl){
+    // tocou de novo no mesmo item já selecionado — cancela a seleção e abre a venda
+    selectedInventoryItem = null;
+    document.querySelectorAll('.inv-tile.selected-for-equip').forEach(t=>t.classList.remove('selected-for-equip'));
+    openSellFlow(itemId);
+    return;
+  }
+  document.querySelectorAll('.inv-tile.selected-for-equip').forEach(t=>t.classList.remove('selected-for-equip'));
+  tileEl.classList.add('selected-for-equip');
+  selectedInventoryItem = { itemId, renderTargetKey, tileEl };
+}
+function tryEquipSelectedItem(slotEl){
+  if(!selectedInventoryItem) return false;
+  const champId = slotEl.dataset.equipSlot || slotEl.dataset.equipRelic;
+  const equipped = equipItemFromDrag(selectedInventoryItem.itemId, champId, slotEl);
+  if(equipped){
+    const renderFn = DRAG_RENDER_TARGETS[selectedInventoryItem.renderTargetKey] || renderRoster;
+    selectedInventoryItem = null;
+    renderFn();
+  }
+  return equipped;
+}
 function onInvTilePointerDown(e, itemId, renderTargetKey){
   e.preventDefault();
   const tileEl = e.target.closest('.inv-tile');
+  if(mobileEquipMode){
+    onInvTileClickSelect(itemId, tileEl, renderTargetKey);
+    return;
+  }
   const startX = e.clientX, startY = e.clientY;
   let started = false;
   function moveCheck(ev){
@@ -3693,6 +3809,7 @@ function renderPositionScreen(){
   chipsEl.querySelectorAll('[data-equip-slot]').forEach(slotEl=>{
     slotEl.addEventListener('click', (e)=>{
       e.stopPropagation();
+      if(tryEquipSelectedItem(slotEl)) return;
       const champId = slotEl.dataset.equipSlot;
       const slot = parseInt(slotEl.dataset.slotIndex,10);
       const prog = owned[champId];
@@ -3706,6 +3823,7 @@ function renderPositionScreen(){
   chipsEl.querySelectorAll('[data-equip-relic]').forEach(slotEl=>{
     slotEl.addEventListener('click', (e)=>{
       e.stopPropagation();
+      if(tryEquipSelectedItem(slotEl)) return;
       const champId = slotEl.dataset.equipRelic;
       const prog = owned[champId];
       if(!prog.relicId) return;
@@ -3849,7 +3967,7 @@ function applySecretPassives(sideUnits){
   if(jedegar && terrus){
     jedegar.jedegarSecretBonus = true;
     terrus.dmgReduction = Math.min(0.75, (terrus.dmgReduction||0) + 0.10);
-    log('Jedegar e Terrus receberam bônus.', 'sys');
+    log('✨ Jedegar e Terrus têm uma passiva secreta!', 'hl');
   }
   const shava = sideUnits.find(u=>u.champId==='shava');
   const kael = sideUnits.find(u=>u.champId==='kael');
@@ -3858,7 +3976,7 @@ function applySecretPassives(sideUnits){
     shava.hp = Math.round(shava.hp*1.10); shava.maxhp = shava.hp;
     kael.shavaSecretBonus = true;
     kael.hp = Math.round(kael.hp*1.10); kael.maxhp = kael.hp;
-    log('Shava e Kael receberam bônus.', 'sys');
+    log('✨ Shava e Kael têm uma passiva secreta!', 'hl');
   }
 }
 
@@ -4033,10 +4151,10 @@ function startPveRun(){
   resetRoundTracking();
   const wavePicks = randomEnemyWave(1);
   ENEMY_TEMP = {}; wavePicks.forEach(w=>ENEMY_TEMP[w.key]=w.scaled);
-  buildTeams(teamP1, wavePicks.map(w=>w.key), false);
-  applyTempEnemyStats(wavePicks);
   logHistory = [];
   startNewWaveLog(1);
+  buildTeams(teamP1, wavePicks.map(w=>w.key), false);
+  applyTempEnemyStats(wavePicks);
   log(`Onda 1 iniciada!`, 'sys');
   logReinforcements(wavePicks, 1);
   checkDuoBanter(teamP1, banterNextRoundPve, wave);
@@ -4149,9 +4267,9 @@ function startPvpRound(){
   inMatch = true;
   savePvpCoins();
   scheduleNextFracture(performance.now());
+  startNewWaveLog(pvpRound);
   buildTeams(teamP1, teamP2, true, pvpP1.owned, pvpP2.owned);
   document.getElementById('roundinfo').textContent = `Rodada ${pvpRound} — Jogador 1 (esq.) vs Jogador 2 (dir.) — ${WEATHER_LABELS[currentWeather]}`;
-  startNewWaveLog(pvpRound);
   log(`Rodada ${pvpRound} iniciada!`, 'sys');
   checkDuoBanter(teamP1, banterNextRoundP1, pvpRound);
   checkDuoBanter(teamP2, banterNextRoundP2, pvpRound);
@@ -6079,12 +6197,12 @@ function finishPrepContinue(){
     bossCountedThisWave = false;
     interactionFiredThisRound = false;
     const wavePicks = randomEnemyWave(wave);
+    startNewWaveLog(wave);
     buildTeams(teamP1, wavePicks.map(w=>w.key), false);
     applyTempEnemyStats(wavePicks);
     spawnCorruptedCreatures(wave);
     // full heal happens naturally since buildTeams recreates units at max hp
     document.getElementById('banner').style.display='none';
-    startNewWaveLog(wave);
     log(`Onda ${wave} iniciada. Time totalmente recuperado.`, 'sys');
     logReinforcements(wavePicks, wave);
     checkDuoBanter(teamP1, banterNextRoundPve, wave);
