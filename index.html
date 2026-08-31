@@ -5757,8 +5757,9 @@ function updateBattleLogic(dt){
       u.jedegarPillarTimer -= dt;
       if(u.jedegarPillarTimer<=0){
         u.jedegarPillarTimer = 1500;
+        const activeCount = Object.values(jedegarStructures).filter(s=>s.ownerId===u.id).length;
         const occ = occupiedMap();
-        const freeNeighbors = neighbors(u).filter(n=> inGrid(n) && !isBlockedTile(n) && occ[hexKey(n)]===undefined);
+        const freeNeighbors = activeCount < 5 ? neighbors(u).filter(n=> inGrid(n) && !isBlockedTile(n) && occ[hexKey(n)]===undefined) : [];
         if(freeNeighbors.length>0){
           // prioriza um hex livre que também fique colado num aliado vivo (além dela mesma)
           const allies = units.filter(o=>o.alive && o.team===u.team && o.id!==u.id);
