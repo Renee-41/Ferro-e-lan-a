@@ -17,6 +17,34 @@
 
   gtag('config', 'G-J7RS73C21T');
 </script>
+<!-- Firebase (Firestore) — usado só pro Placar (leaderboard). Precisa de internet pra funcionar;
+     se falhar, o resto do jogo continua normal, só o Placar fica indisponível. -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js";
+  import {
+    getFirestore, collection, addDoc, getDocs, doc, updateDoc, increment, query, orderBy, limit, serverTimestamp
+  } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyC3Ip7T4qbVmlkcyzbMgEBAWl5V0xgjnBk",
+    authDomain: "ferro-lanca.firebaseapp.com",
+    projectId: "ferro-lanca",
+    storageBucket: "ferro-lanca.firebasestorage.app",
+    messagingSenderId: "526218624052",
+    appId: "1:526218624052:web:88c58acb2680f790d9de61",
+    measurementId: "G-10GG85VLQP"
+  };
+  try{
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    window.__lb = {
+      db, collection, addDoc, getDocs, doc, updateDoc, increment, query, orderBy, limit, serverTimestamp, ready:true
+    };
+  }catch(e){
+    window.__lb = { ready:false };
+    console.error('Firebase não iniciou — o Placar vai ficar indisponível.', e);
+  }
+</script>
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <style>
   :root{
@@ -155,6 +183,7 @@
   .inv-tile.dragging{ opacity:0.35; }
   .inv-tile.selected-for-equip{ border-color:var(--gold); box-shadow:0 0 8px rgba(232,194,80,0.6); }
   .ghost-btn.on{ border-color:var(--frost); color:var(--frost); }
+  .like-btn.liked{ border-color:#c2445a; color:#e88; }
   .inv-tile .inv-count{
     position:absolute; bottom:1px; right:2px; font-size:9px; font-family:'JetBrains Mono',monospace;
     color:#eae4d8; background:rgba(0,0,0,0.65); padding:0 3px; border-radius:3px; line-height:1.4;
@@ -787,6 +816,7 @@
   <button class="nav-btn" data-screen="recommended">Itens Recomendados</button>
   <button class="nav-btn" data-screen="achievements">Conquistas</button>
   <button class="nav-btn" data-screen="profile">Perfil</button>
+  <button class="nav-btn" data-screen="leaderboard">🏆 Placar</button>
   <button class="nav-btn" data-screen="settings">⚙️ Configurações</button>
   <button class="nav-btn" data-screen="battle" id="nav-battle-btn" style="display:none;">Batalha</button>
   <div class="coin-badge">🪙 <span id="coin-count">0</span> moedas</div>
@@ -875,6 +905,17 @@
     <div id="profile-max-wave" style="font-family:'JetBrains Mono',monospace; font-size:13px; color:var(--gold); margin-bottom:14px;"></div>
     <div style="font-family:'Oswald',sans-serif; font-size:13px; color:#eae4d8; margin-bottom:6px;">Maior dano causado numa partida, por Stack User:</div>
     <div id="profile-damage-list" style="display:flex; flex-direction:column; gap:4px;"></div>
+  </div>
+</div>
+
+<!-- PLACAR -->
+<div class="screen" id="screen-leaderboard">
+  <div class="panel">
+    <h2>🏆 Placar</h2>
+    <div class="subtitle" style="margin-bottom:14px;">Resultados de todo mundo que jogou. Precisa de internet pra carregar.</div>
+    <button class="main-btn" id="post-result-btn" style="margin-bottom:16px;">Postar meu resultado</button>
+    <div id="leaderboard-status" class="subtitle"></div>
+    <div id="leaderboard-list" style="display:flex; flex-direction:column; gap:12px;"></div>
   </div>
 </div>
 
@@ -1801,6 +1842,7 @@ document.querySelectorAll('.nav-btn').forEach(btn=>{
     if(s==='recommended') renderRecommended();
     if(s==='achievements') renderAchievementsList();
     if(s==='profile') renderProfile();
+    if(s==='leaderboard') renderLeaderboard();
     showScreen(s);
   });
 });
@@ -1925,6 +1967,119 @@ function trackCorruptedKill(){
 
 /* ============ PERFIL ============ */
 const PROFILE_NAME_KEY = 'ferroLancaPlayerName';
+/* ============ PLACAR (Firestore) ============ */
+const LIKED_ENTRIES_KEY = 'ferroLancaLikedEntries';
+function getLikedEntries(){
+  try{ return new Set(JSON.parse(localStorage.getItem(LIKED_ENTRIES_KEY) || '[]')); }catch(e){ return new Set(); }
+}
+function markEntryLiked(id){
+  const liked = getLikedEntries();
+  liked.add(id);
+  try{ localStorage.setItem(LIKED_ENTRIES_KEY, JSON.stringify([...liked])); }catch(e){}
+}
+function buildMyTeamSnapshot(){
+  return Object.entries(owned).map(([champId, prog])=>{
+    const def = CHAMPION_CATALOG[champId];
+    if(!def) return null;
+    const itemNames = (prog.itemIds||[]).filter(Boolean).map(iid=>ITEM_CATALOG[iid]?ITEM_CATALOG[iid].name:iid);
+    if(prog.relicId && ITEM_CATALOG[prog.relicId]) itemNames.push(ITEM_CATALOG[prog.relicId].name+' (relíquia)');
+    return { champId, name:def.name, element:def.element, level:prog.level||1, stars:prog.stars||1, items:itemNames };
+  }).filter(Boolean);
+}
+async function postMyResult(){
+  const statusEl = document.getElementById('leaderboard-status');
+  if(!window.__lb || !window.__lb.ready){ statusEl.textContent = 'Placar indisponível no momento (sem conexão com o banco de dados).'; return; }
+  const team = buildMyTeamSnapshot();
+  if(team.length===0){ statusEl.textContent = 'Você ainda não tem nenhum Stack User pra postar — joga uma partida primeiro!'; return; }
+  let playerName = 'Anônimo';
+  try{ playerName = localStorage.getItem(PROFILE_NAME_KEY) || 'Anônimo'; }catch(e){}
+  if(!playerName.trim()) playerName = 'Anônimo';
+  statusEl.textContent = 'Postando...';
+  try{
+    const { db, collection, addDoc, serverTimestamp } = window.__lb;
+    await addDoc(collection(db, 'leaderboard'), {
+      playerName: playerName.slice(0,24),
+      maxWave: personalRecords.maxWave || 0,
+      team,
+      likes: 0,
+      createdAt: serverTimestamp()
+    });
+    statusEl.textContent = 'Postado! Já aparece na lista abaixo.';
+    renderLeaderboard();
+  }catch(e){
+    statusEl.textContent = 'Não deu pra postar agora — tenta de novo daqui a pouco.';
+    console.error(e);
+  }
+}
+document.getElementById('post-result-btn').addEventListener('click', postMyResult);
+
+async function likeEntry(entryId, btnEl){
+  if(!window.__lb || !window.__lb.ready) return;
+  const liked = getLikedEntries();
+  if(liked.has(entryId)) return; // já curtiu antes nesse navegador
+  btnEl.disabled = true;
+  try{
+    const { db, doc, updateDoc, increment } = window.__lb;
+    await updateDoc(doc(db, 'leaderboard', entryId), { likes: increment(1) });
+    markEntryLiked(entryId);
+    const countEl = btnEl.querySelector('.like-count');
+    if(countEl) countEl.textContent = (parseInt(countEl.textContent,10)||0) + 1;
+    btnEl.classList.add('liked');
+  }catch(e){
+    btnEl.disabled = false;
+    console.error(e);
+  }
+}
+
+async function renderLeaderboard(){
+  const listEl = document.getElementById('leaderboard-list');
+  const statusEl = document.getElementById('leaderboard-status');
+  if(!window.__lb || !window.__lb.ready){
+    statusEl.textContent = 'Placar indisponível no momento (sem conexão com o banco de dados).';
+    listEl.innerHTML = '';
+    return;
+  }
+  statusEl.textContent = 'Carregando...';
+  listEl.innerHTML = '';
+  try{
+    const { db, collection, getDocs, query, orderBy, limit } = window.__lb;
+    const q = query(collection(db, 'leaderboard'), orderBy('maxWave', 'desc'), limit(30));
+    const snap = await getDocs(q);
+    statusEl.textContent = snap.empty ? 'Ninguém postou ainda — seja o primeiro!' : '';
+    const liked = getLikedEntries();
+    listEl.innerHTML = snap.docs.map(d=>{
+      const data = d.data();
+      const id = d.id;
+      const alreadyLiked = liked.has(id);
+      const teamHtml = (data.team||[]).map(u=>`
+        <div style="padding:6px 8px; background:rgba(0,0,0,0.2); border:1px solid #3a3f47; border-radius:4px; font-size:11px;">
+          <span class="champ-tag elem-${u.element}" style="margin-right:6px;">${u.element.toUpperCase()}</span>
+          <strong>${u.name}</strong> — ${starIcons(u.stars)} Nv.${u.level}
+          ${u.items.length ? `<div style="color:var(--gold); margin-top:2px;">🎒 ${u.items.join(', ')}</div>` : '<div style="color:var(--steel); margin-top:2px;">Sem itens</div>'}
+        </div>
+      `).join('');
+      return `
+        <div style="padding:14px; background:rgba(0,0,0,0.15); border:1px solid #3a3f47; border-radius:6px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <div style="font-family:'Oswald',sans-serif; font-size:15px; color:#eae4d8;">${data.playerName||'Anônimo'}</div>
+            <div style="color:var(--gold); font-family:'JetBrains Mono',monospace; font-size:13px;">🌊 Onda ${data.maxWave||0}</div>
+          </div>
+          <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:6px; margin-bottom:10px;">${teamHtml}</div>
+          <button class="ghost-btn like-btn${alreadyLiked?' liked':''}" data-entry-id="${id}" ${alreadyLiked?'disabled':''}>
+            ${alreadyLiked?'❤️':'🤍'} <span class="like-count">${data.likes||0}</span>
+          </button>
+        </div>
+      `;
+    }).join('');
+    listEl.querySelectorAll('.like-btn').forEach(btn=>{
+      btn.addEventListener('click', ()=> likeEntry(btn.dataset.entryId, btn));
+    });
+  }catch(e){
+    statusEl.textContent = 'Não deu pra carregar o placar agora — tenta de novo daqui a pouco.';
+    console.error(e);
+  }
+}
+
 function renderProfile(){
   const nameInput = document.getElementById('profile-name-input');
   try{
