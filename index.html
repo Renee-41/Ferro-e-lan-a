@@ -868,7 +868,13 @@
     <input id="profile-name-input" type="text" maxlength="24" placeholder="Como você quer ser chamado?" style="width:100%; max-width:320px; box-sizing:border-box; padding:9px; background:#111; border:1px solid #3a3f47; border-radius:4px; color:#eae4d8; font-family:inherit; font-size:14px; margin-bottom:20px;">
     <h2 style="font-size:16px;">🏅 Emblemas de conquista</h2>
     <div class="subtitle" style="margin-bottom:10px;" id="profile-badges-progress"></div>
-    <div id="profile-badges-grid" style="display:grid; grid-template-columns:repeat(auto-fill,minmax(72px,1fr)); gap:10px;"></div>
+    <div id="profile-badges-grid" style="display:grid; grid-template-columns:repeat(auto-fill,minmax(72px,1fr)); gap:10px; margin-bottom:20px;"></div>
+
+    <h2 style="font-size:16px;">📈 Recordes</h2>
+    <div class="subtitle" style="margin-bottom:10px;">Ficam guardados mesmo se você recarregar a página.</div>
+    <div id="profile-max-wave" style="font-family:'JetBrains Mono',monospace; font-size:13px; color:var(--gold); margin-bottom:14px;"></div>
+    <div style="font-family:'Oswald',sans-serif; font-size:13px; color:#eae4d8; margin-bottom:6px;">Maior dano causado numa partida, por Stack User:</div>
+    <div id="profile-damage-list" style="display:flex; flex-direction:column; gap:4px;"></div>
   </div>
 </div>
 
@@ -1734,6 +1740,30 @@ let roundXpGain = {}; // champId -> xp earned this wave
 let roundLevelUps = []; // champIds that leveled up this wave
 let roundDeaths = []; // names that died this wave
 let matchStats = {}; // champId -> {damageDealt, damageTaken, kills}
+
+// Recordes pessoais — separados do save normal do jogo (que reseta ao recarregar a página).
+// Ficam guardados de verdade, pro Perfil mostrar o histórico da pessoa.
+const PERSONAL_RECORDS_KEY = 'ferroLancaPersonalRecords';
+let personalRecords = { maxWave: 0, maxDamageByChamp: {} };
+try{
+  const rawRecords = localStorage.getItem(PERSONAL_RECORDS_KEY);
+  if(rawRecords) personalRecords = Object.assign({maxWave:0, maxDamageByChamp:{}}, JSON.parse(rawRecords));
+}catch(e){}
+function savePersonalRecords(){
+  try{ localStorage.setItem(PERSONAL_RECORDS_KEY, JSON.stringify(personalRecords)); }catch(e){}
+}
+function checkWaveRecord(w){
+  if(w > personalRecords.maxWave){
+    personalRecords.maxWave = w;
+    savePersonalRecords();
+  }
+}
+function checkDamageRecord(champId, dmg){
+  if(dmg > (personalRecords.maxDamageByChamp[champId]||0)){
+    personalRecords.maxDamageByChamp[champId] = dmg;
+    savePersonalRecords();
+  }
+}
 function ensureMatchStats(champId){
   if(!matchStats[champId]) matchStats[champId] = {damageDealt:0, damageTaken:0, kills:0, deaths:0};
   return matchStats[champId];
@@ -1917,6 +1947,22 @@ function renderProfile(){
       </div>
     `;
   }).join('');
+
+  document.getElementById('profile-max-wave').textContent = personalRecords.maxWave>0 ? `🌊 Maior onda alcançada: ${personalRecords.maxWave}` : '🌊 Ainda não alcançou nenhuma onda.';
+  const dmgListEl = document.getElementById('profile-damage-list');
+  const dmgEntries = Object.entries(personalRecords.maxDamageByChamp)
+    .filter(([cid])=>CHAMPION_CATALOG[cid])
+    .sort((a,b)=>b[1]-a[1]);
+  if(dmgEntries.length===0){
+    dmgListEl.innerHTML = '<div class="subtitle">Nenhum dano registrado ainda — entra numa partida!</div>';
+  } else {
+    dmgListEl.innerHTML = dmgEntries.map(([cid,dmg])=>`
+      <div style="display:flex; justify-content:space-between; padding:6px 10px; background:rgba(0,0,0,0.15); border:1px solid #3a3f47; border-radius:4px; font-family:'JetBrains Mono',monospace; font-size:12px;">
+        <span>${CHAMPION_CATALOG[cid].name}</span>
+        <span style="color:var(--gold);">${dmg}</span>
+      </div>
+    `).join('');
+  }
 }
 document.getElementById('profile-name-input').addEventListener('input', (e)=>{
   try{ localStorage.setItem(PROFILE_NAME_KEY, e.target.value); }catch(err){}
@@ -4441,6 +4487,7 @@ function hardResetProgress(){
 
 function quitToMenu(){
   if(mode==='pve' && wave > bestWaveEver){ bestWaveEver = wave; updateBestWaveDisplay(); }
+  if(mode==='pve') checkWaveRecord(wave);
   battleActive = false;
   inMatch = false;
   mode = null;
@@ -5135,7 +5182,11 @@ function applyDamage(attacker, target, baseDmg, tag, ignoreDefense){
   target.flashUntil = now+150;
   if(dmg>0){
     if(attacker.range && attacker.range>1) sfxRangedHit(); else sfxMeleeHit();
-    if(attacker.team==='player') ensureMatchStats(attacker.champId).damageDealt += dmg;
+    if(attacker.team==='player'){
+      const stats = ensureMatchStats(attacker.champId);
+      stats.damageDealt += dmg;
+      checkDamageRecord(attacker.champId, stats.damageDealt);
+    }
     if(target.team==='player') ensureMatchStats(target.champId).damageTaken += dmg;
     if(attacker.isTentacle){
       spawnCastEffect(target.rx, target.ry, '#4f9fd4');
@@ -6063,6 +6114,7 @@ function checkVictory(){
         log(`Time derrotado na onda ${wave}. Total ganho na run: ${totalCoinsThisRun} moedas.`, 'sys');
         sfxDefeat();
         if(wave > bestWaveEver){ bestWaveEver = wave; updateBestWaveDisplay(); }
+        checkWaveRecord(wave);
         document.getElementById('quit-battle-btn').style.display = 'block';
         document.getElementById('view-summary-btn').style.display = 'block';
       }
