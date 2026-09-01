@@ -6119,6 +6119,8 @@ function updateBattleLogic(dt){
           let chosen = freeNeighbors.find(n=> allies.some(a=> hexDistance(n,a)===1));
           if(!chosen) chosen = freeNeighbors[0];
           jedegarStructures[hexKey(chosen)] = {q:chosen.q, r:chosen.r, ownerId:u.id, ownerTeam:u.team, hitsTaken:0, hitsNeeded:2, boostUntil:0, createdAt:now};
+          const chosenPixel = hexToPixel(chosen.q, chosen.r);
+          spawnCastEffect(chosenPixel.x, chosenPixel.y, '#8a6a4a');
           const prog = getJedegarProgress(u);
           prog.pillarsBuilt++;
           if(!prog.firstPillarAnnounced){
@@ -6487,15 +6489,25 @@ function renderFrame(){
       const s = jedegarStructures[hk];
       const boosted = s.boostUntil && performance.now() < s.boostUntil;
       const dmgFrac = s.hitsTaken / s.hitsNeeded; // 0 = intacto, se aproxima de 1 = quase caindo
+      const phase = (s.createdAt||0);
+      const pulse = 0.5 + 0.5*Math.sin(now0/450 + phase);
+      const swayY = Math.sin(now0/600 + phase) * 1.4;
+
+      const glowBg = document.createElementNS('http://www.w3.org/2000/svg','circle');
+      glowBg.setAttribute('cx', p.x); glowBg.setAttribute('cy', p.y+2);
+      glowBg.setAttribute('r', (12+pulse*3).toFixed(1));
+      glowBg.setAttribute('fill', boosted ? 'rgba(232,194,80,0.28)' : 'rgba(138,106,74,0.20)');
+      svg.appendChild(glowBg);
+
       const pillar = document.createElementNS('http://www.w3.org/2000/svg','polygon');
-      pillar.setAttribute('points', `${p.x-7},${p.y+11} ${p.x-9},${p.y-9} ${p.x},${p.y-16} ${p.x+9},${p.y-9} ${p.x+7},${p.y+11}`);
+      const topY = (p.y-16-swayY).toFixed(1), midY = (p.y-9-swayY*0.4).toFixed(1);
+      pillar.setAttribute('points', `${p.x-7},${p.y+11} ${p.x-9},${midY} ${p.x},${topY} ${p.x+9},${midY} ${p.x+7},${p.y+11}`);
       pillar.setAttribute('fill', boosted ? '#c9a53a' : '#8a6a4a');
       pillar.setAttribute('stroke', boosted ? '#e8c250' : '#5a4530');
       pillar.setAttribute('stroke-width', '1.5');
-      pillar.setAttribute('opacity', (1 - dmgFrac*0.35).toFixed(2));
-      if(boosted){
-        pillar.style.filter = 'drop-shadow(0 0 4px rgba(232,194,80,0.85))';
-      }
+      pillar.setAttribute('opacity', ((1 - dmgFrac*0.35) * (0.85+pulse*0.15)).toFixed(2));
+      const glowStrength = boosted ? (6+pulse*4) : (2+pulse*2);
+      pillar.style.filter = `drop-shadow(0 0 ${glowStrength.toFixed(1)}px rgba(${boosted?'232,194,80':'201,165,58'},0.7))`;
       svg.appendChild(pillar);
     }
     if(hazardHexes.has(hk)){
@@ -6621,6 +6633,33 @@ function renderFrame(){
       glow.setAttribute('fill','none'); glow.setAttribute('stroke', '#e8c250');
       glow.setAttribute('stroke-opacity', pulse.toFixed(2)); glow.setAttribute('stroke-width','3');
       g.appendChild(glow);
+    }
+
+    if(u.champId==='shava' && u.alive){
+      const chargeProgress = Math.max(0, Math.min(1, 1 - (u.shavaKickCooldown/10000)));
+      if(chargeProgress > 0.12){
+        const ringCount = 1 + Math.floor(chargeProgress*3); // 1 a 4 anéis conforme carrega
+        for(let ri=0; ri<ringCount; ri++){
+          const spin = (now/(260-ri*30)) * (ri%2===0 ? 1 : -1) * 40;
+          const ring = document.createElementNS('http://www.w3.org/2000/svg','circle');
+          ring.setAttribute('cx',drawX); ring.setAttribute('cy',drawY); ring.setAttribute('r', 15+ri*5);
+          ring.setAttribute('fill','none'); ring.setAttribute('stroke', '#c9d9e8');
+          ring.setAttribute('stroke-width','1.6');
+          ring.setAttribute('stroke-dasharray','7 11');
+          ring.setAttribute('stroke-dashoffset', spin.toFixed(1));
+          ring.setAttribute('stroke-opacity', (chargeProgress*0.75).toFixed(2));
+          g.appendChild(ring);
+        }
+        if(chargeProgress > 0.85){
+          // quase pronta pro chute — um brilho extra pra avisar que tá quase ativando
+          const readyPulse = 0.5 + 0.5*Math.sin(now/90);
+          const readyGlow = document.createElementNS('http://www.w3.org/2000/svg','circle');
+          readyGlow.setAttribute('cx',drawX); readyGlow.setAttribute('cy',drawY); readyGlow.setAttribute('r',13);
+          readyGlow.setAttribute('fill','none'); readyGlow.setAttribute('stroke', '#eaf2f8');
+          readyGlow.setAttribute('stroke-opacity', readyPulse.toFixed(2)); readyGlow.setAttribute('stroke-width','2.5');
+          g.appendChild(readyGlow);
+        }
+      }
     }
 
     if(u.frenzyUntil && now < u.frenzyUntil){
