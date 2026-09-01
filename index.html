@@ -5626,7 +5626,7 @@ function applyDamage(attacker, target, baseDmg, tag, ignoreDefense){
         }
       }
       if(mode==='pve' && attacker.team==='player' && (target.team==='enemy' || target.team==='corrupted')){
-        const xpAmt = 2 + (target.team==='corrupted' ? 2 : 0);
+        const xpAmt = (2 + Math.floor(wave/6)) + (target.team==='corrupted' ? 3 : 0);
         waveXpPool += xpAmt; // vai pro fundo comum — dividido igualmente com o time no fim da onda
         spawnFloatText(attacker.rx, attacker.ry-34, `+${formatXp(xpAmt)} xp (time)`, '#e8c250');
         ensureMatchStats(attacker.champId).kills++;
