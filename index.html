@@ -3802,7 +3802,8 @@ function makeUnit(id, team, champId, def, level, q, r, statOverride, stars, item
     jedegarPillarTimer: 1500, jedegarShieldUntil: 0, jedegarDeathBuffUntil: 0, jedegarSecretBonus: false,
     shavaSecretBonus: false,
     shavaKickCooldown: 0, shavaHitCount: 0, shavaComboTargetId: null, shavaComboTargetHits: 0,
-    shavaWeakenUntil: 0, shavaArmorDebuffUntil: 0
+    shavaWeakenUntil: 0, shavaArmorDebuffUntil: 0,
+    shavaDashStartAt: 0, shavaDashFromRx: 0, shavaDashFromRy: 0, shavaDashToRx: 0, shavaDashToRy: 0, shavaDashDuration: 0, shavaLastTrailAt: 0
   };
 }
 
@@ -5566,8 +5567,10 @@ function applyDamage(attacker, target, baseDmg, tag, ignoreDefense){
       }
       if(target.champId==='jedegar'){
         const jedegarDeathPhrase = 'A morte é apenas uma nova etapa de nossa ascensão!';
+        spawnCastEffect(target.rx, target.ry, '#8a6a4a');
         spawnFloatText(target.rx, target.ry-64, jedegarDeathPhrase, '#8a6a4a', 'dramatic');
         log(`${target.name}: "${jedegarDeathPhrase}"`, 'hl');
+        triggerScreenShake(10, 320);
         const jedegarAllies = units.filter(o=>o.alive && o.team===target.team && o.id!==target.id);
         if(jedegarAllies.length){
           jedegarAllies.sort((a,b)=>(a.hp/a.maxhp)-(b.hp/b.maxhp));
@@ -5584,7 +5587,6 @@ function applyDamage(attacker, target, baseDmg, tag, ignoreDefense){
             if(jedegarStructures[k].ownerId === jedegarDeadId) delete jedegarStructures[k];
           });
         }, 5000);
-        triggerScreenShake(6, 220);
       }
       if(target.isTentacle){
         const parent = units.find(x=>x.id===target.tentacleParentId);
@@ -6048,25 +6050,32 @@ function updateBattleLogic(dt){
           const kickTarget = inRange[0];
           u.shavaKickCooldown = 10000;
 
-          // avança até perto do alvo
+          // avança até perto do alvo — corrida visual (não teleporte instantâneo), a posição
+          // lógica já muda na hora (pro combate ser justo), mas o visual "corre" até lá.
           const occ = occupiedMap();
           const adjacentFree = neighbors(kickTarget).filter(n=>inGrid(n) && !isBlockedTile(n) && occ[hexKey(n)]===undefined);
+          let landingX = u.rx, landingY = u.ry;
           if(adjacentFree.length){
             adjacentFree.sort((a,b)=>hexDistance(a,u)-hexDistance(b,u));
             u.q = adjacentFree[0].q; u.r = adjacentFree[0].r;
             const p = hexToPixel(u.q,u.r);
-            u.rx=p.x; u.ry=p.y; u.targetRx=p.x; u.targetRy=p.y;
+            landingX = p.x; landingY = p.y;
+            u.shavaDashFromRx = u.rx; u.shavaDashFromRy = u.ry;
+            u.shavaDashToRx = p.x; u.shavaDashToRy = p.y;
+            u.shavaDashStartAt = now;
+            u.shavaDashDuration = 220;
+            u.targetRx = p.x; u.targetRy = p.y;
             checkPortalTeleport(u);
           }
-          spawnFloatText(u.rx, u.ry-40, 'Golpe aéreo', '#c9d9e8', 'dramatic');
+          spawnFloatText(landingX, landingY-40, 'Golpe aéreo', '#c9d9e8', 'dramatic');
           log(`${u.name}: "Golpe aéreo"`, 'hl');
-          spawnCastEffect(u.rx, u.ry, '#c9d9e8');
+          spawnShockwaveRing(landingX, landingY, 200, '#c9d9e8', 0); // onda de vento no impacto, estilo Voltra
           triggerScreenShake(5, 180);
 
           if(kickTarget.hp>0 && kickTarget.hp/kickTarget.maxhp < 0.10){
             // execução na hora
             kickTarget.hp = 0; kickTarget.alive = false;
-            spawnFloatText(u.rx, u.ry-58, 'Golpe aéreo: último sopro', '#c9d9e8', 'dramatic');
+            spawnFloatText(landingX, landingY-58, 'Golpe aéreo: último sopro', '#c9d9e8', 'dramatic');
             log(`${u.name}: "Golpe aéreo: último sopro"`, 'hl');
             log(`${u.name} executa ${kickTarget.name}!`, 'hl');
             if(kickTarget.team==='player'){ roundDeaths.push(kickTarget.name); ensureMatchStats(kickTarget.champId).deaths++; }
@@ -6085,7 +6094,7 @@ function updateBattleLogic(dt){
             }
           } else {
             // repulsão — dano dobrado, e se bater em algo, atordoa + reduz armadura
-            spawnFloatText(u.rx, u.ry-58, 'Golpe aéreo: onda de ar', '#c9d9e8', 'dramatic');
+            spawnFloatText(landingX, landingY-58, 'Golpe aéreo: onda de ar', '#c9d9e8', 'dramatic');
             log(`${u.name}: "Golpe aéreo: onda de ar"`, 'hl');
             applyDamage(u, kickTarget, u.atk*2, '💨', false);
             if(kickTarget.alive){
@@ -6606,6 +6615,15 @@ function renderFrame(){
   const now = performance.now();
   units.filter(u=>u.alive).forEach(u=>{
     let drawX = u.rx, drawY = u.ry;
+    if(u.champId==='shava' && u.shavaDashStartAt && now - u.shavaDashStartAt < u.shavaDashDuration){
+      const dashT = Math.min(1, (now - u.shavaDashStartAt) / u.shavaDashDuration);
+      drawX = u.shavaDashFromRx + (u.shavaDashToRx - u.shavaDashFromRx) * dashT;
+      drawY = u.shavaDashFromRy + (u.shavaDashToRy - u.shavaDashFromRy) * dashT;
+      if(!u.shavaLastTrailAt || now - u.shavaLastTrailAt > 35){
+        u.shavaLastTrailAt = now;
+        spawnCastEffect(drawX, drawY, '#c9d9e8'); // rastro de vento atrás dela durante a corrida
+      }
+    }
     if(u.attackAnim){
       const elapsed = now - u.attackAnim.start;
       if(elapsed < u.attackAnim.duration){
