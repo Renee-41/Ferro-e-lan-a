@@ -583,7 +583,19 @@
     <button id="patchnotes-close" style="background:none;border:none;color:var(--steel);font-size:16px;cursor:pointer;line-height:1;">×</button>
   </div>
   <ul>
+    <li><strong>Dois personagens novos: Jedegar e Shava.</strong> <strong>Jedegar</strong> (Terra, Suporte) — "Pilar da Perseverança": ergue pilares de pedra que amplificam o dano dos aliados por perto, sofre um combo de fuga ao cair abaixo de 30% de vida, e ao morrer dá escudo/dano/velocidade pro aliado mais ferido. <strong>Shava</strong> (Vento, Lutadora de Capoeira) — avança correndo (com rastro de vento) até o inimigo com mais vida, executa quem estiver abaixo de 10%, e tem um combo de cura a cada 3 golpes / vórtice a cada 6 no mesmo alvo. As duas têm uma passiva secreta de interação com outro personagem específico (Jedegar+Terrus, Shava+Kael).</li>
+    <li><strong>7 itens novos pra corpo a corpo</strong>: Punho de Serra, Presas Sangrentas, Fúria Crescente, Botas de Lutador (+ as combinações Carniceiro, Fio Mortal, Investida Feroz) — dando perfuração de armadura, vampirismo mais forte, crítico e velocidade exclusivos de quem luta de perto. Vários também dão HP extra.</li>
+    <li><strong>Filtro de classe na loja de itens</strong>: botões Tanque / Corpo a corpo / Longa distância / Suporte pra achar item recomendado mais rápido.</li>
+    <li><strong>Vida por nível reforçada</strong>: personagens agora ganham vida numa curva separada do ataque, que acelera nos níveis altos — pra acompanhar melhor o crescimento dos inimigos, que também acelera depois da onda 10.</li>
+    <li><strong>Mais XP por abate</strong>: o ganho cresce aos poucos conforme a onda avança (e criaturas corrompidas valem ainda mais), pra chegar em níveis altos ser menos improvável.</li>
+    <li><strong>Inventário arrastável estilo TFT</strong>: agora dá pra arrastar item até o Stack User pra equipar (ou clicar, se ligar o "Modo celular" nas Configurações), tanto no "Meu Time" quanto na fase de posicionamento — e também dá pra vender item (arrastando até a lixeira ou clicando nele).</li>
+    <li><strong>Arrastar os Stack Users na arena</strong>: na fase de posicionamento, além de clicar, agora dá pra arrastar a unidade direto pro hexágono que quiser.</li>
+    <li><strong>Telas novas: Perfil, Configurações e Placar</strong>. Perfil mostra seu nome, emblemas de conquista, maior onda alcançada e o maior dano já causado por cada personagem. Configurações reúne o "Modo celular", Dicas e Feedback. Placar é um ranking online (opcional) com o time completo e os itens de cada jogador — pergunta se você quer postar toda vez que sai de uma partida.</li>
+    <li><strong>Correção de mobile</strong>: a barra de Notas/Tutorial estava sobrepondo o resto da tela em celular, e a arena ficava torta no modo paisagem — os dois corrigidos.</li>
+    <li><strong>Vários ajustes de equilíbrio</strong>: primeiro chefe bem mais fraco, Voltra e Gélida com ultimates mais fortes, tentáculos da Nerith mais rápidos, Ímã virou corpo a corpo de verdade, e a Jedegar não fica mais presa nos próprios pilares.</li>
     <li><strong>Navegação por teclado removida</strong>: o jogo agora é 100% no mouse/toque. Setas, WASD, Espaço e Q não fazem mais nada — todo controle é por clique.</li>
+  </ul>
+  <ul>
     <li><strong>XP de abate agora é compartilhado</strong>: em vez de ir só pra quem deu o golpe final, todo XP de abate da onda é somado e dividido igualmente entre TODO o time no fim da rodada (recém-chegados ainda recebem o bônus extra de catch-up por cima da parte deles). Resolve o problema de um único personagem virar absurdamente mais forte que o resto só por concentrar os abates.</li>
     <li><strong>Nerf na Zeph e na Pyra</strong>: velocidade base caiu 30% nas duas (Zeph: 1.6→1.12, Pyra: 1→0.7) — combinada com estrelas altas e a Precisão Mortal, a velocidade de ataque delas tava saindo do controle.</li>
     <li><strong>"Imposto sobre bênçãos"</strong>: quando não sobra mais bênção nova pra escolher, aparece uma notificação cobrando 500 moedas mesmo assim — sem chance de recurso.</li>
@@ -2007,10 +2019,12 @@ async function postMyResult(){
   statusEl.textContent = 'Postando...';
   try{
     const { db, collection, addDoc, serverTimestamp } = window.__lb;
+    const badges = [...unlockedAchievements].filter(id=>ACHIEVEMENTS[id]).map(id=>ACHIEVEMENTS[id].icon);
     await addDoc(collection(db, 'leaderboard'), {
       playerName: playerName.slice(0,24),
       maxWave: personalRecords.maxWave || 0,
       team,
+      badges,
       likes: 0,
       createdAt: serverTimestamp()
     });
@@ -2068,10 +2082,11 @@ async function renderLeaderboard(){
       `).join('');
       return `
         <div style="padding:14px; background:rgba(0,0,0,0.15); border:1px solid #3a3f47; border-radius:6px;">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
             <div style="font-family:'Oswald',sans-serif; font-size:15px; color:#eae4d8;">${data.playerName||'Anônimo'}</div>
             <div style="color:var(--gold); font-family:'JetBrains Mono',monospace; font-size:13px;">🌊 Onda ${data.maxWave||0}</div>
           </div>
+          ${(data.badges&&data.badges.length) ? `<div style="margin-bottom:8px; font-size:14px; letter-spacing:2px;" title="${data.badges.length} emblema${data.badges.length>1?'s':''} de conquista">${data.badges.join(' ')}</div>` : ''}
           <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:6px; margin-bottom:10px;">${teamHtml}</div>
           <button class="ghost-btn like-btn${alreadyLiked?' liked':''}" data-entry-id="${id}" ${alreadyLiked?'disabled':''}>
             ${alreadyLiked?'❤️':'🤍'} <span class="like-count">${data.likes||0}</span>
@@ -2685,17 +2700,21 @@ function renderItems(){
 const RECOMMENDED_ITEMS = {
   ferrha: {items:['placa','muralha_viva','nucleo_eterno'], note:'Ela já nasce tanque — reforce a defesa e amplifique a barreira/puxada com item de passiva.'},
   voss: {items:['luneta','olho_falcao'], note:'Alcance e dano pra ela atirar de mais longe com segurança.'},
-  nyx: {items:['manopla','botas'], note:'Mais dano corpo a corpo e velocidade — ela já esquiva bastante sozinha, então é ir no ataque.'},
-  kael: {items:['amplificador','nucleo_eterno','manopla'], note:'Amplifique o frenesi: mais duração, mais vampirismo, mais dano.'},
+  nyx: {items:['furia_crescente','botas_lutador'], note:'Crítico e velocidade de ataque — ela já esquiva bastante sozinha, então é ir no ataque rápido.'},
+  kael: {items:['amplificador','nucleo_eterno','presas_sangrentas'], note:'Amplifique o frenesi: mais duração, mais vampirismo, mais dano — as Presas Sangrentas dão ainda mais sustentação corpo a corpo.'},
   terrus: {items:['placa','nucleo_eterno','coracao_vital'], note:'Quanto mais vida e defesa, mais forte fica a Pele de Pedra.'},
   pyra: {items:['luneta','mira'], note:'Longa distância pra explodir os inimigos de longe com mais segurança.'},
   glacia: {items:['botas','amplificador'], note:'Cura mais rápido e mais forte pros aliados.'},
   zeph: {items:['mira','olho_falcao'], note:'Velocidade de ataque pra disparar a chuva de flechas com mais frequência.'},
-  ima: {items:['amplificador','placa'], note:'Fortalece a aura de defesa pros aliados de metal e aguenta mais no corpo a corpo.'},
-  frosk: {items:['manopla','coracao_vital'], note:'Dano extra no golpe de congelamento e mais vida pra aguentar o combate corpo a corpo.'},
+  ima: {items:['amplificador','placa'], note:'Fortalece a aura de defesa pros aliados de metal e aguenta mais no corpo a corpo — ela é 100% corpo a corpo agora.'},
+  frosk: {items:['punho_serra','coracao_vital'], note:'Perfuração de armadura pra furar tanque inimigo, e mais vida pra aguentar o combate corpo a corpo.'},
   gelida: {items:['amplificador','nucleo_eterno'], note:'Aumenta a duração do espectro e a cura ao renascer.'},
-  raio: {items:['nucleo_eterno','placa'], note:'Se for fazer a build Raio solo, o Núcleo Eterno é essencial — mais vida, defesa e um combo ainda mais forte.'},
+  raio: {items:['botas_lutador','carniceiro'], note:'Velocidade de ataque pra ativar o combo mais rápido, e o Carniceiro dá perfuração + vampirismo pra sustentar a briga.'},
   shecry: {items:['coracao_vital','manto_robusto','muralha_viva'], note:'Mais vida bruta vira mais defesa (a passiva dela escala com a vida atual) e escudo maior na ultimate.'},
+  nerith: {items:['coracao_vital','manto_robusto'], note:'Ela mesma é frágil e não briga direto — o importante é sobreviver enquanto os tentáculos fazem o trabalho.'},
+  voltra: {items:['mira','olho_falcao'], note:'A onda de choque dela escala com velocidade de ataque — quanto mais rápida, mais forte a explosão.'},
+  jedegar: {items:['coracao_vital','manto_robusto','placa'], note:'Ela vive de sobreviver — vida e defesa extra deixam os pilares e a passiva de morte mais fáceis de aproveitar.'},
+  shava: {items:['presas_sangrentas','botas_lutador'], note:'Vampirismo pra sustentar o combo de golpes, e velocidade pra chegar nos 3/6 golpes mais rápido.'},
 };
 
 function renderRecommended(){
