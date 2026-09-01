@@ -1663,8 +1663,8 @@ const ITEM_CATALOG = {
   luneta:{name:'Luneta de Longo Alcance', kind:'longa distância', cost:60, desc:'+1 de alcance e +15% de dano — só faz efeito em Stack Users de alcance 2+.', effect:{range:1, atkPct:0.15, appliesTo:'ranged'}},
   mira:{name:'Mira Telescópica', kind:'longa distância', cost:65, desc:'+20% de velocidade de ataque — só faz efeito em Stack Users de alcance 2+.', effect:{speedPct:0.20, appliesTo:'ranged'}},
   manopla:{name:'Manopla de Aço', kind:'corpo a corpo', cost:60, desc:'+35% de dano — só faz efeito em Stack Users corpo a corpo (alcance 1).', effect:{atkPct:0.35, appliesTo:'melee'}},
-  punho_serra:{name:'Punho de Serra', kind:'corpo a corpo', cost:70, desc:'Ignora 15% da redução de dano do alvo a cada golpe — só corpo a corpo (alcance 1). Ótimo contra tanques.', effect:{appliesTo:'melee'}},
-  presas_sangrentas:{name:'Presas Sangrentas', kind:'corpo a corpo', cost:75, desc:'Cura 8% do dano causado como vida a cada golpe — só corpo a corpo (alcance 1). Vampirismo bem mais forte que o Amuleto Vital, mas exclusivo de quem luta de perto.', effect:{appliesTo:'melee'}},
+  punho_serra:{name:'Punho de Serra', kind:'corpo a corpo', cost:70, desc:'Ignora 15% da redução de dano do alvo a cada golpe, e dá +40 de HP — só corpo a corpo (alcance 1). Ótimo contra tanques.', effect:{hpFlat:40, appliesTo:'melee'}},
+  presas_sangrentas:{name:'Presas Sangrentas', kind:'corpo a corpo', cost:75, desc:'Cura 8% do dano causado como vida a cada golpe, e dá +35 de HP — só corpo a corpo (alcance 1). Vampirismo bem mais forte que o Amuleto Vital, mas exclusivo de quem luta de perto.', effect:{hpFlat:35, appliesTo:'melee'}},
   furia_crescente:{name:'Fúria Crescente', kind:'corpo a corpo', cost:70, desc:'18% de chance a cada golpe de causar 50% de dano bônus — só corpo a corpo (alcance 1).', effect:{appliesTo:'melee'}},
   botas_lutador:{name:'Botas de Lutador', kind:'corpo a corpo', cost:65, desc:'+22% de velocidade de ataque — só corpo a corpo (alcance 1). Mais forte que as Botas Aceleradas normais, mas exclusiva de quem luta de perto.', effect:{speedPct:0.22, appliesTo:'melee'}},
   brasa:{name:'Brasa Selvagem', kind:'dano ativo', cost:80, desc:'A cada 5s, queima os inimigos ao redor por 4 de dano mágico. Efeito varia pelo elemento de quem usa: Fogo e Vento formam uma onda que se espalha pelos blocos (1s de atraso por bloco de distância — Vento alcança 6 blocos, Fogo alcança 3), Água vaporiza (+20% da vida atual do alvo após 2s), Terra atordoa por 0,5s, Metal marca o alvo (vulnerável, +15% de dano por 3s), Gelo aplica queimadura gelada (dano contínuo que não para até o fim da rodada), Elétrico causa sobrecarga (-20% de velocidade por 4s, com chance de saltar pra outro inimigo perto).', effect:{}},
@@ -1673,8 +1673,8 @@ const ITEM_CATALOG = {
   amuleto:{name:'Amuleto Vital', kind:'vampirismo', cost:75, desc:'Cura 3 de vida a cada golpe acertado, em qualquer Stack User. Empilha se equipar mais de um.', effect:{}},
   amplificador:{name:'Núcleo Amplificador', kind:'passiva', cost:90, desc:'+20% de força em toda passiva especial do usuário (duração, cura, dano bônus, defesa permanente). Empilha até 3x.', effect:{}},
   furia_blindada:{name:'Fúria Blindada', kind:'combinado · corpo a corpo', recipe:['manopla','placa'], desc:'Combinação de Manopla de Aço + Placa de Blindagem. +35% de dano, +30 de HP e 5% de redução de dano — só corpo a corpo.', effect:{atkPct:0.35, hpFlat:30, dmgReductionPct:0.05, appliesTo:'melee'}},
-  carniceiro:{name:'Carniceiro', kind:'combinado · corpo a corpo', recipe:['punho_serra','presas_sangrentas'], desc:'Combinação de Punho de Serra + Presas Sangrentas. Ignora 25% da redução de dano do alvo e cura 12% do dano causado como vida — só corpo a corpo.', effect:{appliesTo:'melee'}},
-  fio_mortal:{name:'Fio Mortal', kind:'combinado · corpo a corpo', recipe:['manopla','punho_serra'], desc:'Combinação de Manopla de Aço + Punho de Serra. +35% de dano e ignora 25% da redução de dano do alvo — só corpo a corpo. Build de dano puro.', effect:{atkPct:0.35, appliesTo:'melee'}},
+  carniceiro:{name:'Carniceiro', kind:'combinado · corpo a corpo', recipe:['punho_serra','presas_sangrentas'], desc:'Combinação de Punho de Serra + Presas Sangrentas. Ignora 25% da redução de dano do alvo, cura 12% do dano causado como vida, e dá +65 de HP — só corpo a corpo.', effect:{hpFlat:65, appliesTo:'melee'}},
+  fio_mortal:{name:'Fio Mortal', kind:'combinado · corpo a corpo', recipe:['manopla','punho_serra'], desc:'Combinação de Manopla de Aço + Punho de Serra. +35% de dano, ignora 25% da redução de dano do alvo, e dá +45 de HP — só corpo a corpo. Build de dano com um pouco de fôlego.', effect:{atkPct:0.35, hpFlat:45, appliesTo:'melee'}},
   investida_feroz:{name:'Investida Feroz', kind:'combinado · corpo a corpo', recipe:['manopla','botas_lutador'], desc:'Combinação de Manopla de Aço + Botas de Lutador. +35% de dano e +22% de velocidade de ataque — só corpo a corpo. Build agressiva, ótima pra quem depende de acertar vários golpes rápido pra ativar a habilidade (Raio, Frosk, Nyx).', effect:{atkPct:0.35, speedPct:0.22, appliesTo:'melee'}},
   olho_falcao:{name:'Olho de Falcão', kind:'combinado · longa distância', recipe:['luneta','botas'], desc:'Combinação de Luneta de Longo Alcance + Botas Aceleradas. +1 de alcance e +15% de dano — mas o efeito de verdade é a mira: em vez de atacar o inimigo mais próximo, sempre foca automaticamente em quem estiver com MENOS vida dentro do alcance. Só alcance 2+.', effect:{range:1, atkPct:0.15, appliesTo:'ranged'}},
   coracao_ferro:{name:'Coração de Ferro', kind:'combinado · tanque', recipe:['amuleto','placa'], desc:'Combinação de Amuleto Vital + Placa de Blindagem. +60 de HP e 15% de redução de dano, em qualquer Stack User.', effect:{hpFlat:60, dmgReductionPct:0.15, appliesTo:'all'}},
@@ -3044,6 +3044,12 @@ function openRelicSellPicker(itemId){
   document.getElementById('sell-relic-cancel').onclick = ()=> overlay.classList.remove('show');
 }
 function scaledStat(base, level){ return Math.round(base * (1 + 0.08*(level-1))); }
+// Vida escala separado do ataque, e mais forte — os inimigos aceleram (quase quadrático) depois
+// da onda 10, então a vida dos Stack Users também precisa acelerar, senão eles ficam pra trás.
+function scaledHp(base, level){
+  const n = level-1;
+  return Math.round(base * (1 + 0.12*n + 0.006*n*n));
+}
 
 function starMultiplier(role, stars){
   const profile = ROLE_STAR_PROFILE[role] || {hp:0.15, atk:0.15, speed:0.05, defFlat:0.02};
@@ -3060,7 +3066,7 @@ function effectiveItemIds(prog){
   return [...(prog.itemIds||[]), prog.relicId].filter(Boolean);
 }
 function computeUnitStats(def, prog){
-  let hp = scaledStat(def.hp, prog.level);
+  let hp = scaledHp(def.hp, prog.level);
   let atk = scaledStat(def.atk, prog.level);
   let range = def.range;
   let speed = def.speed;
