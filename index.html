@@ -217,11 +217,11 @@
     text-transform:uppercase; letter-spacing:1px; pointer-events:none;
   }
   #item-trash-zone.trash-hover{ background:rgba(90,30,30,0.95); border-color:#c2445a; color:#fff; }
-  #sell-confirm-overlay, #sell-relic-overlay{
+  #sell-confirm-overlay, #sell-relic-overlay, #post-record-overlay{
     display:none; position:fixed; inset:0; z-index:7000;
     background:rgba(0,0,0,0.75); align-items:center; justify-content:center;
   }
-  #sell-confirm-overlay.show, #sell-relic-overlay.show{ display:flex; }
+  #sell-confirm-overlay.show, #sell-relic-overlay.show, #post-record-overlay.show{ display:flex; }
   .sell-relic-champ-row{
     display:flex; align-items:center; gap:8px; padding:6px 8px; background:var(--iron-mid);
     border:1px solid #3a3f47; border-radius:5px; cursor:pointer; font-size:12px;
@@ -733,6 +733,17 @@
   </div>
 </div>
 
+<div id="post-record-overlay">
+  <div class="blessing-panel" style="width:320px;text-align:center;">
+    <h2 style="border:none;font-size:16px;">🏆 Quer postar o seu recorde?</h2>
+    <div class="subtitle" id="post-record-detail" style="margin-bottom:14px;"></div>
+    <div style="display:flex;gap:8px;">
+      <button class="ghost-btn" id="post-record-no" style="flex:1;">Não</button>
+      <button class="main-btn" id="post-record-yes" style="flex:1;">Sim, postar</button>
+    </div>
+  </div>
+</div>
+
 <div id="sell-relic-overlay">
   <div class="blessing-panel" style="width:380px;">
     <h2 style="border:none;font-size:16px;text-align:center;" id="sell-relic-name"></h2>
@@ -913,7 +924,6 @@
   <div class="panel">
     <h2>🏆 Placar</h2>
     <div class="subtitle" style="margin-bottom:14px;">Resultados de todo mundo que jogou. Precisa de internet pra carregar.</div>
-    <button class="main-btn" id="post-result-btn" style="margin-bottom:16px;">Postar meu resultado</button>
     <div id="leaderboard-status" class="subtitle"></div>
     <div id="leaderboard-list" style="display:flex; flex-direction:column; gap:12px;"></div>
   </div>
@@ -2011,8 +2021,6 @@ async function postMyResult(){
     console.error(e);
   }
 }
-document.getElementById('post-result-btn').addEventListener('click', postMyResult);
-
 async function likeEntry(entryId, btnEl){
   if(!window.__lb || !window.__lb.ready) return;
   const liked = getLikedEntries();
@@ -4642,6 +4650,22 @@ function hardResetProgress(){
 }
 
 function quitToMenu(){
+  if(mode!=='pve'){ actuallyQuitToMenu(); return; }
+  const overlay = document.getElementById('post-record-overlay');
+  const detailEl = document.getElementById('post-record-detail');
+  detailEl.textContent = `Onda ${wave} — maior onda geral: ${Math.max(wave, bestWaveEver)}. Seu time e itens aparecem no Placar pra todo mundo ver.`;
+  overlay.classList.add('show');
+  document.getElementById('post-record-yes').onclick = async ()=>{
+    overlay.classList.remove('show');
+    if(typeof window.postMyResult === 'function') await postMyResult();
+    actuallyQuitToMenu();
+  };
+  document.getElementById('post-record-no').onclick = ()=>{
+    overlay.classList.remove('show');
+    actuallyQuitToMenu();
+  };
+}
+function actuallyQuitToMenu(){
   if(mode==='pve' && wave > bestWaveEver){ bestWaveEver = wave; updateBestWaveDisplay(); }
   if(mode==='pve') checkWaveRecord(wave);
   battleActive = false;
