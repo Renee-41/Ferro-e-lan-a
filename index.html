@@ -6113,7 +6113,9 @@ function updateBattleLogic(dt){
         const activeCount = Object.values(jedegarStructures).filter(s=>s.ownerId===u.id).length;
         const occ = occupiedMap();
         const freeNeighbors = activeCount < 5 ? neighbors(u).filter(n=> inGrid(n) && !isBlockedTile(n) && occ[hexKey(n)]===undefined) : [];
-        if(freeNeighbors.length>0){
+        // nunca constrói no último hex livre ao redor dela — sempre precisa sobrar pelo menos
+        // 1 saída, senão ela fica presa pelos próprios pilares (e sem conseguir revidar).
+        if(freeNeighbors.length>1){
           // prioriza um hex livre que também fique colado num aliado vivo (além dela mesma)
           const allies = units.filter(o=>o.alive && o.team===u.team && o.id!==u.id);
           let chosen = freeNeighbors.find(n=> allies.some(a=> hexDistance(n,a)===1));
