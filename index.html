@@ -3183,7 +3183,6 @@ function openStarterPick(){
       currentStarterChamp = id;
       hardResetProgress();
       clearGameSnapshot();
-      setMenuLocked(true);
       resetRoundTracking();
       resetMatchProgression();
       if(arenaExpanded){ arenaExpanded = false; RADIUS = 4; regenerateAllHexes(); }
@@ -3307,7 +3306,7 @@ function startPvpSetup(isTest){
     });
   });
 }
-document.getElementById('mode-pvp').addEventListener('click', ()=>{ if(typeof window.stopIntroMusic === 'function') window.stopIntroMusic(); setMenuLocked(true); startPvpSetup(false); });
+document.getElementById('mode-pvp').addEventListener('click', ()=>{ if(typeof window.stopIntroMusic === 'function') window.stopIntroMusic(); startPvpSetup(false); });
 
 let teamDraft = [];
 function openTeamSelect(title){
@@ -4331,6 +4330,7 @@ function randomEnemyWave(waveNum){
 }
 
 function startPveRun(){
+  setMenuLocked(true);
   document.getElementById('quit-battle-btn').style.display = 'none';
   document.getElementById('view-summary-btn').style.display = 'none';
   matchStats = {};
@@ -4464,6 +4464,7 @@ function applyTempEnemyStats(wavePicks){
 }
 
 function startPvpRound(){
+  setMenuLocked(true);
   document.getElementById('quit-battle-btn').style.display = 'block';
   inMatch = true;
   savePvpCoins();
@@ -4609,7 +4610,6 @@ function resumeSavedGame(){
     RADIUS = snap.RADIUS || 4;
     regenerateAllHexes();
   }
-  setMenuLocked(true);
   inMatch = true;
   document.getElementById('nav-battle-btn').style.display = 'inline-block';
   updateCoinBadge();
@@ -6397,6 +6397,7 @@ function finishPrep(){
 }
 
 function finishPrepContinue(){
+  setMenuLocked(true);
   const fade = document.getElementById('wave-transition-fade');
   fade.style.opacity = '1';
   setTimeout(()=>{
