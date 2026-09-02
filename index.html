@@ -217,11 +217,18 @@
     text-transform:uppercase; letter-spacing:1px; pointer-events:none;
   }
   #item-trash-zone.trash-hover{ background:rgba(90,30,30,0.95); border-color:#c2445a; color:#fff; }
-  #sell-confirm-overlay, #sell-relic-overlay, #post-record-overlay{
+  #sell-confirm-overlay, #sell-relic-overlay, #post-record-overlay, #mobile-mode-ask-overlay{
     display:none; position:fixed; inset:0; z-index:7000;
     background:rgba(0,0,0,0.75); align-items:center; justify-content:center;
   }
-  #sell-confirm-overlay.show, #sell-relic-overlay.show, #post-record-overlay.show{ display:flex; }
+  #sell-confirm-overlay.show, #sell-relic-overlay.show, #post-record-overlay.show, #mobile-mode-ask-overlay.show{ display:flex; }
+  #app-toast{
+    display:none; position:fixed; left:50%; bottom:30px; transform:translateX(-50%);
+    z-index:9000; background:var(--iron-mid); border:1px solid var(--gold); color:#eae4d8;
+    padding:12px 20px; border-radius:6px; font-family:'Oswald',sans-serif; font-size:13px;
+    max-width:calc(100vw - 32px); text-align:center; box-shadow:0 8px 24px rgba(0,0,0,0.5);
+  }
+  #app-toast.show{ display:block; }
   .sell-relic-champ-row{
     display:flex; align-items:center; gap:8px; padding:6px 8px; background:var(--iron-mid);
     border:1px solid #3a3f47; border-radius:5px; cursor:pointer; font-size:12px;
@@ -744,6 +751,18 @@
     </div>
   </div>
 </div>
+
+<div id="mobile-mode-ask-overlay">
+  <div class="blessing-panel" style="width:320px;text-align:center;">
+    <h2 style="border:none;font-size:16px;">📱 Ativar modo de celular?</h2>
+    <div class="subtitle" style="margin-bottom:14px;">No modo celular, você clica no item e depois no Stack User pra equipar, em vez de arrastar. Dá pra trocar isso a qualquer hora nas Configurações.</div>
+    <div style="display:flex;gap:8px;">
+      <button class="ghost-btn" id="mobile-mode-ask-no" style="flex:1;">Não</button>
+      <button class="main-btn" id="mobile-mode-ask-yes" style="flex:1;">Sim, ativar</button>
+    </div>
+  </div>
+</div>
+<div id="app-toast"></div>
 
 <div id="post-record-overlay">
   <div class="blessing-panel" style="width:320px;text-align:center;">
@@ -1410,6 +1429,7 @@
       if(overallFade) overallFade.classList.add('show');
       setTimeout(()=>{
         endIntroSequence();
+        document.getElementById('mobile-mode-ask-overlay').classList.add('show');
       }, 850);
     });
   }
@@ -2250,13 +2270,32 @@ function setSuggestionsEnabled(on){
 }
 document.getElementById('suggestions-toggle-btn').addEventListener('click', ()=> setSuggestionsEnabled(!suggestionsEnabled));
 
-document.getElementById('mobile-mode-toggle-btn').addEventListener('click', ()=>{
-  mobileEquipMode = !mobileEquipMode;
+function setMobileEquipMode(on){
+  mobileEquipMode = on;
   const btn = document.getElementById('mobile-mode-toggle-btn');
   btn.textContent = mobileEquipMode ? 'Ligado' : 'Desligado';
   btn.classList.toggle('on', mobileEquipMode);
   selectedInventoryItem = null;
   document.querySelectorAll('.inv-tile.selected-for-equip').forEach(t=>t.classList.remove('selected-for-equip'));
+}
+document.getElementById('mobile-mode-toggle-btn').addEventListener('click', ()=> setMobileEquipMode(!mobileEquipMode));
+
+let appToastTimer = null;
+function showAppToast(message, durationMs){
+  const toast = document.getElementById('app-toast');
+  toast.textContent = message;
+  toast.classList.add('show');
+  clearTimeout(appToastTimer);
+  appToastTimer = setTimeout(()=> toast.classList.remove('show'), durationMs || 4000);
+}
+
+document.getElementById('mobile-mode-ask-yes').addEventListener('click', ()=>{
+  document.getElementById('mobile-mode-ask-overlay').classList.remove('show');
+  setMobileEquipMode(true);
+  showAppToast('📱 O modo de celular foi ativado — você pode trocar isso nas Configurações.');
+});
+document.getElementById('mobile-mode-ask-no').addEventListener('click', ()=>{
+  document.getElementById('mobile-mode-ask-overlay').classList.remove('show');
 });
 
 document.querySelectorAll('.item-filter-btn').forEach(btn=>{
