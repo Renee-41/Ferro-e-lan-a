@@ -183,6 +183,10 @@
   .inv-tile.dragging{ opacity:0.35; }
   .inv-tile.selected-for-equip{ border-color:var(--gold); box-shadow:0 0 8px rgba(232,194,80,0.6); }
   .ghost-btn.on{ border-color:var(--frost); color:var(--frost); }
+  .balance-row{ display:flex; justify-content:space-between; align-items:center; padding:4px 0; font-family:'JetBrains Mono',monospace; font-size:11px; }
+  .balance-arrow-up{ color:#7bbf6a; font-weight:bold; }
+  .balance-arrow-down{ color:#c2445a; font-weight:bold; }
+  .balance-entry{ margin-bottom:10px; padding:8px 10px; background:rgba(0,0,0,0.15); border:1px solid #3a3f47; border-radius:5px; }
   .like-btn.liked{ border-color:#c2445a; color:#e88; }
   .inv-tile .inv-count{
     position:absolute; bottom:1px; right:2px; font-size:9px; font-family:'JetBrains Mono',monospace;
@@ -589,6 +593,60 @@
     <strong style="color:var(--molten);text-transform:uppercase;letter-spacing:1px;font-size:12px;">Notas de atualização</strong>
     <button id="patchnotes-close" style="background:none;border:none;color:var(--steel);font-size:16px;cursor:pointer;line-height:1;">×</button>
   </div>
+
+  <div style="margin-bottom:16px;">
+    <strong style="color:var(--gold);font-size:12px;text-transform:uppercase;letter-spacing:1px;">📊 Histórico de equilíbrio (antes → depois)</strong>
+
+    <div class="balance-entry">
+      <div><strong>Primeiro chefe (onda 5)</strong> <span class="balance-arrow-down">▼ nerfado</span></div>
+      <div class="balance-row"><span>Multiplicador de vida</span><span>2.2x → <strong>0.7x</strong></span></div>
+      <div class="balance-row"><span>Multiplicador de dano</span><span>1.1x → <strong>0.4x</strong></span></div>
+    </div>
+
+    <div class="balance-entry">
+      <div><strong>Voltra — onda de choque (ultimate)</strong> <span class="balance-arrow-up">▲ buffada</span></div>
+      <div class="balance-row"><span>Dano base</span><span>35 → <strong>90</strong></span></div>
+      <div class="balance-row"><span>Dano por inimigo próximo</span><span>+12 → <strong>+25</strong></span></div>
+      <div class="balance-row"><span>Escala com velocidade de ataque</span><span>não → <strong>sim</strong></span></div>
+    </div>
+
+    <div class="balance-entry">
+      <div><strong>Gélida — pilar de gelo</strong> <span class="balance-arrow-up">▲ buffada</span></div>
+      <div class="balance-row"><span>Dano por tick (6 tics)</span><span>8 → <strong>30</strong></span></div>
+    </div>
+
+    <div class="balance-entry">
+      <div><strong>Nerith — tentáculos</strong> <span class="balance-arrow-up">▲ buffada</span></div>
+      <div class="balance-row"><span>1º / 2º / 3º / 4º tentáculo</span><span>5s/6s/7s/8s → <strong>2,5s/3s/3,5s/4s</strong></span></div>
+      <div class="balance-row"><span>Reposição ao perder um</span><span>3s → <strong>1,5s</strong></span></div>
+    </div>
+
+    <div class="balance-entry">
+      <div><strong>Ímã</strong> <span class="balance-arrow-down">▼ nerfada</span> <span style="color:var(--steel);">(mudou de arquétipo)</span></div>
+      <div class="balance-row"><span>Alcance</span><span>2 (longa distância) → <strong>1 (corpo a corpo)</strong></span></div>
+    </div>
+
+    <div class="balance-entry">
+      <div><strong>Jedegar — pilares</strong> <span class="balance-arrow-down">▼ nerfada</span></div>
+      <div class="balance-row"><span>Amplificação de dano (normal)</span><span>15% → <strong>10%</strong></span></div>
+      <div class="balance-row"><span>Amplificação de dano (após 5º pilar)</span><span>30% → <strong>20%</strong></span></div>
+      <div class="balance-row"><span>Intervalo entre pilares</span><span>1,5s → <strong>3,1s</strong></span></div>
+      <div class="balance-row"><span>Limite de pilares vivos</span><span>ilimitado → <strong>5 ao mesmo tempo</strong></span></div>
+    </div>
+
+    <div class="balance-entry">
+      <div><strong>XP de abate</strong> <span class="balance-arrow-up">▲ buffado</span></div>
+      <div class="balance-row"><span>Por abate normal</span><span>2 fixo → <strong>2 + 1 a cada 6 ondas</strong></span></div>
+      <div class="balance-row"><span>Bônus criatura corrompida</span><span>+2 → <strong>+3</strong></span></div>
+    </div>
+
+    <div class="balance-entry">
+      <div><strong>Vida por nível (todos os personagens)</strong> <span class="balance-arrow-up">▲ buffada</span></div>
+      <div class="balance-row"><span>Vida no nível 10 (vs. base)</span><span>+72% → <strong>+157%</strong></span></div>
+      <div class="balance-row"><span>Vida no nível 20 (vs. base)</span><span>+152% → <strong>+445%</strong></span></div>
+    </div>
+  </div>
+
   <ul>
     <li><strong>Dois personagens novos: Jedegar e Shava.</strong> <strong>Jedegar</strong> (Terra, Suporte) — "Pilar da Perseverança": ergue pilares de pedra que amplificam o dano dos aliados por perto, sofre um combo de fuga ao cair abaixo de 30% de vida, e ao morrer dá escudo/dano/velocidade pro aliado mais ferido. <strong>Shava</strong> (Vento, Lutadora de Capoeira) — avança correndo (com rastro de vento) até o inimigo com mais vida, executa quem estiver abaixo de 10%, e tem um combo de cura a cada 3 golpes / vórtice a cada 6 no mesmo alvo. As duas têm uma passiva secreta de interação com outro personagem específico (Jedegar+Terrus, Shava+Kael).</li>
     <li><strong>7 itens novos pra corpo a corpo</strong>: Punho de Serra, Presas Sangrentas, Fúria Crescente, Botas de Lutador (+ as combinações Carniceiro, Fio Mortal, Investida Feroz) — dando perfuração de armadura, vampirismo mais forte, crítico e velocidade exclusivos de quem luta de perto. Vários também dão HP extra.</li>
@@ -1363,18 +1421,28 @@
     if(canvas && canvas.parentNode) canvas.remove();
   }
 
-  // atalho silencioso: Espaço pula direto pro clímax (nome do jogo + Press Start),
-  // sem nenhuma dica visual — sem botão de pular introdução.
+  // pula direto pro clímax (nome do jogo + Press Start) — usado pelo atalho de Espaço
+  // e também por tocar/clicar na tela (bom pra quem tá no celular).
+  function skipToClimax(){
+    if(introEnded || titleTriggered) return;
+    clearInterval(tickInterval);
+    clockStart = performance.now() - WAIT_DURATION*1000; // realinha o relógio pro instante do clímax
+    tryPlayAudio(); // conta como gesto do usuário, libera o áudio se ainda não tinha
+    seekWebAudioTo(CLIMAX_AT);
+    triggerClimax();
+  }
   document.addEventListener('keydown', (e)=>{
     if(e.code !== 'Space' && e.key !== ' ') return;
     if(introEnded || titleTriggered) return;
     e.preventDefault();
-    clearInterval(tickInterval);
-    clockStart = performance.now() - WAIT_DURATION*1000; // realinha o relógio pro instante do clímax
-    tryPlayAudio(); // Espaço também conta como gesto do usuário, libera o áudio se ainda não tinha
-    seekWebAudioTo(CLIMAX_AT);
-    triggerClimax();
+    skipToClimax();
   });
+  if(preshow){
+    preshow.addEventListener('click', (e)=>{
+      if(e.target.id === 'intro-volume-slider') return; // não pula se for só ajustando o volume
+      skipToClimax();
+    });
+  }
 
   // volume base (0-1) ajustável pelo slider a qualquer momento
   let userVolume = 0.7;
@@ -1678,7 +1746,7 @@ const CHAMPION_CATALOG = {
   shava:{name:'Shava',element:'vento',role:'Lutadora de Capoeira',cost:120,hp:140,atk:16,range:1,speed:1.3,special:'shava',desc:'Quando um inimigo está a 3+ blocos, avança até ele (dano dobrado), priorizando quem tem mais vida — recarrega em 10s e só ativa com o alvo a até 5 blocos. Se o alvo estiver abaixo de 10% de vida, executa na hora e arremessa o corpo em outro inimigo próximo (atordoa 2s, reduz dano dele por 5s). Senão, empurra o alvo até 5 blocos — se bater em parede/obstáculo, atordoa 4s e reduz armadura por 3s. A cada 3 golpes, cura 10% do dano causado. A cada 6 golpes no mesmo alvo, cria um vórtice que atordoa (0,8s, sem dano) inimigos num raio de 2 blocos, exceto o próprio alvo.'},
   kael:{name:'Kael',element:'fogo',role:'Berserker',cost:110,hp:120,atk:18,range:1,speed:1,special:'furia',desc:'Quanto menor a vida dele, mais forte ataca — e a cada 4 golpes solta um golpe flamejante ainda mais forte. Passiva: ao chegar a 1 de HP, entra em frenesi por 3s (uma vez por batalha) — fica imortal, mais rápido, com dano ainda maior (escala com estrela) e vampirismo de 9 de vida por golpe.'},
   terrus:{name:'Terrus',element:'terra',role:'Guardião',cost:110,hp:230,atk:11,range:1,speed:0.8,special:'couraca',desc:'Reduz todo dano recebido em 20% — e a cada 4 golpes causa um tremor que dá mais dano e cura um pouco dele mesmo. Passiva: ao cair pela primeira vez abaixo de 30% de vida, petrifica a pele — fica imune por 2s, cura 20% da vida e ganha defesa extra permanente pro resto da batalha (uma vez por batalha).'},
-  jedegar:{name:'Jedegar',element:'terra',role:'Pilar da Perseverança',cost:130,hp:190,atk:10,range:1,speed:0.9,special:'jedegar',desc:'A cada 1,5s ergue um pilar de pedra ao lado dela (prioriza ficar perto de aliados) — pilares amplificam o dano de aliados num raio de 2 blocos, e cada um aguenta 2 golpes de inimigo comum (1 de chefe) antes de cair. Ao ser atingido, um pilar libera energia que fortalece os pilares próximos por 3s. Ao erguer o 5º pilar da partida, o efeito de todos dobra permanentemente e inimigos perto de pilares perdem 30% de defesa. Na primeira vez que cai abaixo de 30% de vida, ergue um pilar debaixo do inimigo mais próximo (arremessando ele longe) e foge sobre uma fileira de pedra recém-criada. Ao morrer, ergue um círculo protetor ao redor do aliado mais ferido (escudo, dano e velocidade de ataque por 5s) — os pilares dela desmoronam 5s depois da sua morte.'},
+  jedegar:{name:'Jedegar',element:'terra',role:'Pilar da Perseverança',cost:130,hp:190,atk:10,range:1,speed:0.9,special:'jedegar',desc:'A cada 3,1s ergue um pilar de pedra ao lado dela (prioriza ficar perto de aliados) — pilares amplificam o dano de aliados num raio de 2 blocos em 10% (dobra pra 20% depois do 5º pilar), e cada um aguenta 2 golpes de inimigo comum (1 de chefe) antes de cair. Ao ser atingido, um pilar libera energia que fortalece os pilares próximos por 3s. Ao erguer o 5º pilar da partida, o efeito de todos dobra permanentemente e inimigos perto de pilares perdem 30% de defesa. Na primeira vez que cai abaixo de 30% de vida, ergue um pilar debaixo do inimigo mais próximo (arremessando ele longe) e foge sobre uma fileira de pedra recém-criada. Ao morrer, ergue um círculo protetor ao redor do aliado mais ferido (escudo, dano e velocidade de ataque por 5s) — os pilares dela desmoronam 5s depois da sua morte.'},
   pyra:{name:'Pyra',element:'fogo',role:'Maga',cost:85,hp:100,atk:21,range:3,speed:0.7,special:'explosao',desc:'A cada 3 golpes, sua explosão também atinge o inimigo mais próximo do alvo com dano total. Como todo Stack User de longa distância, causa mais dano quanto mais longe estiver do alvo (+8% por bloco além do 1º).'},
   glacia:{name:'Glacia',element:'agua',role:'Suporte',cost:70,hp:100,atk:11,range:2,speed:1,special:'cura',desc:'A cada 4 ataques, cura 25% da vida do aliado mais ferido. Como todo Stack User de longa distância, causa mais dano quanto mais longe estiver do alvo (+8% por bloco além do 1º).'},
   zeph:{name:'Zeph',element:'vento',role:'Arqueira veloz',cost:95,hp:80,atk:14,range:3,speed:1.12,special:'chuva',desc:'A cada 4 tiros, dispara uma flecha extra em outro inimigo aleatório. Como todo Stack User de Vento, tem 20% de chance de esquivar de ataques físicos (sobe pra 30% com menos de 40% de vida). Não vale contra habilidades/passivas. Como todo Stack User de longa distância, causa mais dano quanto mais longe estiver do alvo (+8% por bloco além do 1º).'},
@@ -1806,6 +1874,11 @@ let mode = null; // 'pve' | 'pvp'
 let testMode = false; // Teste Mode: moedas infinitas + time de até 5
 let TEAM_MAX = 3;
 let inMatch = false; // compras só liberadas enquanto isso for true
+window.addEventListener('beforeunload', (e)=>{
+  if(!inMatch) return;
+  e.preventDefault();
+  e.returnValue = ''; // exigido pelos navegadores pra mostrar o aviso nativo de confirmação
+});
 let teamSelectStage = null; // for pvp: 'p1' or 'p2'
 let teamP1 = [], teamP2 = [];
 let wave = 1;
@@ -1998,6 +2071,9 @@ try{
   const raw = localStorage.getItem(ACH_KEY);
   if(raw) unlockedAchievements = new Set(JSON.parse(raw));
 }catch(e){}
+// Conquistas da partida ATUAL (reinicia a cada nova partida) — é isso que vai pro Placar,
+// não a coleção vitalícia inteira. O Perfil continua usando unlockedAchievements (vitalícia).
+let matchAchievements = new Set();
 
 let corruptedKillCount = 0;
 try{ corruptedKillCount = parseInt(localStorage.getItem('ferroLancaCorruptedKills')||'0',10) || 0; }catch(e){}
@@ -2039,7 +2115,7 @@ async function postMyResult(){
   statusEl.textContent = 'Postando...';
   try{
     const { db, collection, addDoc, serverTimestamp } = window.__lb;
-    const badges = [...unlockedAchievements].filter(id=>ACHIEVEMENTS[id]).map(id=>ACHIEVEMENTS[id].icon);
+    const badges = [...matchAchievements].filter(id=>ACHIEVEMENTS[id]).map(id=>ACHIEVEMENTS[id].icon);
     await addDoc(collection(db, 'leaderboard'), {
       playerName: playerName.slice(0,24),
       maxWave: personalRecords.maxWave || 0,
@@ -2199,6 +2275,7 @@ function renderAchievementsList(){
 }
 
 function unlockAchievement(id){
+  matchAchievements.add(id); // conta pra essa partida mesmo que já fosse vitalícia
   if(unlockedAchievements.has(id)) return;
   unlockedAchievements.add(id);
   try{ localStorage.setItem(ACH_KEY, JSON.stringify([...unlockedAchievements])); }catch(e){}
@@ -3344,6 +3421,7 @@ function startPvpSetup(isTest){
   TEAM_MAX = isTest ? 5 : 3;
   pvpRound = 1;
   jedegarProgress = {};
+  matchAchievements = new Set();
   logHistory = [];
   banterNextRoundP1 = {};
   banterNextRoundP2 = {};
@@ -3871,7 +3949,7 @@ function makeUnit(id, team, champId, def, level, q, r, statOverride, stars, item
     borrowedChampPower: null, vigorRegenAt: 0, imaProcAt: 0,
     lastPortalOrigin: null, portalCooldownUntil: 0,
     isWave60Boss: false, ecoSummonAt: 0, ecoBlastAt: 0,
-    jedegarPillarTimer: 1500, jedegarShieldUntil: 0, jedegarDeathBuffUntil: 0, jedegarSecretBonus: false,
+    jedegarPillarTimer: 3100, jedegarShieldUntil: 0, jedegarDeathBuffUntil: 0, jedegarSecretBonus: false,
     shavaSecretBonus: false,
     shavaKickCooldown: 0, shavaHitCount: 0, shavaComboTargetId: null, shavaComboTargetHits: 0,
     shavaWeakenUntil: 0, shavaArmorDebuffUntil: 0,
@@ -4411,6 +4489,7 @@ function startPveRun(){
   currentEnemyCount = 3;
   activeBlessings = [];
   jedegarProgress = {};
+  matchAchievements = new Set();
   bossDefeatCount = 0;
   bossCountedThisWave = false;
   interactionFiredThisRound = false;
@@ -4929,7 +5008,7 @@ function jedegarAuraMultiplier(u){
     if(hexDistance(s, u) > 2) return;
     const owner = units.find(o=>o.id===s.ownerId);
     const milestoneUp = owner ? getJedegarProgress(owner).milestoneReached : false;
-    let bonus = milestoneUp ? 0.30 : 0.15;
+    let bonus = milestoneUp ? 0.20 : 0.10;
     if(s.boostUntil && now < s.boostUntil) bonus += 0.15;
     mult = Math.max(mult, 1+bonus);
   });
@@ -6206,7 +6285,7 @@ function updateBattleLogic(dt){
     if(u.champId==='jedegar' && u.alive){
       u.jedegarPillarTimer -= dt;
       if(u.jedegarPillarTimer<=0){
-        u.jedegarPillarTimer = 1500;
+        u.jedegarPillarTimer = 3100;
         const activeCount = Object.values(jedegarStructures).filter(s=>s.ownerId===u.id).length;
         const occ = occupiedMap();
         const freeNeighbors = activeCount < 5 ? neighbors(u).filter(n=> inGrid(n) && !isBlockedTile(n) && occ[hexKey(n)]===undefined) : [];
