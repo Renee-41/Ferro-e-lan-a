@@ -2275,6 +2275,7 @@ function renderAchievementsList(){
 }
 
 function unlockAchievement(id){
+  if(mode==='pve' && wave < 7) return; // conquistas só liberam a partir da onda 7 — muito fácil pegar 2 de uma vez na primeira rodada
   matchAchievements.add(id); // conta pra essa partida mesmo que já fosse vitalícia
   if(unlockedAchievements.has(id)) return;
   unlockedAchievements.add(id);
