@@ -650,6 +650,7 @@
       <div class="balance-row"><span>Golpes pra congelar</span><span>5 → <strong>4</strong></span></div>
       <div class="balance-row"><span>Duração do atordoamento</span><span>0,5s → <strong>1,5s</strong></span></div>
       <div class="balance-row"><span>Redução de dano</span><span>nenhuma → <strong>15% permanente (nova passiva)</strong></span></div>
+      <div class="balance-row"><span>Velocidade de ataque</span><span>1.0 → <strong>1.25</strong></span></div>
     </div>
   </div>
 
@@ -1757,7 +1758,7 @@ const CHAMPION_CATALOG = {
   glacia:{name:'Glacia',element:'agua',role:'Suporte',cost:70,hp:100,atk:11,range:2,speed:1,special:'cura',desc:'A cada 4 ataques, cura 25% da vida do aliado mais ferido. Como todo Stack User de longa distância, causa mais dano quanto mais longe estiver do alvo (+8% por bloco além do 1º).'},
   zeph:{name:'Zeph',element:'vento',role:'Arqueira veloz',cost:95,hp:80,atk:14,range:3,speed:1.12,special:'chuva',desc:'A cada 4 tiros, dispara uma flecha extra em outro inimigo aleatório. Como todo Stack User de Vento, tem 20% de chance de esquivar de ataques físicos (sobe pra 30% com menos de 40% de vida). Não vale contra habilidades/passivas. Como todo Stack User de longa distância, causa mais dano quanto mais longe estiver do alvo (+8% por bloco além do 1º).'},
   ima:{name:'Ímã',element:'metal',role:'Controladora',cost:100,hp:105,atk:15,range:1,speed:1,special:'ima',desc:'A cada 4 golpes, magnetiza o alvo, puxando-o pra perto dela e causando dano extra. Passiva: aliados de metal adjacentes a ela ganham +8% de defesa.'},
-  frosk:{name:'Frosk',element:'gelo',role:'Lutador Congelante',cost:70,hp:115,atk:16,range:1,speed:1,special:'congelamento',desc:'Passiva: pele de gelo permanente, reduz todo dano recebido em 15%. A cada 4 golpes, congela o alvo, paralisando por 1,5s — e causa 30% de dano extra nesse golpe.'},
+  frosk:{name:'Frosk',element:'gelo',role:'Lutador Congelante',cost:70,hp:115,atk:16,range:1,speed:1.25,special:'congelamento',desc:'Passiva: pele de gelo permanente, reduz todo dano recebido em 15%. A cada 4 golpes, congela o alvo, paralisando por 1,5s — e causa 30% de dano extra nesse golpe.'},
   gelida:{name:'Gélida',element:'gelo',role:'Espectro Glacial',cost:115,hp:130,atk:20,range:1,speed:1,special:'congelamento',desc:'A cada 5 golpes, congela o alvo, paralisando por 0,5s. Passiva: ao morrer, fica em espectro por 5s — mira o inimigo com MENOS vida da arena inteira. Se ele já estiver com 5% de vida ou menos, ela o executa na hora (só demora 3s pra trocar de lugar); senão, arremessa um pilar de gelo nele, jogando-o até a parede, atordoando-o por 3s (imóvel até acabar) e causando 30 de dano a cada 0,5s. Se o alvo morrer antes do espectro acabar, ela toma o lugar dele, volta à batalha com 60% de vida E dobra o próprio dano até o fim da onda. Só pode renascer 2 vezes por partida — depois disso, se morrer de novo, é de vez.'},
   raio:{name:'Raio',element:'eletrico',role:'Combatente Elétrico',cost:140,hp:104,atk:17,range:1,speed:1.2,special:null,desc:'Habilidade única: a cada 5 golpes acertados, OU sempre que chegar a 10% de vida (pode repetir depois que curar), dispara um combo relâmpago de 8 golpes em ~3 segundos — empurra o inimigo pra longe, se teleporta do lado dele, bate e repete. Fica imune a todo dano durante o combo. Cada golpe consome 5% da vida dele mesmo como combustível, e quanto menos vida ele tiver, mais forte ele bate (até +150%). O 8º golpe não empurra, atordoa (se o inimigo sobreviver) e causa 10x o dano dos outros golpes (+10% se tiver item de dano equipado). Se terminar com 3% de vida ou menos, fica atordoado por 3s (ainda imune) e depois sofre uma sobrecarga: cura 10% da vida e ganha velocidade de ataque por 5s.'},
   shecry:{name:'Shecry',element:'gelo',role:'Colosso Glacial',cost:125,hp:245,atk:18,range:1,speed:0.85,special:null,desc:'Quanto mais vida ela perdeu, mais dano ela causa (até +120%); quanto mais vida ela ainda tem, mais resistente ela fica (até +35% de redução de dano). Passiva: ao cair abaixo de 30% de vida (uma vez por batalha), ganha um escudo baseado na vida máxima e cria uma aura que reduz a velocidade de movimento e ataque de quem estiver a até 2 blocos dela — o efeito da aura vai enfraquecendo aos poucos ao longo de 6 segundos.'},
@@ -2375,7 +2376,7 @@ function showAppToast(message, durationMs){
 
 // Aviso de atualização — só dispara pra quem JÁ tinha jogado numa versão anterior
 // (não incomoda quem tá abrindo o jogo pela primeira vez). Não é obrigatório recarregar.
-const GAME_VERSION = 'v2026-frosk-buff-1';
+const GAME_VERSION = 'v2026-frosk-buff-2';
 try{
   const seenVersion = localStorage.getItem('ferroLancaSeenVersion');
   if(seenVersion && seenVersion !== GAME_VERSION){
