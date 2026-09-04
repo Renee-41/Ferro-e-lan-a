@@ -1760,7 +1760,7 @@ const CHAMPION_CATALOG = {
   shava:{name:'Shava',element:'vento',role:'Lutadora de Capoeira',cost:120,hp:140,atk:16,range:1,speed:1.3,special:'shava',desc:'Quando um inimigo está a 3+ blocos, avança até ele (dano dobrado), priorizando quem tem mais vida — recarrega em 10s e só ativa com o alvo a até 5 blocos. Se o alvo estiver abaixo de 10% de vida, executa na hora e arremessa o corpo em outro inimigo próximo (atordoa 2s, reduz dano dele por 5s). Senão, empurra o alvo até 5 blocos — se bater em parede/obstáculo, atordoa 4s e reduz armadura por 3s. A cada 3 golpes, cura 10% do dano causado. A cada 6 golpes no mesmo alvo, cria um vórtice que atordoa (0,8s, sem dano) inimigos num raio de 2 blocos, exceto o próprio alvo.'},
   kael:{name:'Kael',element:'fogo',role:'Berserker',cost:110,hp:120,atk:18,range:1,speed:1,special:'furia',desc:'Quanto menor a vida dele, mais forte ataca — e a cada 4 golpes solta um golpe flamejante ainda mais forte. Passiva: ao chegar a 1 de HP, entra em frenesi por 3s (uma vez por batalha) — fica imortal, mais rápido, com dano ainda maior (escala com estrela) e vampirismo de 9 de vida por golpe.'},
   terrus:{name:'Terrus',element:'terra',role:'Guardião',cost:110,hp:230,atk:11,range:1,speed:0.8,special:'couraca',desc:'Reduz todo dano recebido em 20% — e a cada 4 golpes causa um tremor que dá mais dano e cura um pouco dele mesmo. Passiva: ao cair pela primeira vez abaixo de 30% de vida, petrifica a pele — fica imune por 2s, cura 20% da vida e ganha defesa extra permanente pro resto da batalha (uma vez por batalha).'},
-  jedegar:{name:'Jedegar',element:'terra',role:'Pilar da Perseverança',cost:130,hp:190,atk:10,range:1,speed:0.9,special:'jedegar',desc:'A cada 3,1s ergue um pilar de pedra ao lado dela (prioriza ficar perto de aliados) — pilares amplificam o dano de aliados num raio de 2 blocos em 10% (dobra pra 20% depois do 5º pilar), e cada um aguenta 2 golpes de inimigo comum (1 de chefe) antes de cair. Ao ser atingido, um pilar libera energia que fortalece os pilares próximos por 3s. Ao erguer o 5º pilar da partida, o efeito de todos dobra permanentemente e inimigos perto de pilares perdem 30% de defesa. Na primeira vez que cai abaixo de 30% de vida, ergue um pilar debaixo do inimigo mais próximo (arremessando ele longe) e foge sobre uma fileira de pedra recém-criada. Ao morrer, ergue um círculo protetor ao redor do aliado mais ferido (escudo, dano e velocidade de ataque por 5s) — os pilares dela desmoronam 5s depois da sua morte.'},
+  jedegar:{name:'Jedegar',element:'terra',role:'Pilar da Perseverança',cost:130,hp:190,atk:10,range:1,speed:0.9,special:'jedegar',desc:'A cada 3,1s ergue um pilar de pedra perto do aliado MAIS DISTANTE dela (assim os pilares se espalham pelo time, mesmo se ela avançar sozinha) — pilares amplificam o dano de aliados num raio de 2 blocos em 10% (dobra pra 20% depois do 5º pilar), e cada um aguenta 2 golpes de inimigo comum (1 de chefe) antes de cair. Ao ser atingido, um pilar libera energia que fortalece os pilares próximos por 3s. Ao erguer o 5º pilar da partida, o efeito de todos dobra permanentemente e inimigos perto de pilares perdem 30% de defesa. Na primeira vez que cai abaixo de 30% de vida, ergue um pilar debaixo do inimigo mais próximo (arremessando ele longe) e foge sobre uma fileira de pedra recém-criada. Ao morrer, ergue um círculo protetor ao redor do aliado mais ferido (escudo, dano e velocidade de ataque por 5s) — os pilares dela desmoronam 5s depois da sua morte.'},
   pyra:{name:'Pyra',element:'fogo',role:'Maga',cost:85,hp:100,atk:21,range:3,speed:0.7,special:'explosao',desc:'A cada 3 golpes, sua explosão também atinge o inimigo mais próximo do alvo com dano total. Como todo Stack User de longa distância, causa mais dano quanto mais longe estiver do alvo (+8% por bloco além do 1º).'},
   glacia:{name:'Glacia',element:'agua',role:'Suporte',cost:70,hp:100,atk:11,range:2,speed:1,special:'cura',desc:'A cada 4 ataques, cura 25% da vida do aliado mais ferido. Como todo Stack User de longa distância, causa mais dano quanto mais longe estiver do alvo (+8% por bloco além do 1º).'},
   zeph:{name:'Zeph',element:'vento',role:'Arqueira veloz',cost:95,hp:80,atk:14,range:3,speed:1.12,special:'chuva',desc:'A cada 4 tiros, dispara uma flecha extra em outro inimigo aleatório. Como todo Stack User de Vento, tem 20% de chance de esquivar de ataques físicos (sobe pra 30% com menos de 40% de vida). Não vale contra habilidades/passivas. Como todo Stack User de longa distância, causa mais dano quanto mais longe estiver do alvo (+8% por bloco além do 1º).'},
@@ -2383,7 +2383,7 @@ function showAppToast(message, durationMs){
 
 // Aviso de atualização — só dispara pra quem JÁ tinha jogado numa versão anterior
 // (não incomoda quem tá abrindo o jogo pela primeira vez). Não é obrigatório recarregar.
-const GAME_VERSION = 'v2026-frosk-buff-2';
+const GAME_VERSION = 'v2026-weather-jedegar-fix-1';
 try{
   const seenVersion = localStorage.getItem('ferroLancaSeenVersion');
   if(seenVersion && seenVersion !== GAME_VERSION){
@@ -6327,15 +6327,20 @@ function updateBattleLogic(dt){
       if(u.jedegarPillarTimer<=0){
         u.jedegarPillarTimer = 3100;
         const activeCount = Object.values(jedegarStructures).filter(s=>s.ownerId===u.id).length;
+        // mira no aliado MAIS DISTANTE dela (não nela mesma) — assim os pilares se espalham pelo
+        // time em vez de empilhar tudo perto dela quando ela avança sozinha longe de todo mundo.
+        const allies = units.filter(o=>o.alive && o.team===u.team && o.id!==u.id);
+        let targetUnit = u;
+        if(allies.length){
+          allies.sort((a,b)=> hexDistance(u,b) - hexDistance(u,a));
+          targetUnit = allies[0];
+        }
         const occ = occupiedMap();
-        const freeNeighbors = activeCount < 5 ? neighbors(u).filter(n=> inGrid(n) && !isBlockedTile(n) && occ[hexKey(n)]===undefined) : [];
-        // nunca constrói no último hex livre ao redor dela — sempre precisa sobrar pelo menos
-        // 1 saída, senão ela fica presa pelos próprios pilares (e sem conseguir revidar).
+        const freeNeighbors = activeCount < 5 ? neighbors(targetUnit).filter(n=> inGrid(n) && !isBlockedTile(n) && occ[hexKey(n)]===undefined) : [];
+        // nunca constrói no último hex livre ao redor de quem tá recebendo o pilar — sempre
+        // precisa sobrar pelo menos 1 saída, senão prende a unidade (ela ou o aliado alvo).
         if(freeNeighbors.length>1){
-          // prioriza um hex livre que também fique colado num aliado vivo (além dela mesma)
-          const allies = units.filter(o=>o.alive && o.team===u.team && o.id!==u.id);
-          let chosen = freeNeighbors.find(n=> allies.some(a=> hexDistance(n,a)===1));
-          if(!chosen) chosen = freeNeighbors[0];
+          const chosen = freeNeighbors[0];
           jedegarStructures[hexKey(chosen)] = {q:chosen.q, r:chosen.r, ownerId:u.id, ownerTeam:u.team, hitsTaken:0, hitsNeeded:2, boostUntil:0, createdAt:now};
           const chosenPixel = hexToPixel(chosen.q, chosen.r);
           spawnCastEffect(chosenPixel.x, chosenPixel.y, '#8a6a4a');
@@ -7171,6 +7176,91 @@ function renderFrame(){
     ringGlow2.setAttribute('opacity', (opacity*0.3).toFixed(2));
     svg.appendChild(ringGlow2);
   });
+  renderWeatherEffects(now0);
+}
+
+/* ============ EFEITOS VISUAIS DE CLIMA ============ */
+// Desenhados por cima de tudo, no fim do quadro. Preparado pra trocar de clima no MEIO da
+// batalha com uma transição suave (fade), pensando num futuro personagem que controla o clima.
+let lastRenderedWeather = null;
+let weatherTransitionStart = 0;
+const WEATHER_TRANSITION_MS = 1500;
+function renderWeatherEffects(now0){
+  if(currentWeather !== lastRenderedWeather){
+    weatherTransitionStart = now0;
+    lastRenderedWeather = currentWeather;
+  }
+  const fadeIn = Math.min(1, (now0 - weatherTransitionStart) / WEATHER_TRANSITION_MS);
+  const w = currentWeather;
+  const bx = camViewBox.x, by = camViewBox.y, bw = camViewBox.w, bh = camViewBox.h;
+
+  if(w==='limpo' || !w){
+    const glow = document.createElementNS('http://www.w3.org/2000/svg','rect');
+    glow.setAttribute('x',bx); glow.setAttribute('y',by); glow.setAttribute('width',bw); glow.setAttribute('height',bh);
+    glow.setAttribute('fill','rgba(232,194,80,0.03)'); glow.setAttribute('pointer-events','none');
+    svg.appendChild(glow);
+    return;
+  }
+
+  const TINTS = {
+    chuva:'rgba(80,110,150,0.07)', nevasca:'rgba(150,180,210,0.08)',
+    tempestade_areia:'rgba(200,150,80,0.09)', vento_forte:null,
+  };
+  if(TINTS[w]){
+    const tint = document.createElementNS('http://www.w3.org/2000/svg','rect');
+    tint.setAttribute('x',bx); tint.setAttribute('y',by); tint.setAttribute('width',bw); tint.setAttribute('height',bh);
+    tint.setAttribute('fill',TINTS[w]); tint.setAttribute('opacity',fadeIn.toFixed(2)); tint.setAttribute('pointer-events','none');
+    svg.appendChild(tint);
+  }
+
+  if(w==='chuva'){
+    for(let i=0;i<18;i++){
+      const seedX = bx + ((i*53.7) % bw);
+      const y = by + (((now0/6 + i*90) % (bh+40)) - 20);
+      const line = document.createElementNS('http://www.w3.org/2000/svg','line');
+      line.setAttribute('x1',seedX.toFixed(1)); line.setAttribute('y1',y.toFixed(1));
+      line.setAttribute('x2',(seedX-4).toFixed(1)); line.setAttribute('y2',(y+14).toFixed(1));
+      line.setAttribute('stroke','rgba(150,180,220,0.55)'); line.setAttribute('stroke-width','1.3');
+      line.setAttribute('opacity',fadeIn.toFixed(2)); line.setAttribute('pointer-events','none');
+      svg.appendChild(line);
+    }
+  } else if(w==='nevasca'){
+    for(let i=0;i<15;i++){
+      const seedX = bx + ((i*61.3) % bw);
+      const y = by + (((now0/14 + i*70) % (bh+30)) - 15);
+      const x = seedX + Math.sin(now0/700+i)*12;
+      const flake = document.createElementNS('http://www.w3.org/2000/svg','circle');
+      flake.setAttribute('cx',x.toFixed(1)); flake.setAttribute('cy',y.toFixed(1));
+      flake.setAttribute('r',(1.6+(i%3)*0.5).toFixed(1));
+      flake.setAttribute('fill','rgba(255,255,255,0.8)');
+      flake.setAttribute('opacity',fadeIn.toFixed(2)); flake.setAttribute('pointer-events','none');
+      svg.appendChild(flake);
+    }
+  } else if(w==='tempestade_areia'){
+    for(let i=0;i<15;i++){
+      const seedY = by + ((i*29.3) % bh);
+      const x = bx + (((now0/5 + i*80) % (bw+40)) - 20);
+      const dust = document.createElementNS('http://www.w3.org/2000/svg','circle');
+      dust.setAttribute('cx',x.toFixed(1)); dust.setAttribute('cy',(seedY+Math.sin(now0/500+i)*6).toFixed(1));
+      dust.setAttribute('r',(1.2+(i%3)*0.6).toFixed(1));
+      dust.setAttribute('fill','rgba(224,180,110,0.6)');
+      dust.setAttribute('opacity',fadeIn.toFixed(2)); dust.setAttribute('pointer-events','none');
+      svg.appendChild(dust);
+    }
+  } else if(w==='vento_forte'){
+    for(let i=0;i<8;i++){
+      const cycle = 2200;
+      const t = ((now0 + i*280) % cycle) / cycle;
+      const y = by + ((i*47) % bh);
+      const x = bx - 30 + t*(bw+60);
+      const streakOpacity = Math.sin(t*Math.PI) * fadeIn;
+      const streak = document.createElementNS('http://www.w3.org/2000/svg','path');
+      streak.setAttribute('d', `M${(x-18).toFixed(1)},${y.toFixed(1)} Q${(x-9).toFixed(1)},${(y-4).toFixed(1)} ${x.toFixed(1)},${y.toFixed(1)}`);
+      streak.setAttribute('stroke','rgba(220,230,240,0.55)'); streak.setAttribute('stroke-width','1.6'); streak.setAttribute('fill','none');
+      streak.setAttribute('opacity',streakOpacity.toFixed(2)); streak.setAttribute('pointer-events','none');
+      svg.appendChild(streak);
+    }
+  }
 }
 
 let rafRunning = false;
