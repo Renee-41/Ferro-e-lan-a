@@ -183,6 +183,11 @@
   .inv-tile.dragging{ opacity:0.35; }
   .inv-tile.selected-for-equip{ border-color:var(--gold); box-shadow:0 0 8px rgba(232,194,80,0.6); }
   .ghost-btn.on{ border-color:var(--frost); color:var(--frost); }
+  #patchnotes-dot{
+    display:none; position:absolute; top:-4px; right:-4px; width:10px; height:10px;
+    background:#e03a3a; border:1.5px solid var(--iron-dark); border-radius:50%;
+  }
+  #patchnotes-dot.show{ display:block; }
   .balance-row{ display:flex; justify-content:space-between; align-items:center; padding:4px 0; font-family:'JetBrains Mono',monospace; font-size:11px; }
   .balance-arrow-up{ color:#7bbf6a; font-weight:bold; }
   .balance-arrow-down{ color:#c2445a; font-weight:bold; }
@@ -584,7 +589,7 @@
 
 <div id="top-utility-bar">
   <span id="global-prep-timer" style="display:none;"></span>
-  <button id="patchnotes-btn" title="Notas de atualização">📋 Notas</button>
+  <button id="patchnotes-btn" title="Notas de atualização" style="position:relative;">📋 Notas<span id="patchnotes-dot"></span></button>
   <button id="tutorial-btn" title="Tutorial">📖 Tutorial</button>
   <button id="guided-tutorial-btn" title="Tutorial guiado">🧭 Tutorial guiado</button>
 </div>
@@ -1715,6 +1720,8 @@ document.getElementById('guided-tutorial-btn').addEventListener('click', ()=>{
 
 document.getElementById('patchnotes-btn').addEventListener('click', ()=>{
   document.getElementById('patchnotes-panel').classList.toggle('open');
+  document.getElementById('patchnotes-dot').classList.remove('show');
+  try{ localStorage.setItem('ferroLancaNotesReadVersion', GAME_VERSION); }catch(e){}
 });
 document.getElementById('patchnotes-close').addEventListener('click', ()=>{
   document.getElementById('patchnotes-panel').classList.remove('open');
@@ -2385,6 +2392,15 @@ try{
     }, 2500);
   }
   localStorage.setItem('ferroLancaSeenVersion', GAME_VERSION);
+}catch(e){}
+
+// Bolinha de "não lido" nas Notas — diferente do aviso acima, essa mostra até pra quem
+// tá jogando pela primeira vez (o importante aqui é "você já leu ISSO", não "mudou algo").
+try{
+  const notesReadVersion = localStorage.getItem('ferroLancaNotesReadVersion');
+  if(notesReadVersion !== GAME_VERSION){
+    document.getElementById('patchnotes-dot').classList.add('show');
+  }
 }catch(e){}
 
 document.getElementById('mobile-mode-ask-yes').addEventListener('click', ()=>{
