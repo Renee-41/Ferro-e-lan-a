@@ -3663,6 +3663,15 @@ regenerateAllHexes();
 let obstacleHexes = new Set();
 let hazardHexes = new Set();
 let voidHexes = new Set();
+let currentBiome = 'grama'; // 'grama' | 'rachadura' — tema visual do chão, escala com a onda/rodada
+const BIOME_LABELS = { grama:'Campo verde', rachadura:'Terreno corrompido' };
+function hexNoise(q,r,salt){
+  // hash determinístico simples — o mesmo hex sempre dá o mesmo valor pro mesmo salt, sem precisar guardar estado
+  let h = (q*374761393 + r*668265263 + salt*2246822519) | 0;
+  h = (h ^ (h>>>13)) * 1274126177;
+  h = h ^ (h>>>16);
+  return ((h>>>0) % 1000) / 1000;
+}
 let portalPairs = [];
 let supplyCrate = null; // {q,r,claimed}
 const WEATHERS = ['limpo','chuva','tempestade_areia','nevasca','vento_forte'];
@@ -3866,6 +3875,7 @@ function setupArenaForRound(roundNum){
   }
 
   currentWeather = WEATHERS[Math.floor(Math.random()*WEATHERS.length)];
+  currentBiome = roundNum>=10 ? 'rachadura' : 'grama';
   isBossWave = roundNum>15 ? (roundNum % 3 === 0) : (roundNum % 5 === 0);
 
   if(roundNum>=2){
@@ -4547,7 +4557,7 @@ function startPveRun(){
   if(arenaExpanded){ arenaExpanded = false; RADIUS = 4; regenerateAllHexes(); }
   setupArenaForRound(1);
   scheduleNextFracture(performance.now());
-  document.getElementById('roundinfo').textContent = `Onda 1 — ${WEATHER_LABELS[currentWeather]}`;
+  document.getElementById('roundinfo').textContent = `Onda 1 — ${BIOME_LABELS[currentBiome]} — ${WEATHER_LABELS[currentWeather]}`;
   resetRoundTracking();
   const wavePicks = randomEnemyWave(1);
   ENEMY_TEMP = {}; wavePicks.forEach(w=>ENEMY_TEMP[w.key]=w.scaled);
@@ -4670,7 +4680,7 @@ function startPvpRound(){
   scheduleNextFracture(performance.now());
   startNewWaveLog(pvpRound);
   buildTeams(teamP1, teamP2, true, pvpP1.owned, pvpP2.owned);
-  document.getElementById('roundinfo').textContent = `Rodada ${pvpRound} — Jogador 1 (esq.) vs Jogador 2 (dir.) — ${WEATHER_LABELS[currentWeather]}`;
+  document.getElementById('roundinfo').textContent = `Rodada ${pvpRound} — Jogador 1 (esq.) vs Jogador 2 (dir.) — ${BIOME_LABELS[currentBiome]} — ${WEATHER_LABELS[currentWeather]}`;
   log(`Rodada ${pvpRound} iniciada!`, 'sys');
   checkDuoBanter(teamP1, banterNextRoundP1, pvpRound);
   checkDuoBanter(teamP2, banterNextRoundP2, pvpRound);
@@ -4818,7 +4828,7 @@ function resumeSavedGame(){
   matchStats = {};
   setupArenaForRound(wave);
   scheduleNextFracture(performance.now());
-  document.getElementById('roundinfo').textContent = `Onda ${wave} — ${WEATHER_LABELS[currentWeather]}`;
+  document.getElementById('roundinfo').textContent = `Onda ${wave} — ${BIOME_LABELS[currentBiome]} — ${WEATHER_LABELS[currentWeather]}`;
   const defaultSlots = getPlayerZoneSlots();
   openPositionSelect(teamP1, 'left', defaultSlots, `Continuando de onde parou (Onda ${wave})`, (positions)=>{
     teamP1Positions = positions;
@@ -6623,7 +6633,7 @@ function finishPrep(){
   if(wave===60) unlockAchievement('segredo_onda60');
   setupArenaForRound(wave);
   scheduleNextFracture(performance.now());
-  document.getElementById('roundinfo').textContent = `Onda ${wave} — ${WEATHER_LABELS[currentWeather]}`;
+  document.getElementById('roundinfo').textContent = `Onda ${wave} — ${BIOME_LABELS[currentBiome]} — ${WEATHER_LABELS[currentWeather]}`;
 
   const defaultSlots = getPlayerZoneSlots();
   openPositionSelect(teamP1, 'left', defaultSlots, `Reorganize seu time (Onda ${wave})`, (positions)=>{
@@ -6691,8 +6701,16 @@ function renderFrame(){
   allHexes.forEach(h=>{
     const p = hexToPixel(h.q,h.r);
     const hk = hexKey(h);
+    const isFreeHex = !obstacleHexes.has(hk) && !voidHexes.has(hk) && !hazardHexes.has(hk);
+
+    const biomeFill = currentBiome==='rachadura' ? 'rgba(58,32,74,0.55)' : 'rgba(28,58,34,0.55)';
+    const biomeBase = document.createElementNS('http://www.w3.org/2000/svg','polygon');
+    biomeBase.setAttribute('points', hexPoints(p.x,p.y));
+    biomeBase.setAttribute('fill', biomeFill);
+    svg.appendChild(biomeBase);
+
     let zone = h.q<0 ? 'rgba(63,127,168,0.06)' : h.q>0 ? 'rgba(209,72,31,0.06)' : 'rgba(255,255,255,0.03)';
-    let stroke = '#3a3f47';
+    let stroke = currentBiome==='rachadura' ? '#5a3a78' : '#3d6b45';
     if(obstacleHexes.has(hk)){ zone = 'rgba(120,120,130,0.35)'; stroke = '#8a8f99'; }
     else if(voidHexes.has(hk)){ zone = 'rgba(150,40,40,0.28)'; stroke = '#7a2a2a'; }
     else if(hazardHexes.has(hk)){ zone = 'rgba(224,105,58,0.25)'; stroke = '#e0693a'; }
@@ -6702,6 +6720,44 @@ function renderFrame(){
     poly.setAttribute('stroke', stroke);
     poly.setAttribute('stroke-width','1');
     svg.appendChild(poly);
+
+    if(isFreeHex && currentBiome==='grama'){
+      for(let i=0;i<3;i++){
+        const rx = hexNoise(h.q,h.r,i*7+1), ry = hexNoise(h.q,h.r,i*7+2);
+        const bx = p.x + (rx-0.5)*18, by = p.y + (ry-0.5)*18;
+        const blade = document.createElementNS('http://www.w3.org/2000/svg','line');
+        blade.setAttribute('x1', bx); blade.setAttribute('y1', by+3);
+        blade.setAttribute('x2', bx + (hexNoise(h.q,h.r,i*7+3)-0.5)*3); blade.setAttribute('y2', by-3);
+        blade.setAttribute('stroke', '#16281a');
+        blade.setAttribute('stroke-width','1.2');
+        blade.setAttribute('stroke-linecap','round');
+        svg.appendChild(blade);
+      }
+      if(hexNoise(h.q,h.r,99) > 0.82){
+        const tx = p.x + (hexNoise(h.q,h.r,98)-0.5)*10, ty = p.y + (hexNoise(h.q,h.r,97)-0.5)*10;
+        const trunk = document.createElementNS('http://www.w3.org/2000/svg','rect');
+        trunk.setAttribute('x', tx-1.5); trunk.setAttribute('y', ty-2);
+        trunk.setAttribute('width','3'); trunk.setAttribute('height','9');
+        trunk.setAttribute('fill','#4a3623');
+        svg.appendChild(trunk);
+        const canopy = document.createElementNS('http://www.w3.org/2000/svg','circle');
+        canopy.setAttribute('cx', tx); canopy.setAttribute('cy', ty-6);
+        canopy.setAttribute('r','7');
+        canopy.setAttribute('fill','#2d5a34');
+        canopy.setAttribute('stroke','#1a3a20');
+        svg.appendChild(canopy);
+      }
+    } else if(isFreeHex && currentBiome==='rachadura' && hexNoise(h.q,h.r,55) > 0.45){
+      const veinPulse = 0.35 + 0.25*Math.sin(now0/260 + (h.q*3+h.r));
+      const ang = hexNoise(h.q,h.r,56)*Math.PI*2;
+      const vein = document.createElementNS('http://www.w3.org/2000/svg','line');
+      vein.setAttribute('x1', p.x - Math.cos(ang)*7); vein.setAttribute('y1', p.y - Math.sin(ang)*7);
+      vein.setAttribute('x2', p.x + Math.cos(ang)*7); vein.setAttribute('y2', p.y + Math.sin(ang)*7);
+      vein.setAttribute('stroke', '#b98cf0');
+      vein.setAttribute('stroke-width','1');
+      vein.setAttribute('stroke-opacity', veinPulse.toFixed(2));
+      svg.appendChild(vein);
+    }
 
     const coordLabel = document.createElementNS('http://www.w3.org/2000/svg','text');
     coordLabel.setAttribute('x', p.x); coordLabel.setAttribute('y', p.y+3);
