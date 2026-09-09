@@ -1,3 +1,4 @@
+# Ferro & Lança — patch idempotente da abertura experimental.
 from pathlib import Path
 
 path = Path("js/game.js")
