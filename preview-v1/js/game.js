@@ -253,8 +253,8 @@
     if(canvas && canvas.parentNode) canvas.remove();
   }
 
-  // pula direto pro clímax (nome do jogo + Press Start) — usado pelo atalho de Espaço
-  // e também por tocar/clicar na tela (bom pra quem tá no celular).
+  // Pula direto pro clímax (nome do jogo + Press Start).
+  // Agora isso só é acionado pelo botão explícito "Pular".
   function skipToClimax(){
     if(introEnded || titleTriggered) return;
     clearInterval(tickInterval);
@@ -263,15 +263,17 @@
     seekWebAudioTo(CLIMAX_AT);
     triggerClimax();
   }
-  document.addEventListener('keydown', (e)=>{
-    if(e.code !== 'Space' && e.key !== ' ') return;
-    if(introEnded || titleTriggered) return;
-    e.preventDefault();
-    skipToClimax();
-  });
   if(preshow){
-    preshow.addEventListener('click', (e)=>{
-      if(e.target.id === 'intro-volume-slider') return; // não pula se for só ajustando o volume
+    const skipIntroBtn = document.createElement('button');
+    skipIntroBtn.id = 'intro-skip-btn';
+    skipIntroBtn.type = 'button';
+    skipIntroBtn.textContent = 'Pular';
+    skipIntroBtn.setAttribute('aria-label','Pular introdução');
+    preshow.appendChild(skipIntroBtn);
+    skipIntroBtn.addEventListener('click', (e)=>{
+      e.preventDefault();
+      e.stopPropagation();
+      tryPlayAudio();
       skipToClimax();
     });
   }
@@ -367,14 +369,13 @@
       audioCtx.decodeAudioData(bytes.buffer, (buffer)=>{
         audioBuffer = buffer;
         webAudioReady = true;
-        if(audioUnlockRequested) startWebAudioAt(currentIntroElapsed());
+        if(audioUnlockRequested) tryPlayAudio();
       }, ()=>{ /* falha ao decodificar — segue sem música, o visual continua normal */ });
     }catch(e){ /* Web Audio não suportado — segue sem música */ }
   }
 
   function startWebAudioAt(offsetSeconds){
-    if(!audioCtx || !audioBuffer) return false;
-    if(audioCtx.state === 'suspended'){ audioCtx.resume().catch(()=>{}); }
+    if(!audioCtx || !audioBuffer || audioCtx.state !== 'running') return false;
     try{ if(sourceNode){ sourceNode.onended = null; sourceNode.stop(); } }catch(e){}
     sourceNode = audioCtx.createBufferSource();
     sourceNode.buffer = audioBuffer;
@@ -408,9 +409,22 @@
   function tryPlayAudio(){
     audioUnlockRequested = true;
     if(audioIsPlaying) return;
-    if(!decodingStarted){ initWebAudio(); return; } // começa a tocar sozinho assim que terminar de decodificar
-    if(webAudioReady){ startWebAudioAt(currentIntroElapsed()); }
-    else if(audioCtx && audioCtx.state === 'suspended'){ audioCtx.resume().catch(()=>{}); }
+    if(!decodingStarted){ initWebAudio(); }
+    if(!audioCtx) return;
+
+    const startWhenReady = ()=>{
+      if(audioIsPlaying) return;
+      if(webAudioReady) startWebAudioAt(currentIntroElapsed());
+    };
+
+    if(audioCtx.state === 'running'){
+      startWhenReady();
+      return;
+    }
+
+    // Sem gesto o navegador pode recusar; no primeiro toque/clique chamamos de novo
+    // dentro da ativação do usuário e retomamos exatamente no tempo atual da intro.
+    audioCtx.resume().then(startWhenReady).catch(()=>{});
   }
 
   // pula a música direto pro ponto certo (usado no clímax via Espaço, por exemplo)
@@ -418,11 +432,14 @@
     if(webAudioReady){ startWebAudioAt(offsetSeconds); }
   }
 
-  initWebAudio(); // já começa a decodificar em segundo plano, sem precisar de gesto do usuário
-  document.addEventListener('click', function unlockOnce(){
+  initWebAudio(); // decodifica em segundo plano
+  tryPlayAudio(); // autoplay best-effort; se o navegador bloquear, aguarda o primeiro gesto
+
+  function unlockAudioFromGesture(){
     tryPlayAudio();
-    document.removeEventListener('click', unlockOnce);
-  });
+  }
+  document.addEventListener('pointerdown', unlockAudioFromGesture, {once:true, capture:true});
+  document.addEventListener('keydown', unlockAudioFromGesture, {once:true, capture:true});
 
   const tick = ()=>{
     if(introEnded){ return; }
