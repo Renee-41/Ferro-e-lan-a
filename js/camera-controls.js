@@ -1,6 +1,7 @@
 /* Ferro & Lança — câmera manual sobre a câmera dinâmica existente.
    Scroll do mouse = zoom, pinça = zoom, duplo clique = reset.
-   A câmera dramática continua tendo prioridade. */
+   A câmera dramática continua tendo prioridade.
+   preview-build: camera-overlay-fix-v2 */
 (function(){
   const arena = document.getElementById('arena');
   if(!arena) return;
@@ -64,7 +65,6 @@
     ev.preventDefault();
     const currentDistance = distanceBetweenTouches(ev.touches);
     if(currentDistance<=0) return;
-    // Dedos se afastando -> aproxima a câmera; dedos juntando -> afasta.
     setZoomFactor(pinchStartZoom * (pinchStartDistance/currentDistance));
   }, {passive:false});
 
@@ -90,7 +90,6 @@
     return {x,y,w,h};
   }
 
-  // Substitui só a parte de enquadramento; toda a lógica de batalha/render segue no game.js.
   updateCamera = function(rawDt){
     let targetX, targetY, targetW, targetH;
 
