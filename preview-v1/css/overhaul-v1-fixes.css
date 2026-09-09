@@ -100,8 +100,143 @@
   background:rgba(12,13,15,.52);
 }
 
+/* ========================================================================== */
+/* Intro cinematográfica — movimento propositalmente sutil, tipo key art viva */
+/* ========================================================================== */
+
+/* O canvas já contém as bolinhas/personagens, projéteis e brasas do JS.
+   Movemos o quadro inteiro bem devagar para dar sensação de câmera/parallax
+   sem alterar a lógica da pequena batalha. */
+#intro-canvas{
+  transform-origin:50% 52%;
+  will-change:transform,filter;
+  animation:intro-cinematic-camera 18s ease-in-out infinite alternate;
+}
+
+@keyframes intro-cinematic-camera{
+  0%{
+    transform:scale(1.025) translate3d(-.35%,.2%,0);
+    filter:brightness(.96) contrast(1.02);
+  }
+  50%{
+    transform:scale(1.038) translate3d(.2%,-.35%,0);
+    filter:brightness(1) contrast(1.025);
+  }
+  100%{
+    transform:scale(1.03) translate3d(.45%,.15%,0);
+    filter:brightness(.98) contrast(1.03);
+  }
+}
+
+/* Névoa distante: fica atrás dos textos/logos da pré-intro. */
+#intro-preshow::before{
+  content:"";
+  position:absolute;
+  z-index:1;
+  left:-18%;
+  right:-18%;
+  bottom:-24%;
+  height:72%;
+  pointer-events:none;
+  opacity:.22;
+  filter:blur(28px);
+  background:
+    radial-gradient(ellipse at 12% 72%,rgba(196,184,166,.22) 0 13%,transparent 36%),
+    radial-gradient(ellipse at 38% 52%,rgba(121,119,116,.20) 0 16%,transparent 43%),
+    radial-gradient(ellipse at 68% 72%,rgba(180,166,146,.18) 0 13%,transparent 39%),
+    radial-gradient(ellipse at 88% 46%,rgba(103,106,108,.18) 0 12%,transparent 37%);
+  transform:translate3d(-3%,0,0) scale(1.05);
+  animation:intro-smoke-back 19s ease-in-out infinite alternate;
+  will-change:transform,opacity;
+}
+
+@keyframes intro-smoke-back{
+  0%{transform:translate3d(-4%,3%,0) scale(1.04);opacity:.14;}
+  45%{opacity:.24;}
+  100%{transform:translate3d(5%,-8%,0) scale(1.16);opacity:.18;}
+}
+
+/* Fumaça mais próxima na tela do título. A camada é bem transparente para
+   não sujar FERRO & LANÇA nem esconder a lutinha na parte de baixo. */
+#intro-screen::after{
+  content:"";
+  position:absolute;
+  z-index:1;
+  left:-25%;
+  right:-25%;
+  bottom:-28%;
+  height:70%;
+  pointer-events:none;
+  opacity:.18;
+  filter:blur(34px);
+  mix-blend-mode:screen;
+  background:
+    radial-gradient(ellipse at 18% 65%,rgba(173,164,151,.28) 0 12%,transparent 34%),
+    radial-gradient(ellipse at 48% 78%,rgba(118,113,106,.24) 0 14%,transparent 38%),
+    radial-gradient(ellipse at 78% 55%,rgba(181,154,124,.20) 0 11%,transparent 35%);
+  animation:intro-smoke-front 14s ease-in-out infinite alternate;
+  will-change:transform,opacity;
+}
+
+@keyframes intro-smoke-front{
+  0%{transform:translate3d(5%,4%,0) scale(1.08);opacity:.10;}
+  55%{opacity:.20;}
+  100%{transform:translate3d(-6%,-11%,0) scale(1.2);opacity:.14;}
+}
+
+/* As faíscas CSS existentes sobem mais devagar e em ritmos diferentes,
+   lembrando brasa suspensa no ar em vez de confete rápido. */
+.intro-spark{
+  animation-duration:5.4s !important;
+  animation-timing-function:cubic-bezier(.18,.55,.3,1) !important;
+  opacity:.82;
+  will-change:transform,opacity;
+}
+
+.intro-spark:nth-child(3n){animation-duration:6.6s !important;}
+.intro-spark:nth-child(4n){animation-duration:4.8s !important;}
+.intro-spark:nth-child(5n){filter:blur(.55px);opacity:.58;}
+
+/* Micro respiração da marca — quase imperceptível; impede a tela de parecer
+   uma imagem completamente parada depois que o título aparece. */
+#intro-glow-wrap.show{
+  animation:intro-logo-breathe 6.5s ease-in-out infinite;
+  transform-origin:center;
+}
+
+@keyframes intro-logo-breathe{
+  0%,100%{transform:scale(1);filter:brightness(1);}
+  50%{transform:scale(1.008);filter:brightness(1.07);}
+}
+
+/* O brilho central oscila de maneira lenta, como fogo refletindo no metal. */
+#intro-glow{
+  animation:intro-ember-light 4.8s ease-in-out infinite alternate;
+}
+
+@keyframes intro-ember-light{
+  from{filter:brightness(.96) saturate(.96);}
+  to{filter:brightness(1.08) saturate(1.06);}
+}
+
+/* Quem pediu redução de movimento no sistema continua com uma intro estável. */
+@media (prefers-reduced-motion:reduce){
+  #intro-canvas,
+  #intro-preshow::before,
+  #intro-screen::after,
+  #intro-glow-wrap.show,
+  #intro-glow{
+    animation:none !important;
+  }
+  .intro-spark{
+    animation-duration:7s !important;
+  }
+}
+
 @media (max-width:820px){
   #arena{max-width:none;}
   #camera-zoom-indicator{right:7px;bottom:7px;font-size:8px;}
   #intro-skip-btn{top:12px;left:12px;padding:7px 9px;}
+  #intro-preshow::before{opacity:.16;filter:blur(24px);}
+  #intro-screen::after{opacity:.13;filter:blur(27px);}
 }
