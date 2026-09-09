@@ -1,0 +1,50 @@
+name: Publish preview v1
+
+on:
+  push:
+    branches:
+      - ui/visual-overhaul-v1
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout visual branch
+        uses: actions/checkout@v4
+        with:
+          ref: ui/visual-overhaul-v1
+          path: source
+          fetch-depth: 0
+
+      - name: Checkout main site
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: site
+          fetch-depth: 0
+
+      - name: Copy isolated preview
+        shell: bash
+        run: |
+          rm -rf site/preview-v1
+          mkdir -p site/preview-v1
+          cp source/index.html site/preview-v1/index.html
+          cp -R source/css site/preview-v1/css
+          cp -R source/js site/preview-v1/js
+
+      - name: Publish preview folder to main
+        working-directory: site
+        shell: bash
+        run: |
+          if git status --porcelain -- preview-v1 | grep -q .; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add preview-v1
+            git commit -m "preview: publish visual overhaul v1"
+            git push origin HEAD:main
+          else
+            echo "Preview já está atualizada."
+          fi
