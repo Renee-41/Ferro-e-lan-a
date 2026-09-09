@@ -1,0 +1,71 @@
+name: Apply preview interaction fixes
+
+on:
+  push:
+    branches:
+      - ui/visual-overhaul-v1
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: ui/visual-overhaul-v1
+          fetch-depth: 0
+
+      - name: Enable camera and interaction fixes
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('index.html')
+          html = path.read_text(encoding='utf-8')
+
+          base_css = '<link rel="stylesheet" href="./css/overhaul-v1.css">'
+          fix_css = '<link rel="stylesheet" href="./css/overhaul-v1-fixes.css">'
+          game_js = '<script src="./js/game.js"></script>'
+          camera_js = '<script src="./js/camera-controls.js"></script>'
+
+          changed = False
+
+          if fix_css not in html:
+              if base_css not in html:
+                  raise SystemExit('overhaul-v1.css não está referenciado no index.')
+              if not Path('css/overhaul-v1-fixes.css').exists():
+                  raise SystemExit('css/overhaul-v1-fixes.css não existe.')
+              html = html.replace(base_css, base_css + '\n' + fix_css, 1)
+              changed = True
+
+          if camera_js not in html:
+              if game_js not in html:
+                  raise SystemExit('js/game.js não está referenciado no index.')
+              if not Path('js/camera-controls.js').exists():
+                  raise SystemExit('js/camera-controls.js não existe.')
+              html = html.replace(game_js, game_js + '\n' + camera_js, 1)
+              changed = True
+
+          if changed:
+              path.write_text(html, encoding='utf-8')
+              print('Correções habilitadas.')
+          else:
+              print('Correções já estavam habilitadas.')
+          PY
+
+      - name: Commit references
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo "Nenhuma mudança para commitar."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git commit -m "fix: enable prep overlay and camera controls"
+          git push origin HEAD:ui/visual-overhaul-v1
