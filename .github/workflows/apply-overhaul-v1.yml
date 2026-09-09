@@ -1,0 +1,56 @@
+name: Apply visual overhaul v1
+
+on:
+  push:
+    branches:
+      - ui/visual-overhaul-v1
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: ui/visual-overhaul-v1
+          fetch-depth: 0
+
+      - name: Enable overhaul stylesheet
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('index.html')
+          html = path.read_text(encoding='utf-8')
+          base = '<link rel="stylesheet" href="./css/style.css">'
+          overhaul = '<link rel="stylesheet" href="./css/overhaul-v1.css">'
+
+          if overhaul in html:
+              print('Visual Overhaul v1 já está habilitado.')
+              raise SystemExit(0)
+          if base not in html:
+              raise SystemExit('Referência ao css/style.css não encontrada.')
+          if not Path('css/overhaul-v1.css').exists():
+              raise SystemExit('css/overhaul-v1.css não existe.')
+
+          html = html.replace(base, base + '\n' + overhaul, 1)
+          path.write_text(html, encoding='utf-8')
+          print('Visual Overhaul v1 habilitado no index.html.')
+          PY
+
+      - name: Commit reference
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo "Nenhuma mudança para commitar."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git commit -m "ui: enable visual overhaul v1"
+          git push origin HEAD:ui/visual-overhaul-v1
