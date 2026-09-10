@@ -87,13 +87,10 @@
 /* INTRO CINEMATOGRÁFICA — key art viva                                      */
 /* ========================================================================== */
 
-/* Como o canvas agora fica transparente, o pré-show mantém o fundo escuro. */
 #intro-preshow{
   background:#0a0807 !important;
 }
 
-/* A pequena batalha que já existia continua por cima da key art, mas bem
-   dessaturada/escura para parecer movimento distante, não bolinhas neon. */
 #intro-canvas{
   z-index:9102 !important;
   background:transparent !important;
@@ -115,7 +112,6 @@
   isolation:isolate;
 }
 
-/* A arte enviada vira a base real da tela final da introdução. */
 #intro-screen::before{
   content:"";
   position:absolute;
@@ -133,21 +129,11 @@
 }
 
 @keyframes intro-keyart-drift{
-  0%{
-    transform:scale(1.025) translate3d(-.25%,.12%,0);
-    filter:brightness(.90) contrast(1.04) saturate(.94);
-  }
-  48%{
-    transform:scale(1.042) translate3d(.12%,-.18%,0);
-    filter:brightness(.96) contrast(1.05) saturate(1.01);
-  }
-  100%{
-    transform:scale(1.034) translate3d(.32%,.08%,0);
-    filter:brightness(.92) contrast(1.06) saturate(.97);
-  }
+  0%{transform:scale(1.025) translate3d(-.25%,.12%,0);filter:brightness(.90) contrast(1.04) saturate(.94);}
+  48%{transform:scale(1.042) translate3d(.12%,-.18%,0);filter:brightness(.96) contrast(1.05) saturate(1.01);}
+  100%{transform:scale(1.034) translate3d(.32%,.08%,0);filter:brightness(.92) contrast(1.06) saturate(.97);}
 }
 
-/* Vinheta mantém o logo legível e dá profundidade às bordas. */
 #intro-screen::after{
   content:"";
   position:absolute;
@@ -159,14 +145,12 @@
     linear-gradient(to bottom,rgba(0,0,0,.12),transparent 26%,transparent 72%,rgba(0,0,0,.22));
 }
 
-/* O texto antigo é removido: FERRO & LANÇA e o subtítulo já fazem parte da arte. */
 #intro-title,
 #intro-subtitle,
 #intro-crack{
   display:none !important;
 }
 
-/* Reaproveita a antiga camada de glow como uma névoa animada. */
 #intro-glow-wrap,
 #intro-glow-wrap.show{
   display:block !important;
@@ -208,7 +192,6 @@
   to{transform:translate3d(18%,-10%,0) scale(1.18);opacity:.42;}
 }
 
-/* Brasas ficam lentas e irregulares: sensação de câmera lenta. */
 #intro-sparks-container{
   z-index:4 !important;
   pointer-events:none;
@@ -224,7 +207,6 @@
 .intro-spark:nth-child(4n){animation-duration:4.9s !important;}
 .intro-spark:nth-child(5n){filter:blur(.55px);opacity:.58;}
 
-/* Press Start discreto no rodapé, sem tapar a marca da própria arte. */
 #intro-press-start-btn{
   position:absolute !important;
   left:50% !important;
