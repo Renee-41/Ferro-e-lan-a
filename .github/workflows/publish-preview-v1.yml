@@ -19,6 +19,15 @@ jobs:
           path: source
           fetch-depth: 0
 
+      - name: Validate JavaScript syntax
+        shell: bash
+        run: |
+          set -e
+          for file in source/js/*.js; do
+            echo "Checking $file"
+            node --check "$file"
+          done
+
       - name: Checkout main site
         uses: actions/checkout@v4
         with:
