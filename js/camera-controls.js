@@ -148,7 +148,8 @@
     ['combat-polish','js/combat-polish.js?v=combat-polish-1'],
     ['biome-mechanics','js/biome-mechanics.js?v=biome-mechanics-1'],
     ['impact-surprise','js/impact-surprise.js?v=impact-surprise-1'],
-    ['signature-vfx','js/signature-vfx.js?v=signature-vfx-1']
+    ['signature-vfx','js/signature-vfx.js?v=signature-vfx-1'],
+    ['time-controls','js/time-controls.js?v=time-controls-1']
   ];
   modules.forEach(([key,src])=>{
     if(document.querySelector(`script[data-ferro-module="${key}"]`)) return;
