@@ -1,7 +1,6 @@
 /* Ferro & Lança — Visual Overhaul v1: correções de interação e câmera */
 
-/* O filter do SVG criava um stacking context acima do overlay de preparo.
-   Mantemos a arena numa camada própria e garantimos que os controles fiquem clicáveis. */
+/* O filter do SVG criava um stacking context acima do overlay de preparo. */
 .arena-wrap{
   isolation:isolate;
   overflow:hidden;
@@ -16,6 +15,7 @@
   width:100%;
   max-width:680px;
   filter:none;
+  background:#0b0e10;
 }
 
 #prep-overlay{
@@ -25,26 +25,9 @@
   backdrop-filter:blur(2px);
 }
 
-#prep-overlay > *{
-  position:relative;
-  z-index:41;
-}
-
-#prep-overlay button{
-  pointer-events:auto;
-}
-
-#fps,
-#roundinfo,
-#banner{
-  z-index:20;
-  pointer-events:none;
-}
-
-/* A câmera passa a preencher a moldura em vez de produzir faixas internas desconexas. */
-#arena{
-  background:#0b0e10;
-}
+#prep-overlay > *{position:relative;z-index:41;}
+#prep-overlay button{pointer-events:auto;}
+#fps,#roundinfo,#banner{z-index:20;pointer-events:none;}
 
 #camera-zoom-indicator{
   position:absolute;
@@ -70,7 +53,7 @@
   border-color:rgba(242,173,85,.48);
 }
 
-/* Intro: pular só por um controle explícito e discreto. */
+/* Intro: pular somente pelo controle explícito. */
 #intro-skip-btn{
   position:absolute;
   top:18px;
@@ -101,142 +84,180 @@
 }
 
 /* ========================================================================== */
-/* Intro cinematográfica — movimento propositalmente sutil, tipo key art viva */
+/* INTRO CINEMATOGRÁFICA — key art viva                                      */
 /* ========================================================================== */
 
-/* O canvas já contém as bolinhas/personagens, projéteis e brasas do JS.
-   Movemos o quadro inteiro bem devagar para dar sensação de câmera/parallax
-   sem alterar a lógica da pequena batalha. */
+/* Como o canvas agora fica transparente, o pré-show mantém o fundo escuro. */
+#intro-preshow{
+  background:#0a0807 !important;
+}
+
+/* A pequena batalha que já existia continua por cima da key art, mas bem
+   dessaturada/escura para parecer movimento distante, não bolinhas neon. */
 #intro-canvas{
+  z-index:9102 !important;
+  background:transparent !important;
+  opacity:.46;
   transform-origin:50% 52%;
-  will-change:transform,filter;
-  animation:intro-cinematic-camera 18s ease-in-out infinite alternate;
+  filter:grayscale(1) sepia(.18) brightness(.48) contrast(1.55);
+  will-change:transform;
+  animation:intro-canvas-drift 18s ease-in-out infinite alternate;
 }
 
-@keyframes intro-cinematic-camera{
-  0%{
-    transform:scale(1.025) translate3d(-.35%,.2%,0);
-    filter:brightness(.96) contrast(1.02);
-  }
-  50%{
-    transform:scale(1.038) translate3d(.2%,-.35%,0);
-    filter:brightness(1) contrast(1.025);
-  }
-  100%{
-    transform:scale(1.03) translate3d(.45%,.15%,0);
-    filter:brightness(.98) contrast(1.03);
-  }
+@keyframes intro-canvas-drift{
+  0%{transform:scale(1.01) translate3d(-.18%,.10%,0);}
+  50%{transform:scale(1.018) translate3d(.10%,-.12%,0);}
+  100%{transform:scale(1.012) translate3d(.20%,.08%,0);}
 }
 
-/* Névoa distante: fica atrás dos textos/logos da pré-intro. */
-#intro-preshow::before{
+#intro-screen{
+  background:#070605 !important;
+  isolation:isolate;
+}
+
+/* A arte enviada vira a base real da tela final da introdução. */
+#intro-screen::before{
   content:"";
   position:absolute;
-  z-index:1;
-  left:-18%;
-  right:-18%;
-  bottom:-24%;
-  height:72%;
+  inset:-2.5%;
+  z-index:0;
   pointer-events:none;
-  opacity:.22;
-  filter:blur(28px);
-  background:
-    radial-gradient(ellipse at 12% 72%,rgba(196,184,166,.22) 0 13%,transparent 36%),
-    radial-gradient(ellipse at 38% 52%,rgba(121,119,116,.20) 0 16%,transparent 43%),
-    radial-gradient(ellipse at 68% 72%,rgba(180,166,146,.18) 0 13%,transparent 39%),
-    radial-gradient(ellipse at 88% 46%,rgba(103,106,108,.18) 0 12%,transparent 37%);
-  transform:translate3d(-3%,0,0) scale(1.05);
-  animation:intro-smoke-back 19s ease-in-out infinite alternate;
-  will-change:transform,opacity;
+  background-image:url('../assets/intro/ferro-lanca-keyart.jpg');
+  background-position:center center;
+  background-size:cover;
+  background-repeat:no-repeat;
+  transform:scale(1.025);
+  filter:brightness(.92) contrast(1.04) saturate(.96);
+  animation:intro-keyart-drift 17s ease-in-out infinite alternate;
+  will-change:transform,filter;
 }
 
-@keyframes intro-smoke-back{
-  0%{transform:translate3d(-4%,3%,0) scale(1.04);opacity:.14;}
-  45%{opacity:.24;}
-  100%{transform:translate3d(5%,-8%,0) scale(1.16);opacity:.18;}
+@keyframes intro-keyart-drift{
+  0%{
+    transform:scale(1.025) translate3d(-.25%,.12%,0);
+    filter:brightness(.90) contrast(1.04) saturate(.94);
+  }
+  48%{
+    transform:scale(1.042) translate3d(.12%,-.18%,0);
+    filter:brightness(.96) contrast(1.05) saturate(1.01);
+  }
+  100%{
+    transform:scale(1.034) translate3d(.32%,.08%,0);
+    filter:brightness(.92) contrast(1.06) saturate(.97);
+  }
 }
 
-/* Fumaça mais próxima na tela do título. A camada é bem transparente para
-   não sujar FERRO & LANÇA nem esconder a lutinha na parte de baixo. */
+/* Vinheta mantém o logo legível e dá profundidade às bordas. */
 #intro-screen::after{
   content:"";
   position:absolute;
+  inset:0;
   z-index:1;
-  left:-25%;
-  right:-25%;
-  bottom:-28%;
-  height:70%;
   pointer-events:none;
-  opacity:.18;
-  filter:blur(34px);
-  mix-blend-mode:screen;
   background:
-    radial-gradient(ellipse at 18% 65%,rgba(173,164,151,.28) 0 12%,transparent 34%),
-    radial-gradient(ellipse at 48% 78%,rgba(118,113,106,.24) 0 14%,transparent 38%),
-    radial-gradient(ellipse at 78% 55%,rgba(181,154,124,.20) 0 11%,transparent 35%);
-  animation:intro-smoke-front 14s ease-in-out infinite alternate;
+    radial-gradient(circle at 50% 46%,transparent 36%,rgba(0,0,0,.05) 61%,rgba(0,0,0,.38) 100%),
+    linear-gradient(to bottom,rgba(0,0,0,.12),transparent 26%,transparent 72%,rgba(0,0,0,.22));
+}
+
+/* O texto antigo é removido: FERRO & LANÇA e o subtítulo já fazem parte da arte. */
+#intro-title,
+#intro-subtitle,
+#intro-crack{
+  display:none !important;
+}
+
+/* Reaproveita a antiga camada de glow como uma névoa animada. */
+#intro-glow-wrap,
+#intro-glow-wrap.show{
+  display:block !important;
+  position:absolute !important;
+  inset:-18% !important;
+  z-index:3 !important;
+  opacity:.34 !important;
+  pointer-events:none;
+  transform:none;
+  filter:blur(30px);
+  background:
+    radial-gradient(ellipse at 15% 73%,rgba(184,171,151,.18) 0 10%,transparent 31%),
+    radial-gradient(ellipse at 42% 79%,rgba(116,111,105,.18) 0 12%,transparent 34%),
+    radial-gradient(ellipse at 78% 65%,rgba(185,151,116,.14) 0 11%,transparent 32%);
+  animation:intro-smoke-sweep 19s ease-in-out infinite alternate !important;
   will-change:transform,opacity;
 }
 
-@keyframes intro-smoke-front{
-  0%{transform:translate3d(5%,4%,0) scale(1.08);opacity:.10;}
-  55%{opacity:.20;}
-  100%{transform:translate3d(-6%,-11%,0) scale(1.2);opacity:.14;}
+@keyframes intro-smoke-sweep{
+  0%{transform:translate3d(-3%,5%,0) scale(1.02);opacity:.20;}
+  52%{opacity:.38;}
+  100%{transform:translate3d(4%,-6%,0) scale(1.13);opacity:.25;}
 }
 
-/* As faíscas CSS existentes sobem mais devagar e em ritmos diferentes,
-   lembrando brasa suspensa no ar em vez de confete rápido. */
+#intro-glow{
+  position:absolute !important;
+  left:8% !important;
+  bottom:4% !important;
+  width:54vw !important;
+  height:19vw !important;
+  border-radius:50% !important;
+  background:radial-gradient(ellipse at center,rgba(157,142,122,.30) 0%,rgba(80,70,59,.14) 42%,transparent 72%) !important;
+  animation:intro-smoke-secondary 15s ease-in-out infinite alternate !important;
+  will-change:transform,opacity;
+}
+
+@keyframes intro-smoke-secondary{
+  from{transform:translate3d(-8%,7%,0) scale(.96);opacity:.18;}
+  to{transform:translate3d(18%,-10%,0) scale(1.18);opacity:.42;}
+}
+
+/* Brasas ficam lentas e irregulares: sensação de câmera lenta. */
+#intro-sparks-container{
+  z-index:4 !important;
+  pointer-events:none;
+}
+
 .intro-spark{
-  animation-duration:5.4s !important;
+  animation-duration:5.6s !important;
   animation-timing-function:cubic-bezier(.18,.55,.3,1) !important;
   opacity:.82;
   will-change:transform,opacity;
 }
-
-.intro-spark:nth-child(3n){animation-duration:6.6s !important;}
-.intro-spark:nth-child(4n){animation-duration:4.8s !important;}
+.intro-spark:nth-child(3n){animation-duration:6.8s !important;}
+.intro-spark:nth-child(4n){animation-duration:4.9s !important;}
 .intro-spark:nth-child(5n){filter:blur(.55px);opacity:.58;}
 
-/* Micro respiração da marca — quase imperceptível; impede a tela de parecer
-   uma imagem completamente parada depois que o título aparece. */
-#intro-glow-wrap.show{
-  animation:intro-logo-breathe 6.5s ease-in-out infinite;
-  transform-origin:center;
+/* Press Start discreto no rodapé, sem tapar a marca da própria arte. */
+#intro-press-start-btn{
+  position:absolute !important;
+  left:50% !important;
+  bottom:4.2vh !important;
+  z-index:8 !important;
+  margin:0 !important;
+  transform:translateX(-50%) !important;
+  padding:11px 24px !important;
+  background:rgba(9,8,7,.52) !important;
+  border-color:rgba(242,165,65,.58) !important;
+  color:#f3c27b !important;
+  backdrop-filter:blur(5px);
 }
 
-@keyframes intro-logo-breathe{
-  0%,100%{transform:scale(1);filter:brightness(1);}
-  50%{transform:scale(1.008);filter:brightness(1.07);}
+#intro-press-start-btn.show{
+  animation:intro-press-pulse 1.8s ease-in-out infinite !important;
 }
 
-/* O brilho central oscila de maneira lenta, como fogo refletindo no metal. */
-#intro-glow{
-  animation:intro-ember-light 4.8s ease-in-out infinite alternate;
-}
-
-@keyframes intro-ember-light{
-  from{filter:brightness(.96) saturate(.96);}
-  to{filter:brightness(1.08) saturate(1.06);}
-}
-
-/* Quem pediu redução de movimento no sistema continua com uma intro estável. */
 @media (prefers-reduced-motion:reduce){
   #intro-canvas,
-  #intro-preshow::before,
-  #intro-screen::after,
-  #intro-glow-wrap.show,
+  #intro-screen::before,
+  #intro-glow-wrap,
   #intro-glow{
     animation:none !important;
   }
-  .intro-spark{
-    animation-duration:7s !important;
-  }
+  .intro-spark{animation-duration:7s !important;}
 }
 
 @media (max-width:820px){
   #arena{max-width:none;}
   #camera-zoom-indicator{right:7px;bottom:7px;font-size:8px;}
   #intro-skip-btn{top:12px;left:12px;padding:7px 9px;}
-  #intro-preshow::before{opacity:.16;filter:blur(24px);}
-  #intro-screen::after{opacity:.13;filter:blur(27px);}
+  #intro-canvas{opacity:.38;}
+  #intro-glow-wrap,#intro-glow-wrap.show{opacity:.26 !important;filter:blur(25px);}
+  #intro-press-start-btn{bottom:3vh !important;}
 }
