@@ -124,3 +124,14 @@
     camViewBox.h += (safe.h-camViewBox.h)*ease;
   };
 })();
+
+/* Carrega o pacote de feedback de combate sem tocar no index.html gigante.
+   O arquivo de câmera já é carregado no preview; o módulo novo entra logo depois. */
+(function loadCombatFeedback(){
+  if(document.querySelector('script[data-ferro-combat-feedback]')) return;
+  const s = document.createElement('script');
+  s.src = 'js/combat-feedback.js';
+  s.async = false;
+  s.dataset.ferroCombatFeedback = '1';
+  (document.head || document.documentElement).appendChild(s);
+})();
