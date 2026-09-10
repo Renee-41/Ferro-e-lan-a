@@ -1,0 +1,35 @@
+name: Apply preview intro patch
+
+on:
+  push:
+    branches:
+      - ui/ux-teste-visual-mecanicas
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: ui/ux-teste-visual-mecanicas
+          fetch-depth: 0
+
+      - name: Patch intro behavior
+        run: python scripts/patch_intro.py
+
+      - name: Commit intro patch
+        shell: bash
+        run: |
+          if git diff --quiet -- js/game.js; then
+            echo "Intro já está atualizada."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add js/game.js
+          git commit -m "feat(intro): separate audio unlock from skip"
+          git push origin HEAD:ui/ux-teste-visual-mecanicas

@@ -1,0 +1,67 @@
+name: Apply visual overhaul v1
+
+on:
+  push:
+    branches:
+      - ui/ux-teste-visual-mecanicas
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: ui/ux-teste-visual-mecanicas
+          fetch-depth: 0
+
+      - name: Enable overhaul stylesheet and refresh intro CSS cache
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('index.html')
+          html = path.read_text(encoding='utf-8')
+
+          base = '<link rel="stylesheet" href="./css/style.css">'
+          overhaul = '<link rel="stylesheet" href="./css/overhaul-v1.css">'
+          fixes_plain = '<link rel="stylesheet" href="./css/overhaul-v1-fixes.css">'
+          fixes_busted = '<link rel="stylesheet" href="./css/overhaul-v1-fixes.css?v=original-intro-20260910">'
+
+          if overhaul not in html:
+              if base not in html:
+                  raise SystemExit('Referência ao css/style.css não encontrada.')
+              if not Path('css/overhaul-v1.css').exists():
+                  raise SystemExit('css/overhaul-v1.css não existe.')
+              html = html.replace(base, base + '\n' + overhaul, 1)
+
+          if fixes_busted not in html:
+              if fixes_plain in html:
+                  html = html.replace(fixes_plain, fixes_busted, 1)
+              elif Path('css/overhaul-v1-fixes.css').exists():
+                  html = html.replace(overhaul, overhaul + '\n' + fixes_busted, 1)
+              else:
+                  raise SystemExit('css/overhaul-v1-fixes.css não existe.')
+
+          path.write_text(html, encoding='utf-8')
+          print('Visual Overhaul v1 habilitado; CSS original da intro com cache-buster aplicado.')
+          PY
+
+      - name: Commit reference
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo "Nenhuma mudança para commitar."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git commit -m "fix(preview): force original intro stylesheet refresh"
+          git push origin HEAD:ui/ux-teste-visual-mecanicas
+
+# republish marker: original intro restored

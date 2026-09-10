@@ -1,0 +1,115 @@
+name: Refactor split files
+
+on:
+  push:
+    branches:
+      - refactor/split-files
+
+permissions:
+  contents: write
+
+jobs:
+  split:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: refactor/split-files
+          fetch-depth: 0
+
+      - name: Split index.html conservatively
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          root = Path('.')
+          index = root / 'index.html'
+          html = index.read_text(encoding='utf-8')
+
+          if './css/style.css' in html and './js/game.js' in html:
+              print('index.html já está separado; nada a fazer.')
+              raise SystemExit(0)
+
+          style_match = re.search(r'<style>(.*?)</style>', html, re.S)
+          if not style_match:
+              raise SystemExit('Bloco <style> não encontrado.')
+
+          css = style_match.group(1).strip('\n') + '\n'
+          html2 = html[:style_match.start()] + '<link rel="stylesheet" href="./css/style.css">' + html[style_match.end():]
+
+          scripts = list(re.finditer(r'<script(?P<attrs>[^>]*)>(?P<body>.*?)</script>', html2, re.S))
+          if len(scripts) < 4:
+              raise SystemExit(f'Esperava pelo menos 4 blocos <script>; encontrei {len(scripts)}.')
+
+          analytics_match = next((m for m in scripts if 'window.dataLayer' in m.group('body')), None)
+          firebase_match = next((m for m in scripts if 'type="module"' in m.group('attrs') and 'initializeApp' in m.group('body')), None)
+          inline_candidates = [m for m in scripts if 'src=' not in m.group('attrs') and m is not analytics_match and m is not firebase_match]
+          game_match = max(inline_candidates, key=lambda m: len(m.group('body')), default=None)
+
+          if not analytics_match:
+              raise SystemExit('Bloco do Google Analytics não encontrado.')
+          if not firebase_match:
+              raise SystemExit('Bloco do Firebase não encontrado.')
+          if not game_match:
+              raise SystemExit('Bloco principal do jogo não encontrado.')
+
+          analytics = analytics_match.group('body').strip('\n') + '\n'
+          firebase = firebase_match.group('body').strip('\n') + '\n'
+          game = game_match.group('body').strip('\n') + '\n'
+
+          replacements = [
+              (game_match.start(), game_match.end(), '<script src="./js/game.js"></script>'),
+              (firebase_match.start(), firebase_match.end(), '<script type="module" src="./js/firebase.js"></script>'),
+              (analytics_match.start(), analytics_match.end(), '<script src="./js/analytics.js"></script>'),
+          ]
+          for start, end, replacement in sorted(replacements, reverse=True):
+              html2 = html2[:start] + replacement + html2[end:]
+
+          (root / 'css').mkdir(exist_ok=True)
+          (root / 'js').mkdir(exist_ok=True)
+          (root / 'css' / 'style.css').write_text(css, encoding='utf-8')
+          (root / 'js' / 'analytics.js').write_text(analytics, encoding='utf-8')
+          (root / 'js' / 'firebase.js').write_text(firebase, encoding='utf-8')
+          (root / 'js' / 'game.js').write_text(game, encoding='utf-8')
+          index.write_text(html2, encoding='utf-8')
+
+          checks = {
+              'css': style_match.group(1).strip('\n') == css.rstrip('\n'),
+              'analytics': analytics_match.group('body').strip('\n') == analytics.rstrip('\n'),
+              'firebase': firebase_match.group('body').strip('\n') == firebase.rstrip('\n'),
+              'game': game_match.group('body').strip('\n') == game.rstrip('\n'),
+          }
+          if not all(checks.values()):
+              raise SystemExit(f'Falha na validação de extração: {checks}')
+
+          refs = ['./css/style.css', './js/analytics.js', './js/firebase.js', './js/game.js']
+          if not all(ref in html2 for ref in refs):
+              raise SystemExit('Nem todas as referências externas foram inseridas no index.html.')
+
+          print('Separação concluída com cópia exata dos blocos originais.')
+          print(f'CSS: {len(css)} chars | Analytics: {len(analytics)} | Firebase: {len(firebase)} | Game: {len(game)}')
+          PY
+
+      - name: Validate JavaScript syntax
+        shell: bash
+        run: |
+          node --check js/analytics.js
+          node --check js/game.js
+          cp js/firebase.js /tmp/firebase.mjs
+          node --check /tmp/firebase.mjs
+
+      - name: Commit split files
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo "Nenhuma mudança para commitar."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html css/style.css js/analytics.js js/firebase.js js/game.js
+          git commit -m "refactor: split HTML, CSS and JavaScript"
+          git push origin HEAD:refactor/split-files
