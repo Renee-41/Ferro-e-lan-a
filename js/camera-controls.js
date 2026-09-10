@@ -143,6 +143,15 @@
 
 /* Pacotes de UX/mecânica do branch de teste. */
 (function loadPreviewModules(){
+  const styleHref='css/mobile-responsive.css?v=mobile-ux-1';
+  if(!document.querySelector('link[data-ferro-style="mobile-responsive"]')){
+    const link=document.createElement('link');
+    link.rel='stylesheet';
+    link.href=styleHref;
+    link.dataset.ferroStyle='mobile-responsive';
+    (document.head||document.documentElement).appendChild(link);
+  }
+
   const modules = [
     ['combat-feedback','js/combat-feedback.js?v=combat-polish-2'],
     ['combat-polish','js/combat-polish.js?v=combat-polish-1'],
@@ -151,8 +160,10 @@
     ['signature-vfx','js/signature-vfx.js?v=signature-vfx-1'],
     ['time-controls','js/time-controls.js?v=time-controls-1'],
     ['item-experience','js/item-experience.js?v=item-experience-1'],
+    ['shooter-items','js/shooter-items.js?v=shooter-items-1'],
     ['rupture-endgame','js/rupture-endgame.js?v=rupture-endgame-1'],
-    ['cinematic-combat','js/cinematic-combat.js?v=cinematic-combat-2']
+    ['cinematic-combat','js/cinematic-combat.js?v=cinematic-combat-2'],
+    ['mobile-ui','js/mobile-ui.js?v=mobile-ux-1']
   ];
   modules.forEach(([key,src])=>{
     if(document.querySelector(`script[data-ferro-module="${key}"]`)) return;
