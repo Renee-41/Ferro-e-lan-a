@@ -1,306 +1,150 @@
-/* Ferro & Lança — protótipo de integração 3D da Ferrha.
-   Mantém o jogo/SVG como fonte de verdade e sobrepõe somente o corpo da Ferrha em WebGL.
-   Se Three.js ou o GLB falharem, o marcador SVG original continua visível.
-*/
+/* Ferrha v2: world-facing visual adapter. Combat is the only source of decisions.
+   One WebGL context, shared GLB geometry/textures, bounded animation work per unit. */
 (function(){
-  if(window.__ferroFerrha3DLoaded) return;
-  window.__ferroFerrha3DLoaded = true;
-
-  const arena = document.getElementById('arena');
-  const wrap = arena && arena.closest('.arena-wrap');
-  if(!arena || !wrap) return;
-  if(getComputedStyle(wrap).position === 'static') wrap.style.position = 'relative';
-
-  const layer = document.createElement('div');
-  layer.id = 'ferrha-3d-layer';
-  Object.assign(layer.style, {
-    position:'absolute', inset:'0', overflow:'hidden', pointerEvents:'none', zIndex:'9'
-  });
-  wrap.appendChild(layer);
-
-  const style = document.createElement('style');
-  style.textContent = `
-    .ferrha-3d-unit{position:absolute;pointer-events:none;transform-origin:50% 75%;will-change:left,top,width,height,opacity;}
-    .ferrha-3d-unit canvas{display:block;width:100%;height:100%;filter:drop-shadow(0 7px 5px rgba(0,0,0,.38));}
-    .ferrha-3d-loading{position:absolute;right:8px;top:8px;z-index:14;padding:4px 7px;border:1px solid rgba(199,207,217,.22);border-radius:5px;background:rgba(8,10,13,.64);color:rgba(220,226,232,.66);font:9px/1.2 'JetBrains Mono',monospace;pointer-events:none;}
-  `;
-  document.head.appendChild(style);
-
-  const status = document.createElement('div');
-  status.className = 'ferrha-3d-loading';
-  status.textContent = 'Ferrha 3D · carregando';
-  wrap.appendChild(status);
-
-  const ASSET_URL = new URL('assets/characters/ferrha/Ferrha.glb', document.baseURI).href;
-  const THREE_URL = 'https://esm.sh/three@0.180.0';
-  const LOADER_URL = 'https://esm.sh/three@0.180.0/examples/jsm/loaders/GLTFLoader.js';
-  const SKELETON_URL = 'https://esm.sh/three@0.180.0/examples/jsm/utils/SkeletonUtils.js';
-
-  Promise.all([import(THREE_URL), import(LOADER_URL), import(SKELETON_URL)])
-    .then(([THREE, loaderModule, skeletonModule]) => {
-      const loader = new loaderModule.GLTFLoader();
-      loader.load(
-        ASSET_URL,
-        gltf => startFerrha3D(THREE, skeletonModule, gltf),
-        undefined,
-        err => fail('GLB não carregou', err)
-      );
-    })
-    .catch(err => fail('Three.js não carregou', err));
-
-  function fail(message, err){
-    console.warn('[Ferrha 3D]', message, err || '');
-    status.textContent = 'Ferrha 3D · fallback SVG';
-    setTimeout(()=>status.remove(), 2600);
-    window.__ferrha3dReady = false;
+  if(window.Ferrha3D)return;
+  const arena=document.getElementById('arena'),wrap=arena&&arena.closest('.arena-wrap');
+  if(!wrap)return;
+  const events=new Map();let serial=0,draw=null,failed=false;
+  function record(u){let e=events.get(u.id);if(!e){e={unit:u};events.set(u.id,e);}if(e.unit!==u){e={unit:u};events.set(u.id,e);}return e;}
+  const api=window.Ferrha3D={
+    targetSelected(u,t){if(u.champId==='ferrha')record(u).targetId=t&&t.id;},
+    attack(u,t,a){if(u.champId==='ferrha'){const e=record(u);e.targetId=t.id;e.attack={...a};}},
+    damage(source,target,damage,at){if(target.champId==='ferrha'&&damage>0)record(target).hit={token:++serial,source:{rx:source.rx,ry:source.ry},damage,at};},
+    frame(list,dt,now){
+      if(failed)return;
+      try{if(draw)draw(list,Math.max(0,dt/1000),now);}
+      catch(error){fail(error);}
+      const liveIds=new Set(list.map(u=>u.id));for(const id of events.keys())if(!liveIds.has(id))events.delete(id);
+    },
+    ready:false,debug:()=>[]
+  };
+  if(getComputedStyle(wrap).position==='static')wrap.style.position='relative';
+  const layer=document.createElement('div');layer.id='ferrha-3d-layer';
+  Object.assign(layer.style,{position:'absolute',inset:'0',overflow:'hidden',pointerEvents:'none',zIndex:'9'});wrap.appendChild(layer);
+  const labels=document.createElementNS('http://www.w3.org/2000/svg','svg');labels.id='ferrha-3d-labels';
+  Object.assign(labels.style,{position:'absolute',inset:'0',width:'100%',height:'100%',pointerEvents:'none',zIndex:'10'});wrap.appendChild(labels);
+  const status=document.createElement('div');status.id='ferrha-3d-status';status.textContent='Ferrha 3D · carregando';
+  Object.assign(status.style,{position:'absolute',right:'8px',top:'8px',color:'#ccd4db',font:'10px monospace',pointerEvents:'none',zIndex:'11'});wrap.appendChild(status);
+  function fail(error){
+    failed=true;api.ready=window.__ferrha3dReady=false;
+    layer.style.display='none';labels.replaceChildren();status.textContent='Ferrha · SVG';
+    console.warn('[Ferrha 3D] Fallback SVG:',error);setTimeout(()=>status.remove(),2500);
+    if(api.dispose)api.dispose();
   }
+  function loadController(){return new Promise((resolve,reject)=>{
+    if(window.FerrhaVisualState)return resolve();
+    const s=document.createElement('script');s.src=new URL('js/ferrha-visual-state.js?v=2',document.baseURI);s.onload=resolve;s.onerror=reject;document.head.appendChild(s);
+  });}
+  Promise.all([import('https://esm.sh/three@0.180.0'),
+    import('https://esm.sh/three@0.180.0/examples/jsm/loaders/GLTFLoader.js'),
+    import('https://esm.sh/three@0.180.0/examples/jsm/utils/SkeletonUtils.js'),loadController()])
+    .then(async([THREE,{GLTFLoader},SkeletonUtils])=>{
+      const gltf=await new GLTFLoader().loadAsync(new URL('assets/characters/ferrha/Ferrha_v2.glb',document.baseURI).href);
+      start(THREE,SkeletonUtils,gltf);
+    }).catch(fail);
 
-  function startFerrha3D(THREE, SkeletonUtils, gltf){
-    const cloneSkinned = typeof SkeletonUtils.clone === 'function'
-      ? SkeletonUtils.clone
-      : obj => obj.clone(true);
-    const clipByName = new Map((gltf.animations || []).map(c => [c.name, c]));
-    const instances = new Map();
-    const clock = new THREE.Clock();
-
-    window.__ferrha3dReady = true;
-    status.textContent = 'Ferrha 3D · ativa';
-    setTimeout(()=>status.remove(), 1800);
-
-    function gameUnits(){
-      try{ return Array.isArray(units) ? units : []; }
-      catch(_){ return []; }
+  function start(THREE,SkeletonUtils,gltf){
+    const names={idle:'Idle',move:'Walk',attack_a:'Attack_A',attack_b:'Attack_B',attack_c:'Attack_C',hit:'Hit',barrier:'Barrier',death:'Death'};
+    const clips=new Map(gltf.animations.map(c=>[c.name,c]));
+    for(const name of Object.values(names))if(!clips.has(name))throw Error('Clip ausente: '+name);
+    const duration=Object.fromEntries(Object.entries(names).map(([k,v])=>[k,clips.get(v).duration]));
+    const renderer=new THREE.WebGLRenderer({alpha:true,antialias:true,powerPreference:'low-power'});
+    renderer.setPixelRatio(Math.min(devicePixelRatio||1,1.5));renderer.setClearColor(0,0);
+    renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.15;
+    renderer.autoClear=false;renderer.domElement.setAttribute('aria-hidden','true');layer.appendChild(renderer.domElement);
+    renderer.domElement.addEventListener('webglcontextlost',e=>{e.preventDefault();fail('context lost');});
+    const instances=new Map();let dimensions={w:0,h:0};
+    function instance(u){
+      const scene=new THREE.Scene();scene.add(new THREE.HemisphereLight(0xe6efff,0x30291e,2.2));
+      const key=new THREE.DirectionalLight(0xffd8af,3);key.position.set(-3,5,4);scene.add(key);
+      const rim=new THREE.DirectionalLight(0x8aaed8,1.6);rim.position.set(3,3,-4);scene.add(rim);
+      // A fixed observer on +Z. Heading is NOT derived from this camera.
+      const camera=new THREE.OrthographicCamera(-1.9,1.9,2.128,-2.128,.01,25);
+      camera.position.set(0,3.6,5);camera.lookAt(0,.68,0);camera.updateMatrixWorld();
+      const holder=new THREE.Group(),impact=new THREE.Group(),model=SkeletonUtils.clone(gltf.scene);
+      scene.add(holder);holder.add(impact);impact.add(model);
+      // Keep the authored foot pivot; weapon/shard bounds must never recenter the body.
+      const mixer=new THREE.AnimationMixer(model),actions={};
+      for(const [state,name] of Object.entries(names))actions[state]=mixer.clipAction(clips.get(name));
+      actions.idle.play();actions.move.play().setEffectiveTimeScale(0).setEffectiveWeight(0);
+      const overlay=clips.get('Hit').clone();overlay.name='Hit additive';
+      overlay.tracks=overlay.tracks.filter(t=>/^(Spine|Head)\./.test(t.name));
+      THREE.AnimationUtils.makeClipAdditive(overlay,0);
+      const hit=mixer.clipAction(overlay);hit.setLoop(THREE.LoopOnce,1);
+      const ctrl=new FerrhaVisualState.Controller(u,{duration,stridePixels:.4*20});
+      const foot=new THREE.Vector3(0,0,0).project(camera);
+      return {u,scene,camera,holder,impact,model,mixer,actions,hit,ctrl,footY:(1-foot.y)/2,token:-1,hitToken:0,lock:null,hitFading:false};
     }
-
-    function makeInstance(u){
-      const host = document.createElement('div');
-      host.className = 'ferrha-3d-unit';
-      host.dataset.unitId = String(u.id);
-      layer.appendChild(host);
-
-      const renderer = new THREE.WebGLRenderer({alpha:true, antialias:true, powerPreference:'high-performance'});
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-      renderer.setClearColor(0x000000, 0);
-      renderer.outputColorSpace = THREE.SRGBColorSpace;
-      renderer.toneMapping = THREE.ACESFilmicToneMapping;
-      renderer.toneMappingExposure = 1.12;
-      renderer.domElement.setAttribute('aria-hidden','true');
-      host.appendChild(renderer.domElement);
-
-      const scene = new THREE.Scene();
-      scene.add(new THREE.HemisphereLight(0xdde8f4, 0x2b211b, 2.15));
-      const key = new THREE.DirectionalLight(0xffd3a2, 3.1);
-      key.position.set(3.2, 5.5, 4.5);
-      scene.add(key);
-      const rim = new THREE.DirectionalLight(0x6f99c9, 1.35);
-      rim.position.set(-4, 3.4, -3);
-      scene.add(rim);
-
-      const camera = new THREE.PerspectiveCamera(27, 1, 0.05, 30);
-      camera.position.set(2.75, 2.55, 4.8);
-      camera.lookAt(0, 0.76, 0);
-
-      const holder = new THREE.Group();
-      const model = cloneSkinned(gltf.scene);
-      holder.add(model);
-      scene.add(holder);
-
-      model.updateMatrixWorld(true);
-      const box = new THREE.Box3().setFromObject(model);
-      const size = box.getSize(new THREE.Vector3());
-      const center = box.getCenter(new THREE.Vector3());
-      model.position.x -= center.x;
-      model.position.z -= center.z;
-      model.position.y -= box.min.y;
-      const height = Math.max(0.001, size.y);
-      holder.scale.setScalar(1.52 / height);
-      holder.rotation.y = u.team === 'player' ? -0.30 : 0.30;
-
-      const shadow = new THREE.Mesh(
-        new THREE.CircleGeometry(0.48, 28),
-        new THREE.MeshBasicMaterial({color:0x000000, transparent:true, opacity:0.22, depthWrite:false})
-      );
-      shadow.rotation.x = -Math.PI/2;
-      shadow.position.y = 0.008;
-      shadow.scale.set(1.0, 0.58, 1.0);
-      scene.add(shadow);
-
-      const mixer = new THREE.AnimationMixer(model);
-      const actions = {};
-      ['Idle','Walk','Attack','Hit','Death','Ability'].forEach(name => {
-        const clip = clipByName.get(name);
-        if(clip) actions[name] = mixer.clipAction(clip, model);
-      });
-
-      const st = {
-        id:u.id, host, renderer, scene, camera, holder, mixer, actions,
-        current:null, lastX:u.rx, lastY:u.ry, prevHp:u.hp, wasAlive:u.alive,
-        lastAttackStart:0, barrierActive:false, lockUntil:0, deadAt:0,
-        width:0, height:0, disposed:false
-      };
-      play(st, 'Idle', true, THREE);
-      return st;
-    }
-
-    function play(st, name, loop, THREERef){
-      const action = st.actions[name] || st.actions.Idle;
-      if(!action || (st.current === name && loop)) return;
-      const previous = st.current && st.actions[st.current];
-      if(previous && previous !== action) previous.fadeOut(0.10);
-      action.reset();
-      action.enabled = true;
-      action.clampWhenFinished = !loop;
-      action.setLoop(loop ? THREERef.LoopRepeat : THREERef.LoopOnce, loop ? Infinity : 1);
-      action.fadeIn(0.08).play();
-      st.current = name;
-    }
-
-    function screenPoint(x,y){
-      try{
-        const p = arena.createSVGPoint();
-        p.x=x; p.y=y;
-        const m=arena.getScreenCTM();
-        return m ? p.matrixTransform(m) : null;
-      }catch(_){ return null; }
-    }
-
-    function visualPosition(u, now){
-      let x=u.rx, y=u.ry;
-      if(u.attackAnim){
-        const elapsed = now-u.attackAnim.start;
-        if(elapsed>=0 && elapsed<u.attackAnim.duration){
-          const t = gameUnits().find(o=>o.id===u.attackAnim.targetId);
-          if(t){
-            const p=elapsed/u.attackAnim.duration;
-            const lunge=Math.sin(p*Math.PI)*9;
-            const dx=t.rx-u.rx, dy=t.ry-u.ry;
-            const d=Math.hypot(dx,dy)||1;
-            x+=(dx/d)*lunge; y+=(dy/d)*lunge;
-          }
+    function animate(st,v,dt){
+      const locomotion=v.base==='idle'||v.base==='move';
+      if(st.token!==v.sequence){
+        st.token=v.sequence;
+        if(st.lock)st.lock.fadeOut(v.dead?.1:.14);
+        st.lock=null;
+        if(locomotion){st.actions.idle.stopFading().fadeIn(.16).play();st.actions.move.stopFading().fadeIn(.16).play();}
+        else{
+          st.actions.idle.fadeOut(.12);st.actions.move.fadeOut(.12);
+          const a=st.actions[v.base];a.reset().setEffectiveWeight(1).setLoop(THREE.LoopOnce,1);
+          a.clampWhenFinished=true;
+          a.setEffectiveTimeScale(v.base.startsWith('attack')?duration[v.base]/v.actionDuration:1);
+          a.fadeIn(v.dead?.09:.12).play();st.lock=a;
         }
       }
-      return {x,y};
-    }
-
-    function markerRadiusPx(x,y){
-      const a=screenPoint(x,y), b=screenPoint(x+14,y);
-      if(!a || !b) return 14;
-      return Math.max(4, Math.hypot(b.x-a.x,b.y-a.y));
-    }
-
-    function positionHost(st,u,pos){
-      const sp=screenPoint(pos.x,pos.y);
-      if(!sp){ st.host.style.display='none'; return; }
-      const wr=wrap.getBoundingClientRect();
-      const radius=markerRadiusPx(pos.x,pos.y);
-      const w=Math.max(56,Math.min(156,radius*5.25));
-      const h=w*1.22;
-      const left=sp.x-wr.left-w/2;
-      const top=sp.y-wr.top-h*0.73;
-      if(left>wR(wr)+60 || top>wr.height+60 || left+w<-60 || top+h<-60){
-        st.host.style.display='none';
-        return;
+      if(locomotion){
+        st.actions.idle.setEffectiveWeight(1-v.moveWeight);st.actions.move.setEffectiveWeight(v.moveWeight);
+        st.actions.move.time=v.phase*duration.move;
       }
-      st.host.style.display='block';
-      st.host.style.left=left+'px';
-      st.host.style.top=top+'px';
-      st.host.style.width=w+'px';
-      st.host.style.height=h+'px';
-      st.host.style.opacity=u.spawnPortalUntil && performance.now()<u.spawnPortalUntil ? '.72' : '1';
-      if(Math.abs(w-st.width)>1 || Math.abs(h-st.height)>1){
-        st.width=w; st.height=h;
-        st.renderer.setSize(Math.round(w),Math.round(h),false);
-        st.camera.aspect=w/h;
-        st.camera.updateProjectionMatrix();
+      if(v.hitSequence!==st.hitToken && !v.dead){
+        st.hitToken=v.hitSequence;st.hitFading=false;
+        st.hit.reset().setEffectiveWeight(v.hitWeight).fadeIn(.035).play();
       }
+      if((!v.hitWeight||v.dead)&&!st.hitFading){st.hit.fadeOut(.08);st.hitFading=true;}
+      st.impact.rotation.z+=(v.hitSide*v.hitWeight*.045-st.impact.rotation.z)*(1-Math.exp(-dt*22));
+      st.holder.rotation.y=v.yaw;
+      st.mixer.update(Math.min(.05,dt));
     }
-
-    function wR(rect){ return rect.width; }
-
-    function hideOriginalBody(u,pos){
-      // Esconde só o círculo-base da Ferrha; nome, HP, mana e efeitos SVG continuam por cima.
-      const circles=arena.querySelectorAll('circle[r="14"]');
-      for(const c of circles){
-        const cx=parseFloat(c.getAttribute('cx')), cy=parseFloat(c.getAttribute('cy'));
-        if(Math.abs(cx-pos.x)<1.8 && Math.abs(cy-pos.y)<1.8){
-          c.setAttribute('fill-opacity','0');
-          c.setAttribute('stroke-opacity','0');
-          break;
+    function dispose(st){st.mixer.stopAllAction();st.mixer.uncacheRoot(st.model);}
+    api.dispose=()=>{for(const st of instances.values())dispose(st);instances.clear();renderer.dispose();};
+    api.debug=()=>Array.from(instances,([id,st])=>({id,...st.ctrl.snapshot(),clips:Object.keys(st.actions),webglContexts:1}));
+    draw=(list,dt,now)=>{
+      const wr=wrap.getBoundingClientRect(),matrix=arena.getScreenCTM();
+      labels.replaceChildren();if(!matrix||wr.width<1||wr.height<1)return;
+      if(dimensions.w!==wr.width||dimensions.h!==wr.height){renderer.setSize(wr.width,wr.height,false);dimensions={w:wr.width,h:wr.height};}
+      labels.setAttribute('viewBox',`0 0 ${wr.width} ${wr.height}`);
+      renderer.setScissorTest(false);renderer.setViewport(0,0,wr.width,wr.height);renderer.clear();renderer.setScissorTest(true);
+      const wanted=new Set(),lookup=new Map(list.map(u=>[u.id,u]));
+      const units=list.filter(u=>u.champId==='ferrha').sort((a,b)=>a.ry-b.ry);
+      const scale=Math.hypot(matrix.a,matrix.b);
+      for(const u of units){
+        wanted.add(u.id);let st=instances.get(u.id);
+        if(st&&st.u!==u){dispose(st);instances.delete(u.id);st=null;}
+        if(!st){st=instance(u);instances.set(u.id,st);}
+        const e=events.get(u.id)||{},a=e.attack||u.attackAnim;
+        const target=lookup.get(a&&now-a.start<1200?a.targetId:e.targetId);
+        // Only rx/ry are locomotion; the SVG attack lunge is intentionally excluded.
+        const v=st.ctrl.update({unit:u,target,attack:a,hit:e.hit,dt,now});animate(st,v,dt);
+        if(v.dead&&v.deathAge>duration.death+.6)continue;
+        const w=76*scale,h=w*1.12;
+        const x=matrix.a*u.rx+matrix.c*u.ry+matrix.e-wr.left-w/2;
+        const footY=matrix.b*u.rx+matrix.d*u.ry+matrix.f-wr.top;
+        const y=footY-h*st.footY;
+        if(x+w<0||y+h<0||x>wr.width||y>wr.height)continue;
+        const left=Math.max(0,x),bottom=Math.max(0,wr.height-y-h),right=Math.min(wr.width,x+w),top=Math.min(wr.height,wr.height-y);
+        renderer.setViewport(x,wr.height-y-h,w,h);renderer.setScissor(left,bottom,right-left,top-bottom);
+        renderer.clearDepth();renderer.render(st.scene,st.camera);
+        const g=arena.querySelector(`[data-unit-id="${u.id}"]`);
+        if(g){
+          const clone=g.cloneNode(true);clone.querySelector('[data-unit-body]')?.remove();
+          const name=clone.querySelector('.hex-label');if(name)name.setAttribute('y',Number(name.getAttribute('y'))-12);
+          const group=document.createElementNS(labels.namespaceURI,'g');
+          group.setAttribute('transform',`matrix(${matrix.a} ${matrix.b} ${matrix.c} ${matrix.d} ${matrix.e-wr.left} ${matrix.f-wr.top})`);
+          group.appendChild(clone);labels.appendChild(group);
+          for(const child of g.children)child.setAttribute('opacity','0');
         }
       }
-    }
-
-    function updateAnimation(st,u,now,moved){
-      const justDied=st.wasAlive && !u.alive;
-      if(justDied){
-        st.deadAt=now;
-        st.lockUntil=now+1050;
-        play(st,'Death',false,THREE);
-      }
-      if(!u.alive){ st.wasAlive=false; return; }
-
-      const barrier=!!(u.barrierUntil && now<u.barrierUntil);
-      if(barrier && !st.barrierActive){
-        st.lockUntil=now+900;
-        play(st,'Ability',false,THREE);
-      }
-      st.barrierActive=barrier;
-
-      if(u.attackAnim && u.attackAnim.start && u.attackAnim.start!==st.lastAttackStart){
-        st.lastAttackStart=u.attackAnim.start;
-        st.lockUntil=now+Math.max(520,u.attackAnim.duration||0);
-        play(st,'Attack',false,THREE);
-      } else if(st.prevHp!=null && u.hp<st.prevHp-0.1 && now>st.lockUntil-120){
-        st.lockUntil=now+430;
-        play(st,'Hit',false,THREE);
-      } else if(now>=st.lockUntil){
-        play(st,moved?'Walk':'Idle',true,THREE);
-      }
-      st.prevHp=u.hp;
-      st.wasAlive=true;
-    }
-
-    function dispose(st){
-      if(st.disposed) return;
-      st.disposed=true;
-      st.mixer.stopAllAction();
-      st.renderer.dispose();
-      st.host.remove();
-    }
-
-    function frame(){
-      const now=performance.now();
-      const delta=Math.min(0.05,clock.getDelta());
-      const list=gameUnits();
-      const ferrhas=list.filter(u=>u && u.champId==='ferrha');
-      const activeIds=new Set(ferrhas.map(u=>u.id));
-
-      ferrhas.forEach(u=>{
-        let st=instances.get(u.id);
-        if(!st){ st=makeInstance(u); instances.set(u.id,st); }
-        const pos=visualPosition(u,now);
-        const moved=Math.hypot(pos.x-st.lastX,pos.y-st.lastY)>0.11;
-        updateAnimation(st,u,now,moved);
-        st.lastX=pos.x; st.lastY=pos.y;
-
-        if(!u.alive && st.deadAt && now-st.deadAt>1120){
-          st.host.style.display='none';
-        }else{
-          positionHost(st,u,pos);
-          hideOriginalBody(u,pos);
-          st.mixer.update(delta);
-          st.renderer.render(st.scene,st.camera);
-        }
-      });
-
-      for(const [id,st] of instances){
-        if(!activeIds.has(id)){
-          dispose(st);
-          instances.delete(id);
-        }
-      }
-      requestAnimationFrame(frame);
-    }
-    requestAnimationFrame(frame);
+      renderer.setScissorTest(false);
+      for(const [id,st] of instances)if(!wanted.has(id)){dispose(st);instances.delete(id);}
+    };
+    api.ready=window.__ferrha3dReady=true;status.textContent='Ferrha 3D · v2';setTimeout(()=>status.remove(),1500);
   }
 })();

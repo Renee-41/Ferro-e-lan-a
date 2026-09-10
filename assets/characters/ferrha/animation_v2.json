@@ -1,0 +1,23 @@
+{
+  "baseline_commit": "fd57f0a2fb797b8736244b3cba4e5e5f7094ee4b",
+  "baseline_sha256": {
+    "Ferrha.glb": "c471830cc94a033aef1ed485ac18c4fb3e933c05deebaecfd15461123d0b3cc5",
+    "Ferrha.blend": "7135fabee0d84b52bf670e6f84409d4c607bbfa3179ff6f5661103c7016726a9"
+  },
+  "bones": 26,
+  "triangles": 31004,
+  "mesh_changes": false,
+  "rig_structure_changes": false,
+  "walk_stride_m": 0.4,
+  "clips": {
+    "Idle": 2.4,
+    "Walk": 1.0,
+    "Attack_A": 0.64,
+    "Attack_B": 0.78,
+    "Attack_C": 0.94,
+    "Hit": 0.3,
+    "Barrier": 0.9,
+    "Death": 1.8
+  },
+  "temporary_ik_baked_and_removed": true
+}
