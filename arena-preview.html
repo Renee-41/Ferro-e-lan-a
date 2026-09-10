@@ -19,6 +19,14 @@
     #status{position:fixed;left:50%;bottom:max(14px,env(safe-area-inset-bottom));transform:translateX(-50%);z-index:3;font-size:11px;color:#c8d0d9;background:rgba(8,10,13,.76);border:1px solid rgba(255,255,255,.1);padding:7px 10px;border-radius:999px;backdrop-filter:blur(6px);white-space:nowrap}
     #error{position:fixed;inset:0;display:none;place-items:center;padding:24px;background:#0b0d11;z-index:10;text-align:center;color:#f2b1a5}
   </style>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"
+      }
+    }
+  </script>
 </head>
 <body>
   <div id="app"></div>
@@ -30,77 +38,84 @@
   <div id="status">Carregando Arena_Hexagonal.glb…</div>
   <div id="error"></div>
   <script type="module">
-    import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js';
-    import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/loaders/GLTFLoader.js';
-    import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/controls/OrbitControls.js';
+    import * as THREE from 'three';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
     const host=document.getElementById('app');
     const status=document.getElementById('status');
     const error=document.getElementById('error');
-    const renderer=new THREE.WebGLRenderer({antialias:true,alpha:false});
-    renderer.setPixelRatio(Math.min(devicePixelRatio,2));
-    renderer.setSize(innerWidth,innerHeight);
-    renderer.outputColorSpace=THREE.SRGBColorSpace;
-    renderer.toneMapping=THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure=1.05;
-    renderer.shadowMap.enabled=true;
-    renderer.shadowMap.type=THREE.PCFSoftShadowMap;
-    host.appendChild(renderer.domElement);
 
-    const scene=new THREE.Scene();
-    scene.background=new THREE.Color(0x0b0d11);
-    scene.fog=new THREE.FogExp2(0x0b0d11,0.018);
+    try {
+      const renderer=new THREE.WebGLRenderer({antialias:true,alpha:false});
+      renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+      renderer.setSize(innerWidth,innerHeight);
+      renderer.outputColorSpace=THREE.SRGBColorSpace;
+      renderer.toneMapping=THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure=1.05;
+      renderer.shadowMap.enabled=true;
+      renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+      host.appendChild(renderer.domElement);
 
-    const camera=new THREE.PerspectiveCamera(38,innerWidth/innerHeight,.05,250);
-    const controls=new OrbitControls(camera,renderer.domElement);
-    controls.enableDamping=true;
-    controls.dampingFactor=.065;
-    controls.minPolarAngle=.28;
-    controls.maxPolarAngle=Math.PI*.49;
-    controls.enablePan=true;
+      const scene=new THREE.Scene();
+      scene.background=new THREE.Color(0x0b0d11);
+      scene.fog=new THREE.FogExp2(0x0b0d11,0.018);
 
-    scene.add(new THREE.HemisphereLight(0xdde8ff,0x332518,2.25));
-    const key=new THREE.DirectionalLight(0xffe0b0,3.2); key.position.set(8,14,9); key.castShadow=true; scene.add(key);
-    const rim=new THREE.DirectionalLight(0x8fb7ff,1.25); rim.position.set(-10,7,-7); scene.add(rim);
+      const camera=new THREE.PerspectiveCamera(38,innerWidth/innerHeight,.05,250);
+      const controls=new OrbitControls(camera,renderer.domElement);
+      controls.enableDamping=true;
+      controls.dampingFactor=.065;
+      controls.minPolarAngle=.28;
+      controls.maxPolarAngle=Math.PI*.49;
+      controls.enablePan=true;
 
-    const ground=new THREE.Mesh(new THREE.CircleGeometry(30,64),new THREE.MeshStandardMaterial({color:0x080a0d,roughness:1}));
-    ground.rotation.x=-Math.PI/2; ground.position.y=-.34; ground.receiveShadow=true; scene.add(ground);
+      scene.add(new THREE.HemisphereLight(0xdde8ff,0x332518,2.25));
+      const key=new THREE.DirectionalLight(0xffe0b0,3.2); key.position.set(8,14,9); key.castShadow=true; scene.add(key);
+      const rim=new THREE.DirectionalLight(0x8fb7ff,1.25); rim.position.set(-10,7,-7); scene.add(rim);
 
-    let arena=null, center=new THREE.Vector3(), radius=10;
-    function fitCamera(tactical=false){
-      const r=Math.max(radius,4);
-      const dir=tactical?new THREE.Vector3(0,1.45,1.65):new THREE.Vector3(1.15,1.05,1.35);
-      dir.normalize().multiplyScalar(r*(tactical?2.05:2.15));
-      camera.position.copy(center).add(dir);
-      camera.near=Math.max(.01,r/100); camera.far=r*15; camera.updateProjectionMatrix();
-      controls.target.copy(center); controls.update();
-    }
+      const ground=new THREE.Mesh(new THREE.CircleGeometry(30,64),new THREE.MeshStandardMaterial({color:0x080a0d,roughness:1}));
+      ground.rotation.x=-Math.PI/2; ground.position.y=-.34; ground.receiveShadow=true; scene.add(ground);
 
-    new GLTFLoader().load(
-      'assets/arenas/hexagonal/Arena_Hexagonal.glb',
-      gltf=>{
-        arena=gltf.scene;
-        arena.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;}});
-        scene.add(arena);
-        const box=new THREE.Box3().setFromObject(arena);
-        const sphere=box.getBoundingSphere(new THREE.Sphere());
-        center.copy(sphere.center); radius=sphere.radius;
-        fitCamera(true);
-        status.textContent='Arena carregada · arraste para girar · roda/pinça para zoom';
-      },
-      ev=>{if(ev.total) status.textContent=`Carregando arena… ${Math.round(ev.loaded/ev.total*100)}%`;},
-      err=>{
-        console.error(err);
-        status.style.display='none'; error.style.display='grid';
-        error.innerHTML='<div><h2>Não foi possível carregar a arena</h2><p>Abra o console do navegador para detalhes.</p></div>';
+      let arena=null, center=new THREE.Vector3(), radius=10;
+      function fitCamera(tactical=false){
+        const r=Math.max(radius,4);
+        const dir=tactical?new THREE.Vector3(0,1.45,1.65):new THREE.Vector3(1.15,1.05,1.35);
+        dir.normalize().multiplyScalar(r*(tactical?2.05:2.15));
+        camera.position.copy(center).add(dir);
+        camera.near=Math.max(.01,r/100); camera.far=r*15; camera.updateProjectionMatrix();
+        controls.target.copy(center); controls.update();
       }
-    );
 
-    document.getElementById('reset').addEventListener('click',()=>fitCamera(false));
-    document.getElementById('top').addEventListener('click',()=>fitCamera(true));
-    addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
+      new GLTFLoader().load(
+        'assets/arenas/hexagonal/Arena_Hexagonal.glb',
+        gltf=>{
+          arena=gltf.scene;
+          arena.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;}});
+          scene.add(arena);
+          const box=new THREE.Box3().setFromObject(arena);
+          const sphere=box.getBoundingSphere(new THREE.Sphere());
+          center.copy(sphere.center); radius=sphere.radius;
+          fitCamera(true);
+          status.textContent='Arena carregada · arraste para girar · roda/pinça para zoom';
+        },
+        ev=>{if(ev.total) status.textContent=`Carregando arena… ${Math.round(ev.loaded/ev.total*100)}%`;},
+        err=>{
+          console.error(err);
+          status.style.display='none'; error.style.display='grid';
+          error.innerHTML='<div><h2>Não foi possível carregar a arena</h2><p>O arquivo 3D não pôde ser carregado. Abra o console do navegador para detalhes.</p></div>';
+        }
+      );
 
-    renderer.setAnimationLoop(()=>{controls.update();renderer.render(scene,camera);});
+      document.getElementById('reset').addEventListener('click',()=>fitCamera(false));
+      document.getElementById('top').addEventListener('click',()=>fitCamera(true));
+      addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
+      renderer.setAnimationLoop(()=>{controls.update();renderer.render(scene,camera);});
+    } catch (err) {
+      console.error(err);
+      status.style.display='none';
+      error.style.display='grid';
+      error.innerHTML='<div><h2>Erro ao iniciar o viewer 3D</h2><p>'+String(err.message||err)+'</p></div>';
+    }
   </script>
 </body>
 </html>
