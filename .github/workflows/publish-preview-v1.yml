@@ -1,12 +1,14 @@
 name: Validate Ferrha prototype (test branch only)
 
-# The old preview publisher pushed into main. This branch must never do that.
+# This branch never publishes or pushes into main. It only validates the prototype.
 on:
   push:
     branches:
       - ui/ux-teste-visual-mecanicas
     paths:
       - assets/characters/ferrha/**
+      - js/ferrha-3d.js
+      - js/camera-controls.js
       - scripts/build_ferrha.py
       - scripts/validate_ferrha.py
       - scripts/preview_ferrha_clips.py
