@@ -1,0 +1,52 @@
+{
+  "status": "PASS",
+  "checks": [
+    "61 unique axial coordinates matching radius 4",
+    "flat-top spacing matching game.js",
+    "61 independent tile nodes sharing four meshes",
+    "four standalone 70-triangle modules",
+    "finite positions and UVs",
+    "unit normals",
+    "valid indices and nondegenerate triangles",
+    "no exported preview lights cameras or volumes",
+    "2048px texture maps",
+    "surface heights differ by at most 6.5cm"
+  ],
+  "files": {
+    "Arena_Hexagonal.glb": {
+      "triangles": 8734,
+      "mesh_nodes": 64,
+      "unique_meshes": 7
+    },
+    "Arena_Tabuleiro.glb": {
+      "triangles": 6718,
+      "mesh_nodes": 63,
+      "unique_meshes": 6
+    },
+    "Arena_Cenario.glb": {
+      "triangles": 2016,
+      "mesh_nodes": 1,
+      "unique_meshes": 1
+    },
+    "Hex_Grama.glb": {
+      "triangles": 70,
+      "mesh_nodes": 1,
+      "unique_meshes": 1
+    },
+    "Hex_Pedra.glb": {
+      "triangles": 70,
+      "mesh_nodes": 1,
+      "unique_meshes": 1
+    },
+    "Hex_Terra.glb": {
+      "triangles": 70,
+      "mesh_nodes": 1,
+      "unique_meshes": 1
+    },
+    "Hex_Terra_Gasta.glb": {
+      "triangles": 70,
+      "mesh_nodes": 1,
+      "unique_meshes": 1
+    }
+  }
+}
