@@ -49,13 +49,37 @@
     }
   }catch(_){ }
 
+  // O catálogo-base tem um fallback de ícones por forma. Criamos cinco formas novas,
+  // então mesmo a ficha de item do módulo item-experience desenha cada arma diferente.
   try{
-    if(typeof ITEM_ICON_SHAPE_BY_ID!=='undefined'){
-      ITEM_ICON_SHAPE_BY_ID.tambor_repeticao='burst';
-      ITEM_ICON_SHAPE_BY_ID.municao_perfurante='telescope';
-      ITEM_ICON_SHAPE_BY_ID.marca_cacador='crosshair';
-      ITEM_ICON_SHAPE_BY_ID.camara_estilhacos='burst';
-      ITEM_ICON_SHAPE_BY_ID.mecanismo_recuo='boot';
+    if(typeof ITEM_ICON_SHAPES!=='undefined' && typeof ITEM_ICON_SHAPE_BY_ID!=='undefined'){
+      Object.assign(ITEM_ICON_SHAPES,{
+        repeater:'<circle cx="13" cy="16" r="8"/><circle cx="13" cy="16" r="3"/><path d="M21 12h7v8h-7M6 9 2 6M6 23l-4 3M13 5V2"/>',
+        piercer:'<path d="M4 19 22 7l6 2-4 5L7 24z"/><path d="M19 9l4 6M8 18l5 5"/><path d="M25 4 30 2l-2 5"/>',
+        huntermark:'<circle cx="16" cy="16" r="10"/><path d="M16 2v8M16 22v8M2 16h8M22 16h8"/><path d="m11 17 3 3 7-8"/>',
+        shrapnel:'<path d="M5 17h13l5-5v10l-5-5"/><path d="m21 8 3-5 2 5M25 14l5-2-2 5M24 24l3 5-6-2M16 23l-2 6-3-5"/>',
+        recoil:'<path d="M7 11h17v10H7z"/><path d="M24 14h5M24 18h5M7 16H2"/><path d="m5 12-4 4 4 4"/><path d="M12 21v6h7v-6"/>'
+      });
+      ITEM_ICON_SHAPE_BY_ID.tambor_repeticao='repeater';
+      ITEM_ICON_SHAPE_BY_ID.municao_perfurante='piercer';
+      ITEM_ICON_SHAPE_BY_ID.marca_cacador='huntermark';
+      ITEM_ICON_SHAPE_BY_ID.camara_estilhacos='shrapnel';
+      ITEM_ICON_SHAPE_BY_ID.mecanismo_recuo='recoil';
+    }
+  }catch(_){ }
+
+  const recommendedByItem={
+    tambor_repeticao:['zeph','voltra','pyra','voss'],
+    municao_perfurante:['voss','pyra','voltra','zeph'],
+    marca_cacador:['voss','voltra','pyra','zeph'],
+    camara_estilhacos:['pyra','zeph','voltra','voss'],
+    mecanismo_recuo:['voltra','voss','pyra','zeph','glacia']
+  };
+
+  // A ficha de itens expõe o mesmo objeto de recomendações usado pelo modal.
+  try{
+    if(window.__ferroItemExperience && window.__ferroItemExperience.recommendations){
+      Object.assign(window.__ferroItemExperience.recommendations,recommendedByItem);
     }
   }catch(_){ }
 
