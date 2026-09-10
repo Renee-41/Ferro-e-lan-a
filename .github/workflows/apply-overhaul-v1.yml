@@ -63,3 +63,5 @@ jobs:
           git add index.html
           git commit -m "fix(preview): force original intro stylesheet refresh"
           git push origin HEAD:ui/visual-overhaul-v1
+
+# republish marker: original intro restored
