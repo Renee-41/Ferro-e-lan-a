@@ -1,0 +1,40 @@
+{
+  "status": "PASS",
+  "glb_triangles": 31004,
+  "exported_vertices_including_uv_splits": 37772,
+  "mesh_objects": [
+    "Ferrha_Body",
+    "Hair",
+    "Helmet",
+    "MagneticPlate_01",
+    "MagneticPlate_02",
+    "MagneticPlate_03",
+    "MagneticPlate_04",
+    "MagneticPlate_05",
+    "MagneticPlate_06",
+    "Spear"
+  ],
+  "skin_joints": 26,
+  "animation_duration_seconds": {
+    "Ability": 1.375,
+    "Attack": 0.875,
+    "Death": 1.042,
+    "Hit": 0.542,
+    "Idle": 2.042,
+    "Walk": 1.042
+  },
+  "degenerate_triangles": 0,
+  "checks": [
+    "GLB container length and buffers",
+    "finite geometry",
+    "normal lengths",
+    "UV bounds",
+    "indices in range",
+    "normalized skin weights",
+    "joint indices",
+    "separate named meshes",
+    "15k-35k triangle budget",
+    "six animation clips",
+    "six 1024x1024 texture maps"
+  ]
+}

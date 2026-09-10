@@ -1,0 +1,30 @@
+{
+  "imported_glb": true,
+  "mesh_objects": 11,
+  "clips_sampled": {
+    "Idle": {
+      "frame": 13,
+      "action": "Idle_Ferrha_Rig"
+    },
+    "Walk": {
+      "frame": 7,
+      "action": "Walk_Ferrha_Rig"
+    },
+    "Attack": {
+      "frame": 11,
+      "action": "Attack_Ferrha_Rig"
+    },
+    "Hit": {
+      "frame": 4,
+      "action": "Hit_Ferrha_Rig"
+    },
+    "Death": {
+      "frame": 25,
+      "action": "Death_Ferrha_Rig"
+    },
+    "Ability": {
+      "frame": 17,
+      "action": "Ability_Ferrha_Rig"
+    }
+  }
+}

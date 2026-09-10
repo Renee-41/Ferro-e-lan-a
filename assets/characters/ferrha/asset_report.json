@@ -1,0 +1,27 @@
+{
+  "triangles": 31004,
+  "mesh_objects": 10,
+  "magnetic_meshes": [
+    "MagneticPlate_01",
+    "MagneticPlate_02",
+    "MagneticPlate_03",
+    "MagneticPlate_04",
+    "MagneticPlate_05",
+    "MagneticPlate_06"
+  ],
+  "spear_mesh": "Spear",
+  "bones": 26,
+  "texture_resolution": 1024,
+  "clips": [
+    "Idle",
+    "Walk",
+    "Attack",
+    "Hit",
+    "Death",
+    "Ability"
+  ],
+  "head_height": 0.85,
+  "body_height_without_crest": 1.58,
+  "normal_map": "Neutral tangent-space; large forms and bevels modeled in geometry",
+  "rig": "FK starter, rigid plate weights and blended torso; needs production animation review"
+}
