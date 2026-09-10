@@ -3,7 +3,7 @@ name: Publish preview v1
 on:
   push:
     branches:
-      - ui/visual-overhaul-v1
+      - ui/ux-teste-visual-mecanicas
 
 permissions:
   contents: write
@@ -15,7 +15,7 @@ jobs:
       - name: Checkout visual branch
         uses: actions/checkout@v4
         with:
-          ref: ui/visual-overhaul-v1
+          ref: ui/ux-teste-visual-mecanicas
           path: source
           fetch-depth: 0
 
