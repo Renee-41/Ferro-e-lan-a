@@ -1,6 +1,7 @@
 /* Ferro & Lança — cinematografia de combate
-   - primeira habilidade assinatura de cada SU por onda recebe zoom + slow + freeze + frase
-   - finalizações ganham freeze-frame mais curto e mais legível
+   - cena completa SOMENTE em passivas de virada (Frenesi, Barreira, Pele de Pedra etc.)
+   - especiais normais por contagem de golpes NÃO interrompem mais o combate
+   - finalizações continuam com freeze-frame próprio
    - respeita e restaura a velocidade escolhida pelo jogador
 */
 (function(){
@@ -14,28 +15,24 @@
 
   const LINES={
     ferrha:'Atrás de mim.',
-    voss:'Um tiro. Uma resposta.',
-    nyx:'Você piscou.',
     kael:'Então queimem comigo.',
     terrus:'Eu não cedo.',
-    pyra:'Agora eu entendi.',
-    glacia:'Ainda não é sua hora.',
-    zeph:'Tenta acompanhar.',
-    ima:'Venha.',
-    frosk:'Fica parado.',
     gelida:'O frio sempre cobra.',
-    raio:'Vamos terminar isso.',
     shecry:'Quanto mais dói, mais forte eu fico.',
     nerith:'ELE já escolheu.',
     voltra:'Segura a carga.',
-    jedegar:'Ergam-se.',
-    shava:'Olha o passo.'
+    jedegar:'Permaneçam.'
   };
-  const ABILITY_NAMES={
-    ferrha:'LANÇA DE FERRO',voss:'TIRO PERFURANTE',nyx:'RAJADA DUPLA',kael:'GOLPE FLAMEJANTE',
-    terrus:'TREMOR DE PEDRA',pyra:'EXPLOSÃO',glacia:'MARÉ RESTAURADORA',zeph:'CHUVA DE FLECHAS',
-    ima:'MAGNETIZAÇÃO',frosk:'CONGELAMENTO',gelida:'PRISÃO GLACIAL',raio:'COMBO RELÂMPAGO',
-    shecry:'COLOSSO GLACIAL',nerith:'CHAMADO DAS PROFUNDEZAS',voltra:'SOBRECARGA',jedegar:'PILAR DA PERSEVERANÇA',shava:'PASSO DO VENTO'
+
+  const PASSIVE_NAMES={
+    ferrha:'BARREIRA DE FERRO',
+    kael:'FRENESI',
+    terrus:'PELE DE PEDRA',
+    gelida:'ÚLTIMO SUSPIRO',
+    shecry:'COLOSSO GLACIAL',
+    nerith:'FRENESI ABISSAL',
+    voltra:'COLAPSO DE SOBRECARGA',
+    jedegar:'ÚLTIMO PILAR'
   };
 
   const style=document.createElement('style');
@@ -69,8 +66,7 @@
   function speedApi(){ return window.FerroBattleTime&&typeof window.FerroBattleTime.setSpeed==='function' ? window.FerroBattleTime : null; }
   function getSpeed(){ const api=speedApi(); return api ? api.getSpeed() : 1; }
   function setSpeed(v){ const api=speedApi(); if(api) api.setSpeed(v); }
-  function realWave(){ try{return Number(wave)||0;}catch(_){return 0;} }
-  function playerUnit(u){ return !!(u&&u.alive&&u.team==='player'&&!u.isTentacle); }
+  function playerUnit(u){ return !!(u&&u.team==='player'&&!u.isTentacle); }
 
   function focusUnit(u,on){
     try{
@@ -78,6 +74,7 @@
       else if(!finisherActive){ dramaticActive=false; dramaticUnitId=null; }
     }catch(_){ }
   }
+
   try{
     if(typeof updateDramaticCheck==='function'){
       const baseCheck=updateDramaticCheck;
@@ -87,7 +84,7 @@
 
   function pulseFlash(big){
     flash.classList.remove('hit'); void flash.offsetWidth; flash.classList.add('hit');
-    try{ if(typeof triggerScreenShake==='function') triggerScreenShake(big?12:6,big?280:160); }catch(_){ }
+    try{ if(typeof triggerScreenShake==='function') triggerScreenShake(big?12:7,big?280:190); }catch(_){ }
   }
 
   function runTimeline(duration,step,done){
@@ -103,97 +100,102 @@
     requestAnimationFrame(frame);
   }
 
-  function showAbilityCinematic(u,abilityName,onCast){
-    if(cinematicActive || !playerUnit(u)){ if(onCast) onCast(); return; }
+  /*
+    A passiva já foi confirmada pela lógica do jogo quando chegamos aqui.
+    A cena transforma aquele instante em um freeze-frame visual: aproxima, desacelera,
+    congela na frase, dá o impacto da ativação e devolve o controle ao relógio anterior.
+    Especiais comuns (3º/4º/5º golpe) nunca chamam esta função.
+  */
+  function showPassiveCinematic(u,passiveName){
+    if(cinematicActive || !playerUnit(u)) return;
     const before=getSpeed();
-    if(before===0){ if(onCast) onCast(); return; }
+    if(before===0) return; // não tira o jogador de uma pausa manual
+
     cinematicActive=true;
     window.__ferroAbilityCinematicActive=true;
-    u.__cinemaLock=true;
     focusUnit(u,true);
-    kicker.textContent=abilityName || ABILITY_NAMES[u.champId] || 'HABILIDADE ASSINATURA';
+    kicker.textContent='PASSIVA ATIVADA · '+(passiveName||PASSIVE_NAMES[u.champId]||'MOMENTO DE VIRADA');
     nameEl.textContent=u.name || (typeof CHAMPION_CATALOG!=='undefined'&&CHAMPION_CATALOG[u.champId]?CHAMPION_CATALOG[u.champId].name:u.champId);
     lineEl.textContent=`“${LINES[u.champId]||'Agora.'}”`;
     overlay.className='show';
     setSpeed(.5);
-    let froze=false,cast=false,hit=false;
 
+    let froze=false,impact=false;
     runTimeline(1450,(t)=>{
-      if(t>=270&&!froze){ froze=true; setSpeed(0); overlay.classList.add('quote'); }
-      if(t>=850&&!cast){
-        cast=true; setSpeed(.5); overlay.classList.remove('quote');
-        u.__signatureCastUntil=performance.now()+700;
-        if(onCast) onCast();
+      if(t>=260&&!froze){
+        froze=true;
+        setSpeed(0);
+        overlay.classList.add('quote');
       }
-      if(t>=920&&!hit){ hit=true; pulseFlash(false); }
+      if(t>=870&&!impact){
+        impact=true;
+        setSpeed(.5);
+        overlay.classList.remove('quote');
+        u.__signatureCastUntil=performance.now()+700;
+        pulseFlash(false);
+      }
     },()=>{
       overlay.className='';
       setSpeed(before);
-      u.__cinemaLock=false;
       window.__ferroAbilityCinematicActive=false;
       cinematicActive=false;
       focusUnit(u,false);
     });
   }
 
-  function specialThreshold(u){
-    if(!u) return 0;
-    if(u.special==='lanca'||u.special==='rajada'||u.special==='explosao') return 3;
-    if(u.special==='perfuro'||u.special==='chuva'||u.special==='furia'||u.special==='couraca'||u.special==='ima'||u.special==='cura') return 4;
-    if(u.special==='congelamento') return u.champId==='frosk'?4:5;
-    return 0;
-  }
-  function likelyCanAttack(u){
-    try{
-      const target=typeof nearestEnemy==='function'?nearestEnemy(u):null;
-      if(!target) return false;
-      return typeof hexDistance==='function' ? hexDistance(u,target)<=Math.max(1,u.range||1) : true;
-    }catch(_){ return true; }
-  }
-  function aboutToSpecial(u){
-    const n=specialThreshold(u);
-    if(!n || !playerUnit(u) || !likelyCanAttack(u)) return false;
-    if(u.special==='ima' && !(u.imaUsesLeft>0)) return false;
-    if(u.special==='cura'){
-      try{ if(!units.some(o=>o.alive&&o.team===u.team&&o.hp<o.maxhp)) return false; }catch(_){ }
-    }
-    if(u.special==='chuva'){
-      try{ if(units.filter(o=>o.alive&&o.team!==u.team).length<2) return false; }catch(_){ }
-    }
-    return (((u.hitCount||0)+1)%n)===0;
+  function snapshotPassiveState(u){
+    if(!u) return null;
+    return {
+      alive:!!u.alive,
+      frenzyUsed:!!u.frenzyUsed,
+      barrierUsed:!!u.barrierUsed,
+      stoneSkinUsed:!!u.stoneSkinUsed,
+      ghostUntil:Number(u.ghostUntil)||0,
+      shecryUltUsed:!!u.shecryUltUsed,
+      voltraDetonating:!!u.voltraDetonating
+    };
   }
 
-  try{
-    if(typeof doAction==='function'){
-      const baseAction=doAction;
-      doAction=function(u){
-        if(u&&u.__cinemaLock) return;
-        try{
-          if(aboutToSpecial(u) && u.__fullCinematicWave!==realWave() && !cinematicActive){
-            u.__fullCinematicWave=realWave();
-            showAbilityCinematic(u,ABILITY_NAMES[u.champId],()=>baseAction(u));
-            return;
-          }
-        }catch(_){ }
-        return baseAction(u);
-      };
-    }
-  }catch(_){ }
+  function detectPassiveMoment(u,before){
+    if(!u||!before||!playerUnit(u) && !(before.alive&&u.team==='player')) return null;
 
-  // Raio dispara por uma função própria, então o gatilho é interceptado diretamente.
+    if(u.champId==='kael' && !before.frenzyUsed && u.frenzyUsed) return PASSIVE_NAMES.kael;
+    if(u.champId==='ferrha' && !before.barrierUsed && u.barrierUsed) return PASSIVE_NAMES.ferrha;
+    if(u.champId==='terrus' && !before.stoneSkinUsed && u.stoneSkinUsed) return PASSIVE_NAMES.terrus;
+    if(u.champId==='gelida' && before.ghostUntil<=0 && (Number(u.ghostUntil)||0)>0) return PASSIVE_NAMES.gelida;
+    if(u.champId==='shecry' && !before.shecryUltUsed && u.shecryUltUsed) return PASSIVE_NAMES.shecry;
+    if(u.champId==='voltra' && !before.voltraDetonating && u.voltraDetonating) return PASSIVE_NAMES.voltra;
+
+    if(u.champId==='nerith' && before.alive && !u.alive){
+      try{
+        if(units.some(t=>t.isTentacle&&t.tentacleParentId===u.id&&t.tentacleFrenzy)) return PASSIVE_NAMES.nerith;
+      }catch(_){ }
+    }
+
+    if(u.champId==='jedegar' && before.alive && !u.alive){
+      try{
+        if(units.some(a=>a.alive&&a.team===u.team&&a.jedegarDeathBuffUntil&&a.jedegarDeathBuffUntil>performance.now())) return PASSIVE_NAMES.jedegar;
+      }catch(_){ }
+    }
+    return null;
+  }
+
+  /* O ponto de verdade para passivas defensivas/de morte é applyDamage.
+     Observamos a transição de estado que a própria lógica original confirmou e só então
+     disparamos a câmera. Não tentamos adivinhar dano letal antes das reduções/escudos. */
   try{
-    if(typeof triggerComboUltimate==='function'){
-      const baseCombo=triggerComboUltimate;
-      triggerComboUltimate=function(u,attacker){
-        if(u&&u.__cinemaLock) return;
+    if(typeof applyDamage==='function'){
+      const baseApplyDamage=applyDamage;
+      applyDamage=function(attacker,target){
+        const before=snapshotPassiveState(target);
+        const out=baseApplyDamage.apply(this,arguments);
         try{
-          if(playerUnit(u) && u.__fullCinematicWave!==realWave() && !cinematicActive){
-            u.__fullCinematicWave=realWave();
-            showAbilityCinematic(u,ABILITY_NAMES.raio,()=>baseCombo(u,attacker));
-            return;
+          const passiveName=detectPassiveMoment(target,before);
+          if(passiveName && !cinematicActive){
+            showPassiveCinematic(target,passiveName);
           }
         }catch(_){ }
-        return baseCombo(u,attacker);
+        return out;
       };
     }
   }catch(_){ }
@@ -236,5 +238,5 @@
     if(typeof triggerFinisherSequence==='function') triggerFinisherSequence=runFinisher;
   }catch(_){ }
 
-  window.FerroCombatCinema={showAbilityCinematic,runFinisher,isActive:()=>cinematicActive};
+  window.FerroCombatCinema={showPassiveCinematic,runFinisher,isActive:()=>cinematicActive};
 })();
