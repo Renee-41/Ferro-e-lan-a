@@ -152,7 +152,7 @@
     ['time-controls','js/time-controls.js?v=time-controls-1'],
     ['item-experience','js/item-experience.js?v=item-experience-1'],
     ['rupture-endgame','js/rupture-endgame.js?v=rupture-endgame-1'],
-    ['cinematic-combat','js/cinematic-combat.js?v=cinematic-combat-1']
+    ['cinematic-combat','js/cinematic-combat.js?v=cinematic-combat-2']
   ];
   modules.forEach(([key,src])=>{
     if(document.querySelector(`script[data-ferro-module="${key}"]`)) return;
