@@ -1,6 +1,7 @@
 /* Ferro & Lança — Visual Overhaul v1: correções de interação e câmera */
 
-/* O filter do SVG criava um stacking context acima do overlay de preparo. */
+/* O filter do SVG criava um stacking context acima do overlay de preparo.
+   Mantemos a arena numa camada própria e garantimos que os controles fiquem clicáveis. */
 .arena-wrap{
   isolation:isolate;
   overflow:hidden;
@@ -15,7 +16,6 @@
   width:100%;
   max-width:680px;
   filter:none;
-  background:#0b0e10;
 }
 
 #prep-overlay{
@@ -25,9 +25,26 @@
   backdrop-filter:blur(2px);
 }
 
-#prep-overlay > *{position:relative;z-index:41;}
-#prep-overlay button{pointer-events:auto;}
-#fps,#roundinfo,#banner{z-index:20;pointer-events:none;}
+#prep-overlay > *{
+  position:relative;
+  z-index:41;
+}
+
+#prep-overlay button{
+  pointer-events:auto;
+}
+
+#fps,
+#roundinfo,
+#banner{
+  z-index:20;
+  pointer-events:none;
+}
+
+/* A câmera passa a preencher a moldura em vez de produzir faixas internas desconexas. */
+#arena{
+  background:#0b0e10;
+}
 
 #camera-zoom-indicator{
   position:absolute;
@@ -53,7 +70,7 @@
   border-color:rgba(242,173,85,.48);
 }
 
-/* Intro: pular somente pelo controle explícito. */
+/* Intro: pular só por um controle explícito e discreto. */
 #intro-skip-btn{
   position:absolute;
   top:18px;
@@ -83,163 +100,8 @@
   background:rgba(12,13,15,.52);
 }
 
-/* ========================================================================== */
-/* INTRO CINEMATOGRÁFICA — key art viva                                      */
-/* ========================================================================== */
-
-#intro-preshow{
-  background:#0a0807 !important;
-}
-
-#intro-canvas{
-  z-index:9102 !important;
-  background:transparent !important;
-  opacity:.46;
-  transform-origin:50% 52%;
-  filter:grayscale(1) sepia(.18) brightness(.48) contrast(1.55);
-  will-change:transform;
-  animation:intro-canvas-drift 18s ease-in-out infinite alternate;
-}
-
-@keyframes intro-canvas-drift{
-  0%{transform:scale(1.01) translate3d(-.18%,.10%,0);}
-  50%{transform:scale(1.018) translate3d(.10%,-.12%,0);}
-  100%{transform:scale(1.012) translate3d(.20%,.08%,0);}
-}
-
-#intro-screen{
-  background:#070605 !important;
-  isolation:isolate;
-}
-
-#intro-screen::before{
-  content:"";
-  position:absolute;
-  inset:-2.5%;
-  z-index:0;
-  pointer-events:none;
-  background-image:url('../assets/intro/ferro-lanca-keyart.avif');
-  background-position:center center;
-  background-size:cover;
-  background-repeat:no-repeat;
-  transform:scale(1.025);
-  filter:brightness(.92) contrast(1.04) saturate(.96);
-  animation:intro-keyart-drift 17s ease-in-out infinite alternate;
-  will-change:transform,filter;
-}
-
-@keyframes intro-keyart-drift{
-  0%{transform:scale(1.025) translate3d(-.25%,.12%,0);filter:brightness(.90) contrast(1.04) saturate(.94);}
-  48%{transform:scale(1.042) translate3d(.12%,-.18%,0);filter:brightness(.96) contrast(1.05) saturate(1.01);}
-  100%{transform:scale(1.034) translate3d(.32%,.08%,0);filter:brightness(.92) contrast(1.06) saturate(.97);}
-}
-
-#intro-screen::after{
-  content:"";
-  position:absolute;
-  inset:0;
-  z-index:1;
-  pointer-events:none;
-  background:
-    radial-gradient(circle at 50% 46%,transparent 36%,rgba(0,0,0,.05) 61%,rgba(0,0,0,.38) 100%),
-    linear-gradient(to bottom,rgba(0,0,0,.12),transparent 26%,transparent 72%,rgba(0,0,0,.22));
-}
-
-#intro-title,
-#intro-subtitle,
-#intro-crack{
-  display:none !important;
-}
-
-#intro-glow-wrap,
-#intro-glow-wrap.show{
-  display:block !important;
-  position:absolute !important;
-  inset:-18% !important;
-  z-index:3 !important;
-  opacity:.34 !important;
-  pointer-events:none;
-  transform:none;
-  filter:blur(30px);
-  background:
-    radial-gradient(ellipse at 15% 73%,rgba(184,171,151,.18) 0 10%,transparent 31%),
-    radial-gradient(ellipse at 42% 79%,rgba(116,111,105,.18) 0 12%,transparent 34%),
-    radial-gradient(ellipse at 78% 65%,rgba(185,151,116,.14) 0 11%,transparent 32%);
-  animation:intro-smoke-sweep 19s ease-in-out infinite alternate !important;
-  will-change:transform,opacity;
-}
-
-@keyframes intro-smoke-sweep{
-  0%{transform:translate3d(-3%,5%,0) scale(1.02);opacity:.20;}
-  52%{opacity:.38;}
-  100%{transform:translate3d(4%,-6%,0) scale(1.13);opacity:.25;}
-}
-
-#intro-glow{
-  position:absolute !important;
-  left:8% !important;
-  bottom:4% !important;
-  width:54vw !important;
-  height:19vw !important;
-  border-radius:50% !important;
-  background:radial-gradient(ellipse at center,rgba(157,142,122,.30) 0%,rgba(80,70,59,.14) 42%,transparent 72%) !important;
-  animation:intro-smoke-secondary 15s ease-in-out infinite alternate !important;
-  will-change:transform,opacity;
-}
-
-@keyframes intro-smoke-secondary{
-  from{transform:translate3d(-8%,7%,0) scale(.96);opacity:.18;}
-  to{transform:translate3d(18%,-10%,0) scale(1.18);opacity:.42;}
-}
-
-#intro-sparks-container{
-  z-index:4 !important;
-  pointer-events:none;
-}
-
-.intro-spark{
-  animation-duration:5.6s !important;
-  animation-timing-function:cubic-bezier(.18,.55,.3,1) !important;
-  opacity:.82;
-  will-change:transform,opacity;
-}
-.intro-spark:nth-child(3n){animation-duration:6.8s !important;}
-.intro-spark:nth-child(4n){animation-duration:4.9s !important;}
-.intro-spark:nth-child(5n){filter:blur(.55px);opacity:.58;}
-
-#intro-press-start-btn{
-  position:absolute !important;
-  left:50% !important;
-  bottom:4.2vh !important;
-  z-index:8 !important;
-  margin:0 !important;
-  transform:translateX(-50%) !important;
-  padding:11px 24px !important;
-  background:rgba(9,8,7,.52) !important;
-  border-color:rgba(242,165,65,.58) !important;
-  color:#f3c27b !important;
-  backdrop-filter:blur(5px);
-}
-
-#intro-press-start-btn.show{
-  animation:intro-press-pulse 1.8s ease-in-out infinite !important;
-}
-
-@media (prefers-reduced-motion:reduce){
-  #intro-canvas,
-  #intro-screen::before,
-  #intro-glow-wrap,
-  #intro-glow{
-    animation:none !important;
-  }
-  .intro-spark{animation-duration:7s !important;}
-}
-
 @media (max-width:820px){
   #arena{max-width:none;}
   #camera-zoom-indicator{right:7px;bottom:7px;font-size:8px;}
   #intro-skip-btn{top:12px;left:12px;padding:7px 9px;}
-  #intro-canvas{opacity:.38;}
-  #intro-glow-wrap,#intro-glow-wrap.show{opacity:.26 !important;filter:blur(25px);}
-  #intro-press-start-btn{bottom:3vh !important;}
 }

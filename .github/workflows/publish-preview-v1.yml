@@ -34,9 +34,6 @@ jobs:
           cp source/index.html site/preview-v1/index.html
           cp -R source/css site/preview-v1/css
           cp -R source/js site/preview-v1/js
-          if [ -d source/assets ]; then
-            cp -R source/assets site/preview-v1/assets
-          fi
 
       - name: Publish preview folder to main
         working-directory: site
