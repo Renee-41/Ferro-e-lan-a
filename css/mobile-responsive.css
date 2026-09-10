@@ -1,0 +1,222 @@
+/* Ferro & Lança — Mobile UX v1
+   Layout próprio para telefone vertical, telefone horizontal/tela baixa e toque.
+   Mantém desktop intacto acima dos breakpoints.
+*/
+
+html{ -webkit-text-size-adjust:100%; }
+body{ padding-left:max(24px,env(safe-area-inset-left)); padding-right:max(24px,env(safe-area-inset-right)); }
+button,.nav-btn,.champ-card,.inv-tile,.equip-slot{-webkit-tap-highlight-color:transparent;}
+#arena,#position-arena{touch-action:none;}
+
+#mobile-battle-panel-toggle{
+  display:none; position:absolute; left:8px; bottom:8px; z-index:32;
+  min-width:88px; min-height:38px; padding:0 11px;
+  border:1px solid rgba(242,173,85,.34); border-radius:999px;
+  background:rgba(10,12,15,.86); color:#efd39f;
+  font:700 9px/1 'JetBrains Mono',monospace; letter-spacing:.08em;
+  box-shadow:0 6px 18px rgba(0,0,0,.34); backdrop-filter:blur(6px);
+}
+#mobile-battle-panel-toggle[aria-expanded="true"]{border-color:rgba(215,90,42,.75);color:#fff0dc;background:rgba(75,32,20,.92);}
+
+/* ---------------- TELEFONE VERTICAL ---------------- */
+@media (max-width:760px) and (orientation:portrait){
+  html,body{width:100%;max-width:100%;}
+  body{
+    min-height:100dvh;
+    padding-top:max(8px,env(safe-area-inset-top));
+    padding-right:max(8px,env(safe-area-inset-right));
+    padding-bottom:max(10px,env(safe-area-inset-bottom));
+    padding-left:max(8px,env(safe-area-inset-left));
+  }
+
+  body > h1{font-size:24px;line-height:1.05;letter-spacing:.09em;margin-top:2px;}
+  body > .subtitle{font-size:9px;margin:5px auto 9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+
+  .topbar{
+    width:100%; margin:0 auto 9px; padding:5px; gap:5px;
+    flex-wrap:nowrap; overflow-x:auto; overflow-y:hidden; justify-content:flex-start;
+    overscroll-behavior-x:contain; scrollbar-width:none; -webkit-overflow-scrolling:touch;
+  }
+  .topbar::-webkit-scrollbar{display:none;}
+  .nav-btn{flex:0 0 auto;min-height:42px;padding:0 12px;font-size:10px;white-space:nowrap;}
+  .coin-badge{flex:0 0 auto;min-height:42px;display:flex;align-items:center;padding:0 11px;font-size:11px;}
+
+  #top-utility-bar{
+    position:relative!important; inset:auto!important; width:100%; max-width:100%;
+    display:flex; flex-wrap:nowrap; justify-content:flex-start!important; gap:5px;
+    overflow-x:auto; overflow-y:hidden; margin:0 0 8px!important; padding:0 1px 2px;
+    scrollbar-width:none; -webkit-overflow-scrolling:touch;
+  }
+  #top-utility-bar::-webkit-scrollbar{display:none;}
+  #top-utility-bar > *{flex:0 0 auto;min-height:38px;}
+
+  .screen,.screen.active{width:100%;max-width:100%;}
+  .panel{padding:11px;border-radius:9px;}
+  .panel h2{font-size:13px;margin-bottom:10px;padding-bottom:8px;}
+  .mode-cards{flex-direction:column;gap:8px;}
+  .mode-card{min-height:0;padding:14px;}
+  .mode-card p{font-size:11px;margin-bottom:0;}
+
+  .grid-cards{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;}
+  .champ-card{padding:9px;min-width:0;}
+  .champ-name{font-size:13px;line-height:1.15;overflow-wrap:anywhere;}
+  .champ-desc{font-size:10px;line-height:1.32;}
+  .champ-stats{font-size:9px;line-height:1.35;}
+  button.main-btn,button.ghost-btn,.buy-btn{min-height:44px;}
+
+  .team-slots{width:100%;display:flex;gap:7px;overflow-x:auto;padding:2px 0 6px;scrollbar-width:none;overscroll-behavior-x:contain;}
+  .team-slots::-webkit-scrollbar{display:none;}
+  .team-slot{flex:0 0 76px;width:76px;height:76px;font-size:9px;}
+
+  .battle-layout{display:grid!important;grid-template-columns:minmax(0,1fr)!important;gap:8px!important;}
+  .arena-wrap{
+    width:100%; min-height:min(112vw,540px)!important; max-height:68dvh;
+    aspect-ratio:1/1; border-radius:10px; overflow:hidden;
+  }
+  #arena{width:100%!important;height:100%!important;max-width:none!important;object-fit:contain;}
+  #fps{display:none!important;}
+  #roundinfo{top:7px;font-size:10px;padding:4px 8px;max-width:48%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  #banner{bottom:54px;width:calc(100% - 22px);font-size:16px;line-height:1.1;padding:7px 9px;text-align:center;}
+  #prep-overlay{padding:16px 12px;text-align:center;}
+  #prep-overlay h3{font-size:14px;margin:0 0 5px;}
+  #prep-timer{font-size:36px;}
+  #prep-stats{width:min(92%,330px);max-height:112px;font-size:9px;}
+
+  #battle-speed-control{
+    top:auto!important;right:auto!important;left:50%!important;bottom:7px!important;
+    transform:translateX(-50%);gap:3px!important;padding:4px!important;border-radius:10px!important;
+  }
+  #battle-speed-control .speed-label{display:none!important;}
+  #battle-speed-control button{min-width:43px!important;width:43px;height:40px!important;padding:0!important;font-size:9px!important;}
+  #battle-speed-control button[data-speed="0"]{min-width:43px!important;}
+  #battle-speed-state{top:auto!important;right:auto!important;left:50%!important;bottom:53px!important;transform:translateX(-50%);white-space:nowrap;}
+  #camera-zoom-indicator{right:auto!important;left:7px!important;bottom:54px!important;font-size:7px!important;max-width:112px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+
+  #mobile-battle-panel-toggle{display:block;bottom:8px;left:7px;min-width:72px;min-height:40px;font-size:8px;padding:0 8px;}
+  .mobile-battle-drawer{
+    position:fixed!important;left:max(8px,env(safe-area-inset-left));right:max(8px,env(safe-area-inset-right));
+    bottom:max(8px,env(safe-area-inset-bottom));z-index:10040!important;
+    width:auto!important;max-width:none!important;max-height:min(58dvh,470px);
+    padding:13px!important;border-radius:14px!important;
+    transform:translateY(calc(100% + 28px));opacity:0;pointer-events:none;
+    transition:transform .22s cubic-bezier(.2,.8,.2,1),opacity .16s ease;
+    box-shadow:0 18px 60px rgba(0,0,0,.66)!important;
+    overflow:auto!important;
+  }
+  .mobile-battle-drawer.open{transform:translateY(0);opacity:1;pointer-events:auto;}
+  .mobile-battle-drawer::after{content:"";position:absolute;top:5px;left:50%;width:42px;height:3px;transform:translateX(-50%);border-radius:99px;background:rgba(220,225,232,.24);}
+  .mobile-battle-drawer #log{height:min(38dvh,270px)!important;max-height:none;}
+
+  #roster-layout,#position-layout{display:flex!important;flex-direction:column!important;gap:8px!important;width:100%;}
+  #inventory-panel,#position-inventory-panel{
+    width:100%!important;position:sticky!important;left:auto;right:auto;bottom:max(4px,env(safe-area-inset-bottom));top:auto!important;
+    z-index:35;padding:8px!important;max-height:190px;overflow:hidden;
+    backdrop-filter:blur(10px);background:rgba(18,21,26,.96)!important;
+  }
+  #inventory-grid,#position-inventory-grid{
+    display:grid!important;grid-template-columns:repeat(6,minmax(44px,1fr))!important;
+    gap:5px!important;max-height:124px!important;overflow:auto!important;padding-bottom:2px;
+  }
+  .inv-tile,.position-inv-tile{min-width:44px;min-height:44px;aspect-ratio:1;}
+  .equip-slot{width:42px!important;height:42px!important;min-width:42px;min-height:42px;}
+  #position-arena{width:100%!important;max-width:none!important;max-height:56dvh;}
+  #position-chips{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px!important;}
+  #position-timer-label{position:sticky;top:0;z-index:12;background:rgba(12,14,17,.94);padding:6px;border-radius:7px;}
+
+  #item-info-overlay{padding:0!important;align-items:flex-end!important;}
+  .item-info-card{
+    width:100%!important;max-width:none!important;max-height:82dvh!important;
+    border-radius:16px 16px 0 0!important;
+    padding:16px max(14px,env(safe-area-inset-right)) max(18px,env(safe-area-inset-bottom)) max(14px,env(safe-area-inset-left))!important;
+  }
+  .item-info-close{width:44px!important;height:44px!important;}
+  .item-info-champ{min-height:34px;display:inline-flex;align-items:center;}
+  #item-loot-toast{bottom:max(62px,calc(env(safe-area-inset-bottom) + 8px))!important;width:calc(100vw - 16px)!important;}
+
+  #sell-confirm-overlay,#sell-relic-overlay,#post-record-overlay,#mobile-mode-ask-overlay{padding:8px;align-items:flex-end!important;}
+  #sell-confirm-overlay > .panel,#sell-relic-overlay > .panel,#post-record-overlay > .panel,#mobile-mode-ask-overlay > .panel{width:100%!important;max-width:none!important;border-radius:14px 14px 8px 8px;max-height:80dvh;overflow:auto;}
+  #app-toast{bottom:max(70px,calc(env(safe-area-inset-bottom) + 12px));width:calc(100vw - 18px);font-size:11px;padding:10px 12px;}
+}
+
+@media (max-width:390px) and (orientation:portrait){
+  .grid-cards{grid-template-columns:1fr;}
+  #position-chips{grid-template-columns:1fr;}
+  #inventory-grid,#position-inventory-grid{grid-template-columns:repeat(5,minmax(44px,1fr))!important;}
+  #battle-speed-control button{min-width:39px!important;width:39px!important;}
+  #camera-zoom-indicator{display:none!important;}
+}
+
+/* ---------------- TELEFONE HORIZONTAL / TELA BAIXA ---------------- */
+@media (orientation:landscape) and (max-height:600px) and (max-width:1100px){
+  body{
+    min-height:100dvh;
+    padding-top:max(5px,env(safe-area-inset-top));
+    padding-right:max(7px,env(safe-area-inset-right));
+    padding-bottom:max(5px,env(safe-area-inset-bottom));
+    padding-left:max(7px,env(safe-area-inset-left));
+  }
+  body > h1{font-size:19px;margin:0 auto 2px;}
+  body > .subtitle{display:none;}
+  .topbar{margin:0 auto 5px;padding:4px;gap:4px;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;}
+  .topbar::-webkit-scrollbar{display:none;}
+  .nav-btn{flex:0 0 auto;min-height:34px;padding:0 10px;font-size:9px;white-space:nowrap;}
+  .coin-badge{min-height:34px;display:flex;align-items:center;padding:0 9px;font-size:10px;}
+  #top-utility-bar{position:static!important;display:flex!important;flex-wrap:nowrap!important;justify-content:flex-start!important;overflow-x:auto;gap:4px!important;margin:0 0 5px!important;max-width:100%!important;scrollbar-width:none;}
+  #top-utility-bar::-webkit-scrollbar{display:none;}
+  #top-utility-bar > *{flex:0 0 auto;min-height:32px;padding-top:0!important;padding-bottom:0!important;}
+
+  .screen,.screen.active{width:100%;max-width:100%;}
+  .panel{padding:9px;border-radius:8px;}
+  .panel h2{font-size:12px;margin-bottom:7px;padding-bottom:6px;}
+  .battle-layout{display:grid!important;grid-template-columns:minmax(0,1fr) minmax(190px,28vw)!important;gap:7px!important;align-items:stretch;}
+  .arena-wrap{min-height:0!important;height:calc(100dvh - 86px);max-height:520px;aspect-ratio:auto;}
+  #arena{width:100%!important;height:100%!important;max-width:none!important;}
+  #fps{display:none!important;}
+  #roundinfo{top:5px;font-size:9px;padding:3px 7px;}
+  #banner{bottom:8px;font-size:13px;padding:5px 10px;}
+  #prep-overlay{padding:8px;}
+  #prep-overlay h3{font-size:12px;margin:0 0 2px;}
+  #prep-timer{font-size:28px;}
+  #prep-stats{max-height:74px;font-size:8px;}
+
+  #battle-speed-control{right:5px!important;top:5px!important;bottom:auto!important;gap:2px!important;padding:3px!important;}
+  #battle-speed-control .speed-label{display:none!important;}
+  #battle-speed-control button{min-width:38px!important;height:34px!important;padding:0 4px!important;font-size:8px!important;}
+  #battle-speed-state{right:5px!important;top:43px!important;bottom:auto!important;}
+  #camera-zoom-indicator{right:5px!important;bottom:5px!important;font-size:7px!important;}
+  #mobile-battle-panel-toggle{display:none!important;}
+  .mobile-battle-drawer{position:relative!important;inset:auto!important;transform:none!important;opacity:1!important;pointer-events:auto!important;width:auto!important;max-height:calc(100dvh - 86px)!important;overflow:hidden!important;}
+  .mobile-battle-drawer #log{height:calc(100dvh - 190px)!important;min-height:125px;}
+
+  #roster-layout,#position-layout{display:flex!important;flex-direction:row!important;align-items:flex-start!important;gap:7px!important;}
+  #inventory-panel,#position-inventory-panel{width:158px!important;min-width:158px;position:sticky!important;top:5px!important;padding:7px!important;}
+  #inventory-grid,#position-inventory-grid{grid-template-columns:repeat(3,1fr)!important;gap:4px!important;max-height:calc(100dvh - 145px)!important;overflow:auto!important;}
+  .inv-tile,.position-inv-tile{min-width:40px;min-height:40px;}
+  .equip-slot{width:38px!important;height:38px!important;}
+  #position-arena{height:calc(100dvh - 150px)!important;max-height:430px;width:auto!important;max-width:calc(100vw - 190px)!important;}
+  #position-chips{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px!important;}
+
+  .grid-cards{grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;}
+  .champ-card{padding:8px;}
+  .champ-name{font-size:12px;}
+  .champ-desc{font-size:9px;line-height:1.25;}
+  .champ-stats{font-size:8px;}
+  .team-slots{margin:5px 0 8px;gap:6px;overflow-x:auto;}
+  .team-slot{flex:0 0 66px;width:66px;height:66px;}
+  .mode-cards{gap:6px;}
+  .mode-card{min-height:0;padding:10px;}
+  .mode-card p{font-size:9px;line-height:1.35;}
+  button.main-btn,button.ghost-btn,.buy-btn{min-height:36px;}
+
+  #item-info-overlay{padding:6px!important;}
+  .item-info-card{max-height:94dvh!important;width:min(620px,82vw)!important;padding:12px!important;}
+  #item-loot-toast{bottom:max(6px,env(safe-area-inset-bottom))!important;}
+}
+
+/* Dispositivos de toque: alvos físicos maiores sem inflar o desktop com mouse. */
+@media (pointer:coarse){
+  button,.nav-btn{touch-action:manipulation;}
+  .equip-slot{min-width:40px;min-height:40px;}
+  .inv-tile,.position-inv-tile{min-width:44px;min-height:44px;}
+  .item-info-trigger{touch-action:manipulation;}
+}
