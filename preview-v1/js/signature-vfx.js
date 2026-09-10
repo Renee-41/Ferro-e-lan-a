@@ -7,6 +7,8 @@
   if(!arena||!wrap) return;
   if(getComputedStyle(wrap).position==='static') wrap.style.position='relative';
   const NS='http://www.w3.org/2000/svg', bursts=[], state=new Map();
+  const oldOverlay=document.getElementById('signature-vfx-overlay');
+  if(oldOverlay) oldOverlay.remove();
   const svg=document.createElementNS(NS,'svg');
   svg.id='signature-vfx-overlay';
   Object.assign(svg.style,{position:'absolute',pointerEvents:'none',zIndex:'10',overflow:'visible'});
