@@ -1,7 +1,7 @@
 /* Ferro & Lança — câmera manual sobre a câmera dinâmica existente.
    Scroll do mouse = zoom, pinça = zoom, duplo clique = reset.
-   A câmera dramática continua tendo prioridade.
-   preview-build: camera-overlay-fix-v2 */
+   Câmera livre durante combate normal; cinematografia fica restrita a finishers especiais.
+   preview-build: camera-free-combat-v1 */
 (function(){
   const arena = document.getElementById('arena');
   if(!arena) return;
@@ -125,13 +125,34 @@
   };
 })();
 
-/* Carrega o pacote de feedback de combate sem tocar no index.html gigante.
-   O arquivo de câmera já é carregado no preview; o módulo novo entra logo depois. */
-(function loadCombatFeedback(){
-  if(document.querySelector('script[data-ferro-combat-feedback]')) return;
-  const s = document.createElement('script');
-  s.src = 'js/combat-feedback.js';
-  s.async = false;
-  s.dataset.ferroCombatFeedback = '1';
-  (document.head || document.documentElement).appendChild(s);
+/* Remove o gatilho automático de "última unidade quase morta".
+   Isso também elimina o slow motion normal, porque dramaticActive não liga nesse caso.
+   Finishers continuam podendo ativar dramaticActive por conta própria. */
+(function disableNormalNearDeathDrama(){
+  try{
+    if(typeof updateDramaticCheck!=='function') return;
+    updateDramaticCheck = function(){
+      if(typeof finisherActive!=='undefined' && finisherActive) return;
+      if(typeof dramaticActive!=='undefined' && dramaticActive){
+        dramaticActive = false;
+        dramaticUnitId = null;
+      }
+    };
+  }catch(_){ /* mantém o jogo rodando se a função não estiver disponível */ }
+})();
+
+/* Pacotes de UX/mecânica do branch de teste. */
+(function loadPreviewModules(){
+  const modules = [
+    ['combat-feedback','js/combat-feedback.js?v=combat-polish-2'],
+    ['biome-mechanics','js/biome-mechanics.js?v=biome-mechanics-1']
+  ];
+  modules.forEach(([key,src])=>{
+    if(document.querySelector(`script[data-ferro-module="${key}"]`)) return;
+    const s = document.createElement('script');
+    s.src = src;
+    s.async = false;
+    s.dataset.ferroModule = key;
+    (document.head || document.documentElement).appendChild(s);
+  });
 })();
