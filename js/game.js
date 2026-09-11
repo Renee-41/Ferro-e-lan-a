@@ -6329,6 +6329,6 @@ function loop(ts){
   updateEmberEvents();
   updateComboState();
   renderFrame();
-  window.Ferrha3D?.frame(units,dt,performance.now());
+  window.Ferrha3D?.frame(units,dt*(window.FerroBattleTime?.getSpeed()??1),performance.now());
   requestAnimationFrame(loop);
 }

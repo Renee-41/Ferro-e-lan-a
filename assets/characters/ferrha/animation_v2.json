@@ -6,7 +6,11 @@
   },
   "bones": 26,
   "triangles": 31004,
-  "mesh_changes": false,
+  "mesh_changes": "proportion only; topology and weights preserved",
+  "head_scale": 0.85,
+  "compact_braid_for_ground_contact": true,
+  "leg_segment_scale": 1.15,
+  "torso_segment_scale": 1.08,
   "rig_structure_changes": false,
   "walk_stride_m": 0.4,
   "clips": {

@@ -1,4 +1,4 @@
-"""Author animation v2 on the existing 26-bone rig. No mesh/skin changes.
+"""Author animation v2 on the existing 26-bone rig. Existing topology/skin preserved; tactical proportions refined.
 Temporary IK constraints are baked into FK keys and removed before export.
 Original Ferrha.blend and Ferrha.glb remain the playable v1 baseline.
 """
@@ -9,6 +9,33 @@ ROOT=Path(__file__).resolve().parents[1];OUT=ROOT/'assets'/'characters'/'ferrha'
 bpy.ops.wm.open_mainfile(filepath=str(OUT/'Ferrha.blend'))
 scene=bpy.context.scene;scene.render.fps=30
 rig=bpy.data.objects['Ferrha_Rig'];rig.animation_data_clear()
+# Same topology, weights and materials; a 15% smaller head and more present legs/torso.
+def body_z(z):
+    if z<=.12:return z
+    if z<=.4:return .12+(z-.12)*1.15
+    return .442+(z-.4)*1.08 if z<=.86 else z+.0788
+def head_point(v):return Vector((v.x*.85,v.y*.85,body_z(.86)+(v.z-.86)*.85))
+for obj in scene.objects:
+    if obj.type!='MESH' or not any(m.type=='ARMATURE' and m.object==rig for m in obj.modifiers):continue
+    if obj.name=='Spear' or obj.name.startswith('MagneticPlate_'):
+        anchor=rig.data.bones[obj.vertex_groups[0].name].head_local
+        lift=(body_z(.86)+(anchor.z-.86)*.85-anchor.z) if anchor.z>.86 else body_z(anchor.z)-anchor.z
+        for v in obj.data.vertices:v.co.z+=lift
+    else:
+        head=obj.vertex_groups.get('Head')
+        for v in obj.data.vertices:
+            old=v.co.copy();weight=next((g.weight for g in v.groups if head and g.group==head.index),0)
+            v.co=Vector((old.x,old.y,body_z(old.z))).lerp(head_point(old),weight)
+            if obj.name=='Hair' and v.co.y>.20:v.co.y=.20+(v.co.y-.20)*.4
+bpy.context.view_layer.objects.active=rig;bpy.ops.object.mode_set(mode='EDIT')
+for b in rig.data.edit_bones:
+    for attr in ['head','tail']:
+        v=getattr(b,attr).copy()
+        if b.name=='Head':v=head_point(v)
+        elif b.name.startswith('Magnet.') and v.z>.86:v.z=body_z(.86)+(v.z-.86)*.85
+        else:v.z=body_z(v.z)
+        setattr(b,attr,v)
+bpy.ops.object.mode_set(mode='OBJECT')
 for a in list(bpy.data.actions):bpy.data.actions.remove(a)
 bones=list(rig.pose.bones);rest={p.name:p.bone.matrix_local.copy() for p in bones}
 def reset():
@@ -43,7 +70,7 @@ def guard(t):
         rot(f'Magnet.{i:02d}',(0,.025*math.sin(t*2*math.pi+i),0))
 def walk(t):
     guard(0);a=2*math.pi*t
-    offset('Hips',(.013*math.cos(a),0,-.027+.008*math.cos(2*a)))
+    offset('Hips',(.018*math.cos(a),0,-.029+.006*math.cos(2*a)))
     rot('Hips',(0,.023*math.cos(a),.025*math.sin(a)))
     rot('Spine',(.06,-.018*math.cos(a),-.028*math.sin(a)))
     for s,suf in [(1,'L'),(-1,'R')]:
@@ -51,7 +78,7 @@ def walk(t):
         # Stance foot travels backwards at constant rate; swing foot lifts on its return.
         if phase<.5:y=-.10+.40*phase;lift=0
         else:
-            u=(phase-.5)*2;y=.10-.20*(u*u*(3-2*u));lift=.065*math.sin(math.pi*u)
+            u=(phase-.5)*2;y=.10-.20*(u*u*(3-2*u));lift=.058*math.sin(math.pi*u)**1.3
         targets[suf].location=(s*.132,y,.073+lift)
         rot('UpperArm.'+suf,(-.16+s*.12*math.sin(a),s*.34,0))
     spear(.20+.045*math.sin(a+.35),-.12+.025*math.cos(a))
@@ -61,13 +88,13 @@ def pulse(t,a,b,c):
     u=(t-a)/(b-a) if t<b else (c-t)/(c-b)
     return u*u*(3-2*u)
 def attack(t,kind):
-    guard(0);v=pulse(t,.08,.40,.96);wind=pulse(t,0,.15,.35)
+    guard(0);v=pulse(t,.08,.40,.96);wind=pulse(t,0,.18,.38)
     heavy=kind==2
-    offset('Hips',(0,-(.055 if heavy else .026)*v,-.025-.018*wind))
-    rot('Spine',(.04+.13*v,0,(-.33 if kind==1 else -.09)*v+.06*wind))
-    rot('UpperArm.R',(-.16-.65*v,.05 if heavy else -.14,-.16*v))
+    offset('Hips',(0,.018*wind-(.073 if heavy else .026)*v,-.025-(.030 if heavy else .018)*wind))
+    rot('Spine',(.04+(.18 if heavy else .13)*v,0,(-.42 if kind==1 else -.09)*v+.06*wind))
+    rot('UpperArm.R',(-.16+.12*wind-.65*v,.05 if heavy else -.14,-.16*v))
     rot('Forearm.R',(-.28-.20*v,0,-.10*v))
-    spear(.2+1.20*v-.12*wind,-.12,(.50 if kind==1 else .03)*math.sin(t*math.pi)*v)
+    spear(.2+(1.32 if heavy else 1.20)*v-.18*wind,-.12,(.65 if kind==1 else .03)*math.sin(t*math.pi)*v)
     targets['L'].location.y=-.025-(.075 if heavy else .04)*v
     targets['L'].location.z=.073+.025*math.sin(math.pi*t)*v
     for i in range(1,7):offset(f'Magnet.{i:02d}',(0,.023*v,.018*math.sin(t*math.pi)))
@@ -75,17 +102,18 @@ def hit(t):
     guard(0);v=pulse(t,0,.23,1);rot('Spine',(.035-.17*v,0,.035*v));rot('Head',(.05*v,0,0))
 def barrier(t):
     guard(0);v=min(1,t/.42);v=v*v*(3-2*v)
-    offset('Hips',(0,.015,-.025-.035*v));rot('Spine',(.04+.09*v,0,0))
-    rot('UpperArm.L',(-.45*v,.38,-.05));spear(.04,-.10)
+    offset('Hips',(0,.018,-.025-.045*v));rot('Spine',(.04+.12*v,0,0));rot('Head',(-.055*v,0,0))
+    rot('UpperArm.L',(-.50*v,.38,-.09));rot('Forearm.L',(-.38*v,0,.12*v));spear(.07,-.10)
     for i in range(1,7):
         b=rest[f'Magnet.{i:02d}'].translation
         angle=(i-1)*math.pi/3
-        goal=Vector((.67*math.cos(angle),-.45,.99+.32*math.sin(angle)))
-        offset(f'Magnet.{i:02d}',(goal-b)*v);rot(f'Magnet.{i:02d}',(0,.18*math.cos(angle)*v,0))
+        goal=Vector((.62*math.cos(angle),-.45,1.06+.30*math.sin(angle)))
+        stage=max(0,min(1,(t-.045*(i%3))/.44));stage=stage*stage*(3-2*stage)
+        offset(f'Magnet.{i:02d}',(goal-b)*stage);rot(f'Magnet.{i:02d}',(0,.18*math.cos(angle)*stage,0))
 def death(t):
     guard(0);impact=pulse(t,0,.12,.30)
     wobble=pulse(t,.12,.33,.56)
-    f=max(0,min(1,(t-.35)/.53));fall=f*f*(3-2*f)
+    f=max(0,min(1,(t-.35)/.53));fall=f*f*(3-2*f)-.035*pulse(t,.86,.92,1)
     offset('Hips',(0,0,-.025-.05*wobble));rot('Spine',(-.17*impact+.13*wobble,0,.09*wobble))
     rot('Root',(-1.46*fall,0,.13*fall));offset('Root',(0,0,.19*fall))
     spear(.18-.35*wobble+1.12*fall,-.12-.35*fall)
@@ -137,6 +165,6 @@ bpy.ops.export_scene.gltf(filepath=str(OUT/'Ferrha_v2.glb'),export_format='GLB',
 scene.render.resolution_x=640;scene.render.resolution_y=640;scene.cycles.samples=12
 bpy.context.preferences.filepaths.save_version=0
 bpy.ops.wm.save_as_mainfile(filepath=str(OUT/'Ferrha_v2.blend'))
-report={'baseline_commit':'fd57f0a2fb797b8736244b3cba4e5e5f7094ee4b','baseline_sha256':{n:hashlib.sha256((OUT/n).read_bytes()).hexdigest() for n in ['Ferrha.glb','Ferrha.blend']},'bones':len(bones),'triangles':sum(sum(len(p.vertices)-2 for p in o.data.polygons) for o in meshes),'mesh_changes':False,'rig_structure_changes':False,'walk_stride_m':.4,'clips':{n:d for n,d,fn in spec},'temporary_ik_baked_and_removed':True}
+report={'baseline_commit':'fd57f0a2fb797b8736244b3cba4e5e5f7094ee4b','baseline_sha256':{n:hashlib.sha256((OUT/n).read_bytes()).hexdigest() for n in ['Ferrha.glb','Ferrha.blend']},'bones':len(bones),'triangles':sum(sum(len(p.vertices)-2 for p in o.data.polygons) for o in meshes),'mesh_changes':'proportion only; topology and weights preserved','head_scale':.85,'compact_braid_for_ground_contact':True,'leg_segment_scale':1.15,'torso_segment_scale':1.08,'rig_structure_changes':False,'walk_stride_m':.4,'clips':{n:d for n,d,fn in spec},'temporary_ik_baked_and_removed':True}
 (OUT/'animation_v2.json').write_text(json.dumps(report,indent=2),encoding='utf-8')
 print(json.dumps(report),flush=True)

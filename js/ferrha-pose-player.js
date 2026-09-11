@@ -36,7 +36,8 @@ window.FerrhaPosePlayer=class {
       }
     }
     // Convex interpolation keeps total base weight at 1, even on interrupted transitions.
-    const ease=1-Math.exp(-dt*(v.dead?28:22));
+    const rate=v.dead?24:v.base==='barrier'?16:v.attackContact?32:18;
+    const ease=1-Math.exp(-dt*rate);
     for(const [key,a] of Object.entries(this.actions)){
       const target=locomotion?(key==='idle'?1-v.moveWeight:key==='move'?v.moveWeight:0):(key===v.base?1:0);
       this.weights[key]+=(target-this.weights[key])*ease;

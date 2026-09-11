@@ -147,7 +147,8 @@
     ['combat-feedback','js/combat-feedback.js?v=combat-polish-2'],
     ['combat-polish','js/combat-polish.js?v=combat-polish-1'],
     ['biome-mechanics','js/biome-mechanics.js?v=biome-mechanics-1'],
-    ['ferrha-3d','js/ferrha-3d.js?v=ferrha-animation-v2']
+    ['time-controls','js/time-controls.js?v=time-controls-1'],
+    ['ferrha-3d','js/ferrha-3d.js?v=ferrha-animation-v2-refined']
   ];
   modules.forEach(([key,src])=>{
     if(document.querySelector(`script[data-ferro-module="${key}"]`)) return;

@@ -74,7 +74,7 @@
     }
     function animate(st,v,dt){
       st.player.update(v,dt);
-      st.impact.rotation.z+=(v.hitSide*v.hitWeight*.045-st.impact.rotation.z)*(1-Math.exp(-dt*22));
+      st.impact.rotation.z+=(v.hitSide*v.hitWeight*.045-v.turnLean-st.impact.rotation.z)*(1-Math.exp(-dt*22));
       st.holder.rotation.y=v.yaw;
     }
     function dispose(st){st.mixer.stopAllAction();st.mixer.uncacheRoot(st.model);}

@@ -14,7 +14,7 @@
       this.duration={...defaults,...config.duration};
       this.stridePixels=config.stridePixels||8; // 0.4m cycle at 20 SVG units/m.
       this.x=u.rx;this.y=u.ry;this.yaw=u.team==='player'?Math.PI/2:-Math.PI/2;
-      this.desiredYaw=this.yaw;this.speed=0;this.moveWeight=0;this.phase=0;
+      this.desiredYaw=this.yaw;this.speed=0;this.moveWeight=0;this.phase=0;this.turnLean=0;
       this.base='idle';this.state='idle';this.sequence=0;this.attackIndex=0;
       this.attackToken=null;this.hitToken=null;this.hitSequence=0;
       this.hitWeight=0;this.hitSide=0;this.hitLeft=0;this.remaining=0;
@@ -45,7 +45,7 @@
       }
       if(!u.alive && !this.dead){this.dead=true;this.enter('death',this.duration.death);this.speed=0;}
       if(this.dead){
-        this.deathAge+=step;this.moveWeight=0;this.hitWeight=0;
+        this.deathAge+=step;this.moveWeight=0;this.hitWeight=0;this.turnLean=0;
         this.state='death';return this.snapshot();
       }
       if(barrier && !this.barrierActive){this.enter('barrier',this.duration.barrier);}
@@ -70,7 +70,8 @@
       const difference=angleDelta(this.yaw,this.desiredYaw);
       this.yaw+=clamp(difference*(1-Math.exp(-step*18)),-step*12,step*12);
       this.yaw=Math.atan2(Math.sin(this.yaw),Math.cos(this.yaw));
-      const weightTarget=(!locked && moving)?clamp(this.speed/25,0,1):0;
+      this.turnLean+=(clamp(difference,-1,1)*Math.min(this.speed/25,1)*.035-this.turnLean)*(1-Math.exp(-step*12));
+      const weightTarget=(!locked && moving)?clamp(this.speed/6,0,1):0;
       this.moveWeight+=(weightTarget-this.moveWeight)*(1-Math.exp(-step*(weightTarget>this.moveWeight?14:18)));
       if(!locked){
         const next=this.moveWeight>.025?'move':'idle';
@@ -97,7 +98,7 @@
       return this.snapshot();
     }
     snapshot(){return {state:this.state,base:this.base,sequence:this.sequence,yaw:this.yaw,
-      desiredYaw:this.desiredYaw,speed:this.speed,moveWeight:this.moveWeight,phase:this.phase,
+      desiredYaw:this.desiredYaw,turnLean:this.turnLean,speed:this.speed,moveWeight:this.moveWeight,phase:this.phase,
       actionDuration:this.actionDuration,remaining:this.remaining,preparing:!!this.preparing,prepareProgress:this.prepareProgress,attackContact:!!this.attackContact,hitSequence:this.hitSequence,
       hitWeight:this.hitWeight,hitSide:this.hitSide,deathAge:this.deathAge,dead:this.dead};}
   }
