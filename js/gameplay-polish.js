@@ -1,38 +1,17 @@
-/* Ferro & Lança — correções pequenas e seguras da passada de Gameplay Polish v1. */
+/* Ferro & Lança — Gameplay Polish v1: classes oficiais, progressão e módulos de QA. */
 (function(){
   if(window.__ferroGameplayPolishV1) return;
   window.__ferroGameplayPolishV1 = true;
 
-  /* =========================================================
-     CLASSES OFICIAIS — definidas no playtest de Gameplay Polish
-     Mantemos o "role" narrativo original e adicionamos uma classe
-     mecânica separada para UI, recomendações e futuros sistemas.
-  ========================================================= */
   const OFFICIAL_CLASS = {
-    ferrha:'tanque',
-    voss:'atirador',
-    nyx:'atirador',
-    shava:'lutador',
-    kael:'lutador',
-    terrus:'tanque',
-    jedegar:'suporte',
-    pyra:'atirador',
-    glacia:'suporte',
-    zeph:'atirador',
-    ima:'lutador',
-    frosk:'lutador',
-    gelida:'lutador',
-    raio:'lutador',
-    shecry:'tanque',
-    nerith:'lutador',
+    ferrha:'tanque', voss:'atirador', nyx:'atirador', shava:'lutador',
+    kael:'lutador', terrus:'tanque', jedegar:'suporte', pyra:'atirador',
+    glacia:'suporte', zeph:'atirador', ima:'lutador', frosk:'lutador',
+    gelida:'lutador', raio:'lutador', shecry:'tanque', nerith:'lutador',
     voltra:'atirador'
   };
-
   const SUGGESTION_CATEGORY = {
-    tanque:'tank',
-    lutador:'corpo a corpo',
-    atirador:'longa distância',
-    suporte:'suporte'
+    tanque:'tank', lutador:'corpo a corpo', atirador:'longa distância', suporte:'suporte'
   };
 
   try{
@@ -46,7 +25,7 @@
         ROLE_CATEGORY[id]=SUGGESTION_CATEGORY[cls];
       });
     }
-  }catch(_){ /* mantém jogo original se algum helper não existir */ }
+  }catch(_){ }
 
   window.FerroClasses = {
     byChampion:Object.assign({},OFFICIAL_CLASS),
@@ -88,32 +67,21 @@
     });
   }
 
-  /* =========================================================
-     PROGRESSÃO DE ESTRELAS
-
-     Antes: 2 cópias para TODA estrela.
-     QA v1:  1★→2★ = 2 cópias
-             2★→3★ = 3 cópias
-             3★→4★ = 4 cópias
-
-     O preço de cada cópia continua igual nesta primeira passada.
-     Assim isolamos o efeito da cadência sem misturar preço + renda.
-  ========================================================= */
   function copiesNeededForNextStar(stars){
     const s=Math.max(1,Number(stars)||1);
     if(s<=1) return 2;
     if(s===2) return 3;
     return 4;
   }
+  window.FerroCopiesNeededForNextStar=copiesNeededForNextStar;
 
   function patchShopProgression(){
     const root=document.getElementById('shop-cards');
     if(!root || typeof owned==='undefined') return;
-
     root.querySelectorAll('button[data-buy]').forEach(btn=>{
       const id=btn.dataset.buy;
       const prog=owned[id];
-      if(!prog || prog.stars>=MAX_STARS) return; // compra de personagem novo fica intacta
+      if(!prog || prog.stars>=MAX_STARS) return;
       const needed=copiesNeededForNextStar(prog.stars);
       const cost=Math.round(CHAMPION_CATALOG[id].cost*0.5);
       btn.dataset.polishCopy='1';
@@ -126,14 +94,11 @@
     decorateClassCards(root);
   }
 
-  // Intercepta SOMENTE a compra de cópia já marcada acima. Personagem novo,
-  // troca de personagem e todos os outros botões continuam no fluxo original.
   document.addEventListener('click',ev=>{
     const btn=ev.target && ev.target.closest ? ev.target.closest('button[data-polish-copy="1"]') : null;
     if(!btn) return;
     ev.preventDefault();
     ev.stopImmediatePropagation();
-
     try{
       const id=btn.dataset.buy;
       const prog=owned[id];
@@ -158,47 +123,50 @@
       if(typeof renderShop==='function') renderShop();
       const roster=document.getElementById('screen-roster');
       if(roster && roster.classList.contains('active') && typeof renderRoster==='function') renderRoster();
-    }catch(_){ /* falha segura: não interfere nos demais sistemas */ }
+    }catch(_){ }
   },true);
 
-  // Envolve renderizadores existentes sem reimplementar suas regras.
   try{
     if(typeof renderShop==='function'){
-      const baseRenderShop=renderShop;
+      const base=renderShop;
       renderShop=function(){
-        const out=baseRenderShop.apply(this,arguments);
+        const out=base.apply(this,arguments);
         patchShopProgression();
         return out;
       };
     }
-  }catch(_){ }
-
-  try{
     if(typeof renderRoster==='function'){
-      const baseRenderRoster=renderRoster;
+      const base=renderRoster;
       renderRoster=function(){
-        const out=baseRenderRoster.apply(this,arguments);
+        const out=base.apply(this,arguments);
         decorateClassCards(document.getElementById('roster-cards'));
         return out;
       };
     }
-  }catch(_){ }
-
-  try{
     if(typeof renderRecommended==='function'){
-      const baseRenderRecommended=renderRecommended;
+      const base=renderRecommended;
       renderRecommended=function(){
-        const out=baseRenderRecommended.apply(this,arguments);
+        const out=base.apply(this,arguments);
         decorateClassCards(document.getElementById('recommended-cards'));
         return out;
       };
     }
   }catch(_){ }
 
-  // Caso alguma dessas telas já estivesse aberta quando o módulo terminou de carregar.
   try{
     decorateClassCards(document.getElementById('shop-cards'));
     decorateClassCards(document.getElementById('roster-cards'));
     decorateClassCards(document.getElementById('recommended-cards'));
   }catch(_){ }
+
+  [
+    ['gameplay-reworks','js/gameplay-reworks.js?v=gameplay-reworks-1']
+  ].forEach(([key,src])=>{
+    if(document.querySelector(`script[data-ferro-module="${key}"]`)) return;
+    const s=document.createElement('script');
+    s.src=src;
+    s.async=false;
+    s.dataset.ferroModule=key;
+    (document.head||document.documentElement).appendChild(s);
+  });
 })();
