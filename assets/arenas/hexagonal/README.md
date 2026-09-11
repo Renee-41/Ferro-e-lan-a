@@ -72,3 +72,5 @@ python scripts/preview_hex_arena.py
 ```
 
 O último script reimporta o GLB para conferência e usa o asset existente da Ferrha, se disponível, somente no render de escala. Os scripts ficam na raiz `scripts/` do projeto; dentro do pacote ZIP, a estrutura de pastas é preservada.
+
+Refinamento v2: bordas com contraste suave, pedra e metais mais foscos, musgo menos saturado. Ap?s reconstruir o asset, execute `python scripts/refine_hex_materials.py` para aplicar a segunda passada aos GLBs. Geometria, UVs e layout permanecem iguais.

@@ -70,8 +70,8 @@
       controls.enablePan=true;
 
       scene.add(new THREE.HemisphereLight(0xdde8ff,0x332518,2.25));
-      const key=new THREE.DirectionalLight(0xffe0b0,3.2); key.position.set(8,14,9); key.castShadow=true; scene.add(key);
-      const rim=new THREE.DirectionalLight(0x8fb7ff,1.25); rim.position.set(-10,7,-7); scene.add(rim);
+      const key=new THREE.DirectionalLight(0xffebd2,3); key.position.set(8,14,9); key.castShadow=true; scene.add(key);
+      const rim=new THREE.DirectionalLight(0x9cabbc,.8); rim.position.set(-10,7,-7); scene.add(rim);
 
       const ground=new THREE.Mesh(new THREE.CircleGeometry(30,64),new THREE.MeshStandardMaterial({color:0x080a0d,roughness:1}));
       ground.rotation.x=-Math.PI/2; ground.position.y=-.34; ground.receiveShadow=true; scene.add(ground);
