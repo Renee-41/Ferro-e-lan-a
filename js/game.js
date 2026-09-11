@@ -5552,13 +5552,15 @@ function renderFrame(){
     else if(voidHexes.has(hk)){ zone = 'rgba(150,40,40,0.28)'; stroke = '#7a2a2a'; }
     else if(hazardHexes.has(hk)){ zone = 'rgba(224,105,58,0.25)'; stroke = '#e0693a'; }
     const poly = document.createElementNS('http://www.w3.org/2000/svg','polygon');
+    poly.setAttribute('data-grid-tile',`${h.q},${h.r}`);
+    poly.setAttribute('data-free-tile',isFreeHex);
     poly.setAttribute('points', hexPoints(p.x,p.y));
     poly.setAttribute('fill', zone);
     poly.setAttribute('stroke', stroke);
     poly.setAttribute('stroke-width','1');
     svg.appendChild(poly);
 
-    if(isFreeHex && currentBiome==='grama'){
+    if(isFreeHex && currentBiome==='grama' && !window.Arena3D?.ready){
       for(let i=0;i<3;i++){
         const rx = hexNoise(h.q,h.r,i*7+1), ry = hexNoise(h.q,h.r,i*7+2);
         const bx = p.x + (rx-0.5)*18, by = p.y + (ry-0.5)*18;
@@ -5584,7 +5586,7 @@ function renderFrame(){
         canopy.setAttribute('stroke','#1a3a20');
         svg.appendChild(canopy);
       }
-    } else if(isFreeHex && currentBiome==='rachadura' && hexNoise(h.q,h.r,55) > 0.45){
+    } else if(isFreeHex && !window.Arena3D?.ready && currentBiome==='rachadura' && hexNoise(h.q,h.r,55) > 0.45){
       const veinPulse = 0.35 + 0.25*Math.sin(now0/260 + (h.q*3+h.r));
       const ang = hexNoise(h.q,h.r,56)*Math.PI*2;
       const vein = document.createElementNS('http://www.w3.org/2000/svg','line');

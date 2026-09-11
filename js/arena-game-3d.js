@@ -32,8 +32,14 @@
       camera.top=-(y-230)/30;camera.bottom=-(y+height/m.d-230)/30;camera.updateProjectionMatrix();
       renderer.render(scene,camera);
       svg.querySelectorAll('[data-terrain-base]').forEach(n=>n.setAttribute('fill','transparent'));
+      svg.querySelectorAll('[data-grid-tile]').forEach(n=>{
+        const [q,r]=n.getAttribute('data-grid-tile').split(',').map(Number);
+        n.setAttribute('transform',`translate(0 ${-api.height(q,r)*30/Math.sqrt(2)})`);
+        if(n.getAttribute('data-free-tile')==='true')n.setAttribute('stroke-opacity','.2');
+      });
       for(const u of list){const g=svg.querySelector(`[data-unit-id="${u.id}"]`);if(g)g.setAttribute('transform',`translate(0 ${-api.lift(u)})`);}
     };
+    svg.style.background='transparent';
     api.ready=true;api.debug=()=>({tiles:heights.size,triangles:renderer.info.render.triangles,calls:renderer.info.render.calls});
     window.Ferro3D.ready=true;
   }).catch(error=>{console.warn('Arena 3D: fallback SVG',error);layer.remove();});

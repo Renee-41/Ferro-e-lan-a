@@ -22,8 +22,11 @@
     }
     enter(state,duration){
       this.base=state;this.remaining=duration||0;this.sequence++;
+      this.preparing=false;this.attackContact=false;
     }
-    update({unit:u,target,attack,hit,dt=1/60,now=0}){
+    nextAttack(){return ['attack_a','attack_b','attack_c'][[0,1,2,1,0,2,0,1,0,2,1,2][this.attackIndex%12]];}
+    attackDuration(u,state){return Math.max(.28,Math.min(this.duration[state],.9/Math.max(.1,u.speed||1)*.88));}
+    update({unit:u,target,attack,hit,anticipate=false,dt=1/60,now=0}){
       const elapsed=Math.max(0,dt),step=elapsed;
       if(step===0)return this.snapshot();
       const dx=u.rx-this.x,dy=u.ry-this.y,d=Math.hypot(dx,dy);
@@ -32,10 +35,14 @@
       const speed=(!teleported && elapsed>0)?d/elapsed:0;
       this.speed+=(speed-this.speed)*(1-Math.exp(-step*15));
       const moving=speed>1.0 && !teleported;
-      if(moving && d>.001) this.desiredYaw=bearing(dx,dy);
+      if(d>.001 && d<=90) this.desiredYaw=bearing(dx,dy);
       const newAttack=attack && (attack.token??attack.start)!==this.attackToken && now-attack.start<500;
       const barrier=!!(u.barrierUntil && now<u.barrierUntil);
       this.remaining=Math.max(0,this.remaining-step);
+      if(this.preparing){
+        if(!anticipate||moving||target?.id!==this.prepareTarget||u.actionTimer>this.actionDuration*400){this.enter('idle');}
+        else {this.remaining=Math.max(.001,u.actionTimer/1000);this.prepareProgress=clamp(1-u.actionTimer/(this.actionDuration*400),0,1);}
+      }
       if(!u.alive && !this.dead){this.dead=true;this.enter('death',this.duration.death);this.speed=0;}
       if(this.dead){
         this.deathAge+=step;this.moveWeight=0;this.hitWeight=0;
@@ -44,12 +51,12 @@
       if(barrier && !this.barrierActive){this.enter('barrier',this.duration.barrier);}
       else if(newAttack && !barrier && this.base!=='barrier'){
         // A visual-only deterministic sequence: no gameplay RNG, no repeating ABC loop.
-        const pattern=[0,1,2,1,0,2,0,1,0,2,1,2];
-        const state=['attack_a','attack_b','attack_c'][pattern[this.attackIndex++%pattern.length]];
+        const state=this.nextAttack();this.attackIndex++;
         // Fit the recovery inside the real attack interval; do not change combat cadence.
-        const interval=.9/Math.max(.1,u.speed||1);
-        this.enter(state,Math.max(.28,Math.min(this.duration[state],interval*.88)));
-        this.actionDuration=this.remaining;
+        const total=this.attackDuration(u,state);
+        // Damage already happened in combat: present contact now, then recovery.
+        this.enter(state,total*.6);this.attackContact=true;
+        this.actionDuration=total;
       }
       if(newAttack)this.attackToken=attack.token??attack.start;
       this.barrierActive=barrier;
@@ -69,6 +76,12 @@
         const next=this.moveWeight>.025?'move':'idle';
         if(next!==this.base)this.enter(next);
         if(moving)this.phase=(this.phase+d/this.stridePixels)%1;
+        const state=this.nextAttack(),total=this.attackDuration(u,state);
+        // Read the existing action timer and already-selected target; never select targets here.
+        if(!moving&&anticipate&&u.actionTimer>0&&u.actionTimer<total*400){
+          this.enter(state,u.actionTimer/1000);this.preparing=true;this.prepareTarget=target.id;
+          this.actionDuration=total;this.prepareProgress=clamp(1-u.actionTimer/(total*400),0,1);
+        }
       }
       // Additive recoil can coexist with an attack or barrier; never restarts the base clip.
       if(hit && hit.token!==this.hitToken && hit.damage>0 && now-hit.at<400){
@@ -85,7 +98,7 @@
     }
     snapshot(){return {state:this.state,base:this.base,sequence:this.sequence,yaw:this.yaw,
       desiredYaw:this.desiredYaw,speed:this.speed,moveWeight:this.moveWeight,phase:this.phase,
-      actionDuration:this.actionDuration,remaining:this.remaining,hitSequence:this.hitSequence,
+      actionDuration:this.actionDuration,remaining:this.remaining,preparing:!!this.preparing,prepareProgress:this.prepareProgress,attackContact:!!this.attackContact,hitSequence:this.hitSequence,
       hitWeight:this.hitWeight,hitSide:this.hitSide,deathAge:this.deathAge,dead:this.dead};}
   }
   return {Controller,bearing,angleDelta};

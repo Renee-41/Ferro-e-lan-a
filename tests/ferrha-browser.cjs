@@ -25,6 +25,7 @@ const server=http.createServer((req,res)=>{
   await page.route('**/*',route=>{
     const url=new URL(route.request().url());
     if(url.hostname==='esm.sh'){
+      if(process.env.FERRO_CDN==='1')return route.continue();
       const i=url.pathname.indexOf('/examples/');const dest=i>=0?'/__three'+url.pathname.slice(i):'/__three/build/three.module.js';
       return route.fulfill({contentType:'text/javascript',body:`export * from 'http://127.0.0.1:${port}${dest}';`});
     }
@@ -48,6 +49,32 @@ const server=http.createServer((req,res)=>{
       console.log('heading',name);headings.push({name,...await page.evaluate(()=>Ferrha3D.debug()[0])});
       if(name==='north')await page.screenshot({path:path.join(art,'ferrha-north.png')});
     }
+    await page.waitForFunction(()=>window.Arena3D?.ready);
+    const timing=[];
+    for(const speed of [0,.5,1,2]){
+      await page.evaluate(speed=>{FerroBattleTime.setSpeed(speed);},speed);
+      await new Promise(r=>setTimeout(r,80));
+      const before=await page.evaluate(()=>({t:performance.now(),s:Ferrha3D.debug()[0],pos:[units[0].rx,units[0].ry]}));
+      await new Promise(r=>setTimeout(r,400));
+      const after=await page.evaluate(()=>({t:performance.now(),s:Ferrha3D.debug()[0],pos:[units[0].rx,units[0].ry]}));
+      const ratio=(after.s.mixerTime-before.s.mixerTime)/((after.t-before.t)/1000);
+      if(speed===0){assert.equal(after.s.mixerTime,before.s.mixerTime);assert.equal(after.s.yaw,before.s.yaw);assert.deepEqual(after.pos,before.pos);}
+      else assert.ok(Math.abs(ratio-speed)<.3,`speed ${speed}: ${ratio}`);
+      timing.push({speed,ratio});
+    }
+    await page.evaluate(()=>FerroBattleTime.setSpeed(0));
+    const paused=await page.evaluate(()=>({t:Ferrha3D.debug()[0].mixerTime,v:document.getElementById('arena').getAttribute('viewBox')}));
+    await page.locator('#arena').hover();await page.mouse.wheel(0,-400);
+    await new Promise(r=>setTimeout(r,400));
+    const inspected=await page.evaluate(()=>({t:Ferrha3D.debug()[0].mixerTime,v:document.getElementById('arena').getAttribute('viewBox')}));
+    assert.equal(paused.t,inspected.t);assert.notEqual(paused.v,inspected.v);
+    const box=await page.locator('#arena').boundingBox();
+    await page.mouse.move(box.x+box.width/2,box.y+box.height/2);await page.mouse.down({button:'middle'});
+    await page.mouse.move(box.x+box.width/2+70,box.y+box.height/2+40,{steps:4});await page.mouse.up({button:'middle'});
+    await new Promise(r=>setTimeout(r,180));
+    const panned=await page.evaluate(()=>({t:Ferrha3D.debug()[0].mixerTime,v:document.getElementById('arena').getAttribute('viewBox')}));
+    assert.equal(panned.t,paused.t);assert.notEqual(panned.v,inspected.v);
+    await page.evaluate(()=>FerroBattleTime.setSpeed(1));
     const attacks=[];
     for(let i=0;i<3;i++){
       await page.evaluate(()=>{const u=units[0],t=units[1];u.targetRx=u.rx;u.targetRy=u.ry;u.range=99;u.special=null;doAction(u);});
@@ -70,7 +97,7 @@ const server=http.createServer((req,res)=>{
     // Recreating units with the same ID must discard the dead animation instance.
     await page.evaluate(()=>{units[0]=makeUnit(901,'player','ferrha',CHAMPION_CATALOG.ferrha,1,0,0);});
     await page.waitForFunction(()=>!Ferrha3D.debug()[0].dead);
-    const report={status:'PASS',headings:headings.map(s=>({name:s.name,yaw:s.yaw})),attacks,webglContexts:1,errors};
+    const report={status:'PASS',timing,pausedCamera:true,headings:headings.map(s=>({name:s.name,yaw:s.yaw})),attacks,webglContexts:1,errors};
     assert.deepEqual(errors,[]);
     fs.writeFileSync(path.join(art,'browser-report.json'),JSON.stringify(report,null,2));console.log(JSON.stringify(report));
   }finally{await browser.close();server.close();}

@@ -1,6 +1,7 @@
 /* A/B selection: the same index and combat modules in both modes. */
 (()=>{
   const enabled=new URLSearchParams(location.search).get('visual')==='3d';
+  document.title+=enabled?' | Teste B - 3D':' | Teste A - 2D';
   const links=document.createElement('nav');links.id='visual-test-switch';
   links.setAttribute('aria-label','Comparar visual do jogo');
   Object.assign(links.style,{position:'fixed',bottom:'8px',left:'8px',zIndex:9999,display:'flex',gap:'8px',background:'#101820ed',padding:'8px',borderRadius:'8px',font:'12px system-ui'});
