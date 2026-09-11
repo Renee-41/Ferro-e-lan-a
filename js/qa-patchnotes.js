@@ -3,12 +3,22 @@
   if(window.__ferroQaPatchnotesV1) return;
   window.__ferroQaPatchnotesV1=true;
 
+  // Pequenos hotfixes de balanceamento do pacote QA podem ser carregados daqui
+  // sem tocar na main nem duplicar a lógica central do jogo.
+  if(!document.querySelector('script[data-ferro-module="raio-balance"]')){
+    const s=document.createElement('script');
+    s.src='js/raio-balance.js?v=raio-balance-1';
+    s.async=false;
+    s.dataset.ferroModule='raio-balance';
+    (document.head||document.documentElement).appendChild(s);
+  }
+
   const panel=document.getElementById('patchnotes-panel');
   const button=document.getElementById('patchnotes-btn');
   const dot=document.getElementById('patchnotes-dot');
   if(!panel) return;
 
-  const READ_KEY='ferroLancaNotesReadQaGameplayPolishV1';
+  const READ_KEY='ferroLancaNotesReadQaGameplayPolishV1Raio30';
   const section=document.createElement('div');
   section.id='qa-gameplay-polish-notes';
   section.style.cssText='margin:0 0 18px;padding:12px;border:1px solid rgba(232,194,80,.38);border-radius:8px;background:rgba(232,194,80,.06);';
@@ -23,7 +33,7 @@
       <li><strong>Progressão de estrelas:</strong> 1★→2★ exige 2 cópias, 2★→3★ exige 3 e 3★→4★ exige 4.</li>
       <li><strong>Shava rework:</strong> ganhou mais sobrevivência e, após o Golpe Aéreo, entra em Embalo com cura, resistência temporária e sustentação ofensiva.</li>
       <li><strong>Nerith:</strong> tentáculos agora herdam parte dos bônus de dano, velocidade e vida dos itens equipados nela.</li>
-      <li><strong>Raio:</strong> o combo elétrico exige menos golpes conforme a partida avança e tenta trocar de alvo se o inimigo morrer durante a sequência.</li>
+      <li><strong>Raio:</strong> o combo elétrico exige 5 golpes no começo, 4 no midgame e 3 no late game. Se o alvo morrer durante o combo, há apenas <strong>30% de chance</strong> de continuar em outro inimigo; nos outros 70%, o combo termina e a imunidade acaba junto.</li>
       <li><strong>Ímã:</strong> pulso magnético ganhou desaceleração e a dupla Ferrha + Ímã ativa o Vínculo Ferromagnético com bônus defensivos/ofensivos próprios.</li>
       <li><strong>Shecry rework:</strong> saiu o bônus de dano por vida baixa; agora a identidade é resistência quando saudável e regeneração crescente conforme perde vida.</li>
       <li><strong>Novos itens de Suporte:</strong> Sino de Cadência, Selo de Amparo, Elo Harmônico, Bandeira do Elo e Círculo Restaurador.</li>
