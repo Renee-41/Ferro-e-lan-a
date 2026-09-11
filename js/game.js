@@ -4393,6 +4393,7 @@ function applyDamage(attacker, target, baseDmg, tag, ignoreDefense){
     if(absorbed>0) spawnFloatText(target.rx, target.ry-30, `ESCUDO -${absorbed}`, '#8fd4e8');
   }
   target.hp -= dmg;
+  window.Ferrha3D?.damage(attacker,target,dmg,now);
   target.flashUntil = now+150;
   if(dmg>0){
     if(attacker.range && attacker.range>1) sfxRangedHit(); else sfxMeleeHit();
@@ -4816,6 +4817,7 @@ function doAction(u){
   // de atacar ele em vez do inimigo normal, senão eles nunca eram destruídos na prática.
   if(!u.isTentacle && Math.random() < 0.35 && tryAttackNearbyStructure(u)) return;
   const target = u.isTentacle ? getTentacleTarget(u) : nearestEnemy(u);
+  window.Ferrha3D?.targetSelected(u,target);
   if(!target){
     tryAttackNearbyStructure(u);
     return;
@@ -4842,6 +4844,7 @@ function doAction(u){
       return;
     }
     u.attackAnim = {targetId:target.id, start:performance.now(), duration:280};
+    window.Ferrha3D?.attack(u,target,u.attackAnim);
     let dmg = u.atk;
     if(u.range>1){
       const distBonus = 1 + Math.max(0, dist-1)*0.08;
@@ -5540,6 +5543,7 @@ function renderFrame(){
     const biomeBase = document.createElementNS('http://www.w3.org/2000/svg','polygon');
     biomeBase.setAttribute('points', hexPoints(p.x,p.y));
     biomeBase.setAttribute('fill', biomeFill);
+    biomeBase.setAttribute('data-terrain-base','true');
     svg.appendChild(biomeBase);
 
     let zone = h.q<0 ? 'rgba(63,127,168,0.06)' : h.q>0 ? 'rgba(209,72,31,0.06)' : 'rgba(255,255,255,0.03)';
@@ -5753,6 +5757,7 @@ function renderFrame(){
     }
     const flashing = now < u.flashUntil;
     const g = document.createElementNS('http://www.w3.org/2000/svg','g');
+    g.setAttribute('data-unit-id',u.id);
 
     if(u.taunt){
       const ring = document.createElementNS('http://www.w3.org/2000/svg','circle');
@@ -5904,6 +5909,7 @@ function renderFrame(){
       const baseOpacity = u.isTentacle ? 0.68 : 1;
       circ.setAttribute('opacity', (Math.max(0.15, spawnFrac)*baseOpacity).toFixed(2));
     }
+    circ.setAttribute('data-unit-body','true');
     g.appendChild(circ);
 
     const label = document.createElementNS('http://www.w3.org/2000/svg','text');
@@ -6324,5 +6330,6 @@ function loop(ts){
   updateEmberEvents();
   updateComboState();
   renderFrame();
+  window.Ferro3D?.frame(units,dt,performance.now());
   requestAnimationFrame(loop);
 }
