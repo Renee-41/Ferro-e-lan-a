@@ -8,7 +8,7 @@
   function record(u){let e=events.get(u.id);if(!e){e={unit:u};events.set(u.id,e);}if(e.unit!==u){e={unit:u};events.set(u.id,e);}return e;}
   const api=window.Ferrha3D={
     targetSelected(u,t){if(u.champId==='ferrha')record(u).targetId=t&&t.id;},
-    attack(u,t,a){if(u.champId==='ferrha'){const e=record(u);e.targetId=t.id;e.attack={...a};}},
+    attack(u,t,a){if(u.champId==='ferrha'){const e=record(u);e.targetId=t.id;e.attack={token:++serial,targetId:a.targetId,get start(){return a.start;}};}},
     damage(source,target,damage,at){if(target.champId==='ferrha'&&damage>0)record(target).hit={token:++serial,source:{rx:source.rx,ry:source.ry},damage,at};},
     frame(list,dt,now){
       if(failed)return;
@@ -33,7 +33,7 @@
   }
   function loadController(){return new Promise((resolve,reject)=>{
     if(window.FerrhaVisualState)return resolve();
-    const s=document.createElement('script');s.src=new URL('js/ferrha-visual-state.js?v=2',document.baseURI);s.onload=resolve;s.onerror=reject;document.head.appendChild(s);
+    const s=document.createElement('script');s.src=new URL('js/ferrha-visual-state.js?v=3',document.baseURI);s.onload=()=>{const p=document.createElement('script');p.src='js/ferrha-pose-player.js';p.onload=resolve;p.onerror=reject;document.head.appendChild(p);};s.onerror=reject;document.head.appendChild(s);
   });}
   Promise.all([import('https://esm.sh/three@0.180.0'),
     import('https://esm.sh/three@0.180.0/examples/jsm/loaders/GLTFLoader.js'),
@@ -64,48 +64,20 @@
       const holder=new THREE.Group(),impact=new THREE.Group(),model=SkeletonUtils.clone(gltf.scene);
       scene.add(holder);holder.add(impact);impact.add(model);
       // Keep the authored foot pivot; weapon/shard bounds must never recenter the body.
-      const mixer=new THREE.AnimationMixer(model),actions={};
-      for(const [state,name] of Object.entries(names))actions[state]=mixer.clipAction(clips.get(name));
-      actions.idle.play();actions.move.play().setEffectiveTimeScale(0).setEffectiveWeight(0);
-      const overlay=clips.get('Hit').clone();overlay.name='Hit additive';
-      overlay.tracks=overlay.tracks.filter(t=>/^(Spine|Head)\./.test(t.name));
-      THREE.AnimationUtils.makeClipAdditive(overlay,0);
-      const hit=mixer.clipAction(overlay);hit.setLoop(THREE.LoopOnce,1);
+      const player=new FerrhaPosePlayer(THREE,model).load(gltf.animations);
+      const {mixer,actions}=player;
       const ctrl=new FerrhaVisualState.Controller(u,{duration,stridePixels:.4*20});
       const foot=new THREE.Vector3(0,0,0).project(camera);
-      return {u,scene,camera,holder,impact,model,mixer,actions,hit,ctrl,footY:(1-foot.y)/2,token:-1,hitToken:0,lock:null,hitFading:false};
+      return {u,scene,camera,holder,impact,model,mixer,actions,player,ctrl,footY:(1-foot.y)/2,token:-1,hitToken:0,lock:null,hitFading:false};
     }
     function animate(st,v,dt){
-      const locomotion=v.base==='idle'||v.base==='move';
-      if(st.token!==v.sequence){
-        st.token=v.sequence;
-        if(st.lock)st.lock.fadeOut(v.dead?.1:.14);
-        st.lock=null;
-        if(locomotion){st.actions.idle.stopFading().fadeIn(.16).play();st.actions.move.stopFading().fadeIn(.16).play();}
-        else{
-          st.actions.idle.fadeOut(.12);st.actions.move.fadeOut(.12);
-          const a=st.actions[v.base];a.reset().setEffectiveWeight(1).setLoop(THREE.LoopOnce,1);
-          a.clampWhenFinished=true;
-          a.setEffectiveTimeScale(v.base.startsWith('attack')?duration[v.base]/v.actionDuration:1);
-          a.fadeIn(v.dead?.09:.12).play();st.lock=a;
-        }
-      }
-      if(locomotion){
-        st.actions.idle.setEffectiveWeight(1-v.moveWeight);st.actions.move.setEffectiveWeight(v.moveWeight);
-        st.actions.move.time=v.phase*duration.move;
-      }
-      if(v.hitSequence!==st.hitToken && !v.dead){
-        st.hitToken=v.hitSequence;st.hitFading=false;
-        st.hit.reset().setEffectiveWeight(v.hitWeight).fadeIn(.035).play();
-      }
-      if((!v.hitWeight||v.dead)&&!st.hitFading){st.hit.fadeOut(.08);st.hitFading=true;}
+      st.player.update(v,dt);
       st.impact.rotation.z+=(v.hitSide*v.hitWeight*.045-st.impact.rotation.z)*(1-Math.exp(-dt*22));
       st.holder.rotation.y=v.yaw;
-      st.mixer.update(Math.min(.05,dt));
     }
     function dispose(st){st.mixer.stopAllAction();st.mixer.uncacheRoot(st.model);}
     api.dispose=()=>{for(const st of instances.values())dispose(st);instances.clear();renderer.dispose();};
-    api.debug=()=>Array.from(instances,([id,st])=>({id,...st.ctrl.snapshot(),clips:Object.keys(st.actions),webglContexts:1}));
+    api.debug=()=>Array.from(instances,([id,st])=>({id,...st.ctrl.snapshot(),clips:Object.keys(st.actions),mixerTime:st.mixer.time,weights:st.player.weights,webglContexts:1}));
     draw=(list,dt,now)=>{
       const wr=wrap.getBoundingClientRect(),matrix=arena.getScreenCTM();
       labels.replaceChildren();if(!matrix||wr.width<1||wr.height<1)return;
@@ -123,7 +95,7 @@
         const target=lookup.get(a&&now-a.start<1200?a.targetId:e.targetId);
         // Only rx/ry are locomotion; the SVG attack lunge is intentionally excluded.
         const v=st.ctrl.update({unit:u,target,attack:a,hit:e.hit,dt,now});animate(st,v,dt);
-        if(v.dead&&v.deathAge>duration.death+.6)continue;
+
         const w=76*scale,h=w*1.12;
         const x=matrix.a*u.rx+matrix.c*u.ry+matrix.e-wr.left-w/2;
         const footY=matrix.b*u.rx+matrix.d*u.ry+matrix.f-wr.top;

@@ -24,7 +24,8 @@
       this.base=state;this.remaining=duration||0;this.sequence++;
     }
     update({unit:u,target,attack,hit,dt=1/60,now=0}){
-      const elapsed=Math.max(0,dt),step=Math.min(elapsed,.05);
+      const elapsed=Math.max(0,dt),step=elapsed;
+      if(step===0)return this.snapshot();
       const dx=u.rx-this.x,dy=u.ry-this.y,d=Math.hypot(dx,dy);
       this.x=u.rx;this.y=u.ry;
       const teleported=d>90 || elapsed>.25;
@@ -32,7 +33,7 @@
       this.speed+=(speed-this.speed)*(1-Math.exp(-step*15));
       const moving=speed>1.0 && !teleported;
       if(moving && d>.001) this.desiredYaw=bearing(dx,dy);
-      const newAttack=attack && attack.start!==this.attackToken && now-attack.start<500;
+      const newAttack=attack && (attack.token??attack.start)!==this.attackToken && now-attack.start<500;
       const barrier=!!(u.barrierUntil && now<u.barrierUntil);
       this.remaining=Math.max(0,this.remaining-step);
       if(!u.alive && !this.dead){this.dead=true;this.enter('death',this.duration.death);this.speed=0;}
@@ -42,13 +43,15 @@
       }
       if(barrier && !this.barrierActive){this.enter('barrier',this.duration.barrier);}
       else if(newAttack && !barrier && this.base!=='barrier'){
-        const state=['attack_a','attack_b','attack_c'][this.attackIndex++%3];
+        // A visual-only deterministic sequence: no gameplay RNG, no repeating ABC loop.
+        const pattern=[0,1,2,1,0,2,0,1,0,2,1,2];
+        const state=['attack_a','attack_b','attack_c'][pattern[this.attackIndex++%pattern.length]];
         // Fit the recovery inside the real attack interval; do not change combat cadence.
         const interval=.9/Math.max(.1,u.speed||1);
         this.enter(state,Math.max(.28,Math.min(this.duration[state],interval*.88)));
         this.actionDuration=this.remaining;
       }
-      if(newAttack)this.attackToken=attack.start;
+      if(newAttack)this.attackToken=attack.token??attack.start;
       this.barrierActive=barrier;
       if(this.base==='barrier' && this.remaining===0 && barrier) this.remaining=step;
       if(this.remaining===0 && this.base!=='idle' && this.base!=='move')this.enter('idle');

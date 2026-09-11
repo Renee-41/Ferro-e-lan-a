@@ -17,7 +17,7 @@ test('attacks alternate and are not reset by repeated snapshots or attack lunges
     for(let i=0;i<5;i++)tick(c,u,{attack,now:now+20+i});assert.equal(seq,c.sequence);
     assert.equal(c.phase,0);for(let i=0;i<90;i++)tick(c,u,{now:now+500+i});
   }
-  assert.deepEqual(names,['attack_a','attack_b','attack_c','attack_a']);
+  assert.deepEqual(names,['attack_a','attack_b','attack_c','attack_b']);
 });
 test('barrier interrupts attack, then holds until the real barrier expires',()=>{
   const u=unit(),c=new Controller(u);tick(c,u,{attack:{start:100},now:100});

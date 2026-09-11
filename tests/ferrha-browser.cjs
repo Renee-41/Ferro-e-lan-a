@@ -11,7 +11,7 @@ const server=http.createServer((req,res)=>{
   const relative=vendor?url.pathname.slice('/__three/'.length):url.pathname==='/'?'index.html':url.pathname.slice(1);
   const p=path.resolve(base,decodeURIComponent(relative));
   if(!p.startsWith(base+path.sep)||!fs.existsSync(p)||!fs.statSync(p).isFile()){res.writeHead(404);return res.end();}
-  const ext=path.extname(p);res.setHeader('Content-Type',mime[ext]||'application/octet-stream');
+  res.setHeader('Access-Control-Allow-Origin','*');const ext=path.extname(p);res.setHeader('Content-Type',mime[ext]||'application/octet-stream');
   if(vendor&&ext==='.js')res.end(fs.readFileSync(p,'utf8').replace(/from 'three'/g,"from '/__three/build/three.module.js'"));
   else fs.createReadStream(p).pipe(res);
 });
@@ -20,12 +20,13 @@ const server=http.createServer((req,res)=>{
   const port=server.address().port;
   const browser=await chromium.launch({executablePath:process.env.FERRO_BROWSER||'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',headless:true,args:['--enable-unsafe-swiftshader']});
   const page=await browser.newPage({viewport:{width:1360,height:1000}});const errors=[];
-  page.on('pageerror',e=>errors.push(e.message));
+  page.on('pageerror',e=>{errors.push(e.message);console.error('PAGE',e.message);});
+  page.on('console',m=>{if(m.text().includes('Ferrha'))console.log(m.text());});
   await page.route('**/*',route=>{
     const url=new URL(route.request().url());
     if(url.hostname==='esm.sh'){
       const i=url.pathname.indexOf('/examples/');const dest=i>=0?'/__three'+url.pathname.slice(i):'/__three/build/three.module.js';
-      return route.fulfill({contentType:'text/javascript',body:`export * from '${dest}';`});
+      return route.fulfill({contentType:'text/javascript',body:`export * from 'http://127.0.0.1:${port}${dest}';`});
     }
     if(url.hostname!=='127.0.0.1')return route.abort();return route.continue();
   });
@@ -34,7 +35,7 @@ const server=http.createServer((req,res)=>{
     await page.waitForFunction(()=>window.Ferrha3D?.ready,{},{timeout:25000});
     await page.evaluate(()=>{
       document.querySelectorAll('[id^="intro"]').forEach(e=>e.style.display='none');
-      showScreen('battle');battleActive=false;
+      showScreen('battle');battleActive=false;startBattleLoopIfNeeded();
       units=[makeUnit(901,'player','ferrha',CHAMPION_CATALOG.ferrha,1,-1,0),makeUnit(902,'enemy','terrus',CHAMPION_CATALOG.terrus,1,1,-1),makeUnit(903,'player','gelida',CHAMPION_CATALOG.gelida,1,-1,1)];
       for(const u of units){u.hp=u.maxhp=10000;u.atk=1;}
       document.getElementById('banner').style.display='none';
@@ -63,7 +64,7 @@ const server=http.createServer((req,res)=>{
     await page.setViewportSize({width:390,height:844});
     await page.waitForFunction(()=>document.querySelector('#ferrha-3d-layer canvas').width>0);
     await page.screenshot({path:path.join(art,'ferrha-mobile.png')});
-    await page.evaluate(()=>{units[0].barrierUntil=0;applyDamage(units[1],units[0],999999,'teste',true);});
+    await page.evaluate(()=>{units[0].barrierUntil=0;units[0].hp=0;units[0].alive=false;});
     await page.waitForFunction(()=>Ferrha3D.debug()[0].base==='death');
     assert.equal(await page.locator('#ferrha-3d-layer canvas').count(),1);
     // Recreating units with the same ID must discard the dead animation instance.
