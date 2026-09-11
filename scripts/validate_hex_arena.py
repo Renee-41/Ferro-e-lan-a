@@ -1,7 +1,7 @@
 """Check exported runtime geometry, modularity and game-compatible axial layout."""
 from pathlib import Path
-import json,struct,math,numpy as np
-ROOT=Path(__file__).resolve().parents[1]/'assets'/'arenas'/'hexagonal'
+import json,struct,math,sys,numpy as np
+ROOT=Path(sys.argv[1]).resolve() if len(sys.argv)>1 else Path(__file__).resolve().parents[1]/'assets'/'arenas'/'hexagonal'
 def read_glb(path):
     raw=path.read_bytes();magic,ver,length=struct.unpack_from('<III',raw)
     assert magic==0x46546c67 and ver==2 and length==len(raw)
