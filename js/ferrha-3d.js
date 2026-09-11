@@ -37,13 +37,13 @@
   });}
   Promise.all([import('https://esm.sh/three@0.180.0'),
     import('https://esm.sh/three@0.180.0/examples/jsm/loaders/GLTFLoader.js'),
-    import('https://esm.sh/three@0.180.0/examples/jsm/utils/SkeletonUtils.js'),loadController()])
-    .then(async([THREE,{GLTFLoader},SkeletonUtils])=>{
+    import('https://esm.sh/three@0.180.0/examples/jsm/utils/SkeletonUtils.js'),import('https://esm.sh/three@0.180.0/examples/jsm/environments/RoomEnvironment.js'),loadController()])
+    .then(async([THREE,{GLTFLoader},SkeletonUtils,{RoomEnvironment}])=>{
       const gltf=await new GLTFLoader().loadAsync(new URL('assets/characters/ferrha/Ferrha_v2.glb',document.baseURI).href);
-      start(THREE,SkeletonUtils,gltf);
+      start(THREE,SkeletonUtils,gltf,RoomEnvironment);
     }).catch(fail);
 
-  function start(THREE,SkeletonUtils,gltf){
+  function start(THREE,SkeletonUtils,gltf,RoomEnvironment){
     const names={idle:'Idle',move:'Walk',attack_a:'Attack_A',attack_b:'Attack_B',attack_c:'Attack_C',hit:'Hit',barrier:'Barrier',death:'Death'};
     const clips=new Map(gltf.animations.map(c=>[c.name,c]));
     for(const name of Object.values(names))if(!clips.has(name))throw Error('Clip ausente: '+name);
@@ -53,9 +53,11 @@
     renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.15;
     renderer.autoClear=false;renderer.domElement.setAttribute('aria-hidden','true');layer.appendChild(renderer.domElement);
     renderer.domElement.addEventListener('webglcontextlost',e=>{e.preventDefault();fail('context lost');});
+    const room=new RoomEnvironment(),pmrem=new THREE.PMREMGenerator(renderer);
+    const environment=pmrem.fromScene(room,.04);room.dispose();pmrem.dispose();
     const instances=new Map();let dimensions={w:0,h:0};
     function instance(u){
-      const scene=new THREE.Scene();scene.add(new THREE.HemisphereLight(0xe6efff,0x30291e,2.2));
+      const scene=new THREE.Scene();scene.environment=environment.texture;scene.environmentIntensity=1.6;scene.add(new THREE.HemisphereLight(0xe6efff,0x30291e,2.2));
       const key=new THREE.DirectionalLight(0xffd8af,3);key.position.set(-3,5,4);scene.add(key);
       const rim=new THREE.DirectionalLight(0x8aaed8,1.6);rim.position.set(3,3,-4);scene.add(rim);
       // A fixed observer on +Z. Heading is NOT derived from this camera.
@@ -76,7 +78,7 @@
       st.holder.rotation.y=v.yaw;
     }
     function dispose(st){st.mixer.stopAllAction();st.mixer.uncacheRoot(st.model);}
-    api.dispose=()=>{for(const st of instances.values())dispose(st);instances.clear();renderer.dispose();};
+    api.dispose=()=>{for(const st of instances.values())dispose(st);instances.clear();environment.dispose();renderer.dispose();};
     api.debug=()=>Array.from(instances,([id,st])=>({id,...st.ctrl.snapshot(),clips:Object.keys(st.actions),mixerTime:st.mixer.time,weights:st.player.weights,webglContexts:1}));
     draw=(list,dt,now)=>{
       const wr=wrap.getBoundingClientRect(),matrix=arena.getScreenCTM();
@@ -92,9 +94,9 @@
         if(st&&st.u!==u){dispose(st);instances.delete(u.id);st=null;}
         if(!st){st=instance(u);instances.set(u.id,st);}
         const e=events.get(u.id)||{},a=e.attack||u.attackAnim;
-        const target=lookup.get(a&&now-a.start<1200?a.targetId:e.targetId);
+        const target=lookup.get(e.targetId??a?.targetId);
         // Only rx/ry are locomotion; the SVG attack lunge is intentionally excluded.
-        const v=st.ctrl.update({unit:u,target,attack:a,hit:e.hit,dt,now});animate(st,v,dt);
+        const v=st.ctrl.update({unit:u,target,attack:a,hit:e.hit,dt,now,anticipate:!!(target?.alive&&hexDistance(u,target)<=u.range&&!u.comboActive&&!u.voltraDetonating)});animate(st,v,dt);
 
         const w=76*scale,h=w*1.12;
         const x=matrix.a*u.rx+matrix.c*u.ry+matrix.e-wr.left-w/2;

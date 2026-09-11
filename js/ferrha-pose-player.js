@@ -32,6 +32,7 @@ window.FerrhaPosePlayer=class {
       if(!locomotion){
         const a=this.actions[v.base];a.reset().play();
         a.setEffectiveTimeScale(v.base.startsWith('attack')?this.duration[v.base]/v.actionDuration:1);
+        if(v.attackContact)a.time=this.duration[v.base]*.4;
       }
     }
     // Convex interpolation keeps total base weight at 1, even on interrupted transitions.
@@ -42,6 +43,7 @@ window.FerrhaPosePlayer=class {
       a.setEffectiveWeight(this.weights[key]);
     }
     this.actions.move.time=v.phase*this.duration.move;
+    if(v.preparing){const a=this.actions[v.base];a.time=this.duration[v.base]*.4*v.prepareProgress;a.setEffectiveTimeScale(0);}
     if(v.hitSequence!==this.hitSequence&&!v.dead){
       this.hitSequence=v.hitSequence;this.hit.reset().play();
     }

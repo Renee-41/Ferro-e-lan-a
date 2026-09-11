@@ -45,3 +45,20 @@ test('stop settles to idle and teleport never advances gait',()=>{
 test('controller does not mutate combat snapshots',()=>{
   const u=Object.freeze(unit()),c=new Controller(u);assert.doesNotThrow(()=>tick(c,u,{attack:{start:100}}));
 });
+test('preparation follows the existing timer, contact follows the actual attack event',()=>{
+  const u=unit(),c=new Controller(u),target={id:2,rx:1,ry:0};u.actionTimer=120;
+  tick(c,u,{target,anticipate:true});assert.equal(c.preparing,true);assert.equal(c.attackIndex,0);
+  u.actionTimer=60;tick(c,u,{target,anticipate:true});const progress=c.prepareProgress;
+  assert.ok(progress>.5);const seq=c.sequence;
+  tick(c,u,{target,anticipate:true,dt:0});assert.equal(c.sequence,seq);assert.equal(c.prepareProgress,progress);
+  tick(c,u,{target,anticipate:true,attack:{start:100,token:1}});
+  assert.equal(c.attackContact,true);assert.equal(c.preparing,false);assert.equal(c.attackIndex,1);
+  const contactSeq=c.sequence;
+  tick(c,u,{target,attack:{start:110,token:1},now:110});assert.equal(c.sequence,contactSeq);
+});
+test('retarget cancels preparation without spending an attack variation',()=>{
+  const u=unit(),c=new Controller(u);u.actionTimer=120;
+  tick(c,u,{target:{id:2,rx:1,ry:0},anticipate:true});
+  tick(c,u,{target:{id:3,rx:-1,ry:0},anticipate:false});
+  assert.equal(c.preparing,false);assert.equal(c.attackIndex,0);
+});

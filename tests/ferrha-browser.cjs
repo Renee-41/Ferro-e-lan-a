@@ -25,6 +25,7 @@ const server=http.createServer((req,res)=>{
   await page.route('**/*',route=>{
     const url=new URL(route.request().url());
     if(url.hostname==='esm.sh'){
+      if(process.env.FERRO_CDN==='1')return route.continue();
       const i=url.pathname.indexOf('/examples/');const dest=i>=0?'/__three'+url.pathname.slice(i):'/__three/build/three.module.js';
       return route.fulfill({contentType:'text/javascript',body:`export * from 'http://127.0.0.1:${port}${dest}';`});
     }
