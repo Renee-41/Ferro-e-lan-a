@@ -35,6 +35,7 @@ const server=http.createServer((req,res)=>{
     await page.waitForFunction(()=>window.ArenaCorrupted?.ready,{},{timeout:20000});
     await new Promise(r=>setTimeout(r,400));
     await page.screenshot({path:path.join(art,'corrupted-tactical.png')});
+    await page.locator('#scale').click();assert.equal(await page.locator('#scale').getAttribute('aria-pressed'),'true');
     await page.locator('#reset').click();await new Promise(r=>setTimeout(r,400));
     await page.screenshot({path:path.join(art,'corrupted-perspective.png')});
     assert.deepEqual(errors,[]);const debug=await page.evaluate(()=>ArenaCorrupted.debug());assert.equal(debug.tiles,61);assert.ok(debug.triangles<10000);

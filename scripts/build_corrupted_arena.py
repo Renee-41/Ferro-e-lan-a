@@ -15,13 +15,13 @@ pixels=np.array(source.pixels[:],dtype=np.float32).reshape(N,N,4)
 emission=np.zeros_like(pixels);emission[:,:,3]=1
 Y,X=np.mgrid[-1.12:1.12:complex(T),-1.12:1.12:complex(T)]
 radius=np.hypot(X,Y)
-colors=[(.19,.118,.157),(.138,.132,.163),(.205,.176,.235),(.158,.104,.176)]
+colors=[(.33,.235,.285),(.26,.275,.31),(.36,.33,.405),(.295,.215,.33)]
 for k,color in enumerate(colors):
     iy,ix=k//2,k%2;part=pixels[iy*T:(iy+1)*T,ix*T:(ix+1)*T,:3]
     old=part.copy();luma=old.mean(axis=2);wash=np.clip(luma/np.median(luma),.68,1.3)
     part[:]=np.array(color)*wash[:,:,None]
     moss=(old[:,:,1]>old[:,:,0]*1.05)&(old[:,:,0]>old[:,:,2]*1.5)
-    part[moss]=np.array([.103,.093,.12])*wash[moss,None]
+    part[moss]=np.array([.18,.16,.13])*wash[moss,None]
     edge=emission[iy*T:(iy+1)*T,ix*T:(ix+1)*T,:3]
     # Angular veins and broken glyph segments stop outside the clear placement zone.
     for i in range(2 if k!=3 else 3):

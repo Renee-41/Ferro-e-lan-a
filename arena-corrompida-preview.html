@@ -32,8 +32,9 @@
   <div id="app"></div>
   <div id="hud">
     <div class="card"><div class="title">Arena Corrompida</div><div class="sub">Arraste para girar · roda/pinça para zoom</div></div>
-    <button id="reset">Resetar câmera</button>
+    <button id="reset">Vista perspectiva</button>
     <button id="top">Vista tática</button>
+    <button id="scale" aria-pressed="false">Escala: miniatura 1,6 m</button>
   </div>
   <div id="status">Carregando Arena_Hexagonal.glb…</div>
   <div id="error"></div>
@@ -75,12 +76,19 @@
 
       const ground=new THREE.Mesh(new THREE.CircleGeometry(30,64),new THREE.MeshStandardMaterial({color:0x080a0d,roughness:1}));
       ground.rotation.x=-Math.PI/2; ground.position.y=-.34; ground.receiveShadow=true; scene.add(ground);
+      const guide=new THREE.Group();guide.position.y=.245;guide.visible=false;scene.add(guide);
+      const cloth=new THREE.MeshStandardMaterial({color:0x91abb6,roughness:.9});
+      const body=new THREE.Mesh(new THREE.CylinderGeometry(.16,.23,1,6),cloth);body.position.y=.55;guide.add(body);
+      const head=new THREE.Mesh(new THREE.SphereGeometry(.30,8,6),new THREE.MeshStandardMaterial({color:0xcfb99e,roughness:1}));head.position.y=1.30;guide.add(head);
+      for(const x of [-.12,.12]){const foot=new THREE.Mesh(new THREE.BoxGeometry(.18,.20,.30),cloth);foot.position.set(x,.10,.04);guide.add(foot);}
+      guide.traverse(o=>{if(o.isMesh)o.castShadow=true;});
+      document.getElementById('scale').onclick=()=>{guide.visible=!guide.visible;document.getElementById('scale').setAttribute('aria-pressed',guide.visible);};
 
       let arena=null, center=new THREE.Vector3(), radius=10;
       function fitCamera(tactical=false){
         const r=Math.max(radius,4);
         const dir=tactical?new THREE.Vector3(0,1.45,1.65):new THREE.Vector3(1.15,1.05,1.35);
-        dir.normalize().multiplyScalar(r*(tactical?2.05:2.15));
+        dir.normalize().multiplyScalar(r*(tactical?2.18:2.25));
         camera.position.copy(center).add(dir);
         camera.near=Math.max(.01,r/100); camera.far=r*15; camera.updateProjectionMatrix();
         controls.target.copy(center); controls.update();
@@ -95,7 +103,8 @@
           const box=new THREE.Box3();arena.traverse(o=>{if(o.name.startsWith('Hex_q'))box.expandByObject(o);});
           const sphere=box.getBoundingSphere(new THREE.Sphere());
           center.copy(sphere.center); radius=sphere.radius;
-          fitCamera(true);window.ArenaCorrupted={ready:true,debug:()=>({tiles:61,calls:renderer.info.render.calls,triangles:renderer.info.render.triangles,materials:new Set([...function*(){const a=[];arena.traverse(o=>{if(o.isMesh)a.push(...(Array.isArray(o.material)?o.material:[o.material]));});yield* a;}()]).size})};
+          fitCamera(true);const materials=new Set();arena.traverse(o=>{if(o.isMesh)(Array.isArray(o.material)?o.material:[o.material]).forEach(m=>materials.add(m));});
+          window.ArenaCorrupted={ready:true,debug:()=>({tiles:61,calls:renderer.info.render.calls,triangles:renderer.info.render.triangles,materials:materials.size})};
           status.textContent='Arena carregada · arraste para girar · roda/pinça para zoom';
         },
         ev=>{if(ev.total) status.textContent=`Carregando arena… ${Math.round(ev.loaded/ev.total*100)}%`;},
