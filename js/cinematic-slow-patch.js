@@ -72,7 +72,7 @@
     }else if(baseShake){
       try{ baseShake(8,260); }catch(_){ }
     }
-    baseSetSpeed(.15);
+    baseSetSpeed(.5);
     realDelay(END_MS-IMPACT_MS,()=>{
       overlay.className='';
       baseSetSpeed(restore);
@@ -89,7 +89,7 @@
       state={started:performance.now(),originalSpeed:api.getSpeed()||1,restoreSpeed:null,pendingShake:null};
       overlay.classList.add('show');
       realDelay(IMPACT_MS,()=>{ if(state&&!restoring) finishExtendedScene(); });
-      return baseSetSpeed(.15);
+      return baseSetSpeed(.5);
     }
 
     if(state&&!restoring){
