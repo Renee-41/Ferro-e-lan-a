@@ -7,7 +7,55 @@ Objetivo: melhorar decisões, clareza e balanceamento sem adicionar sistemas nov
 ## Correções já aplicadas
 
 - Biomas agora usam tempo de batalha, então Campo Verde e Terreno Corrompido respeitam `0x / 0.5x / 1x / 2x`.
-- Shava e Jedegar agora possuem categoria no sistema de sugestão de equipe.
+- Classificação oficial adicionada às fichas e ao sistema de sugestão de equipe.
+- Progressão de estrelas alterada de `2 / 2 / 2` cópias para `2 / 3 / 4` cópias para alcançar 2★ / 3★ / 4★.
+
+## Classificação oficial
+
+### Tanques
+- Ferrha
+- Terrus
+- Shecry
+
+### Lutadores
+- Shava
+- Kael
+- Ímã
+- Frosk
+- Gélida
+- Raio
+- Nerith
+
+### Atiradores
+- Voss
+- Nyx
+- Pyra
+- Zeph
+- Voltra
+
+### Suportes
+- Jedegar
+- Glacia
+
+Regra de classe planejada: `Atirador > Tanque > Lutador > Atirador`.
+
+## Evidência do primeiro playtest
+
+Na onda 23, o jogador já tinha os 5 Stack Users permitidos antes da expansão da onda 40, todos em 4★ e equipados. Isso confirmou que a progressão estava encerrando cedo demais.
+
+A primeira correção mexe somente na quantidade de cópias exigida por estrela. Os preços dos personagens, itens e recompensas das ondas permanecem inalterados neste teste para isolar o efeito da mudança.
+
+## Próximo teste de progressão
+
+Jogar novamente até aproximadamente a onda 23–30 e observar:
+- quantos personagens já chegaram a 4★;
+- quantos estão em 2★/3★;
+- quantidade de itens completos;
+- moedas disponíveis;
+- se ainda existem compras desejáveis;
+- se a expansão da onda 40 começa a parecer uma decisão futura relevante em vez de uma espera sem nada para fazer.
+
+Se o time ainda maximizar cedo, o próximo ajuste será na renda das ondas e/ou no custo progressivo de cópias — não nos dois simultaneamente sem nova evidência.
 
 ## Ordem do playtest
 
@@ -39,14 +87,28 @@ Observar:
 
 ## Cinco pontos sob investigação
 
-1. **Economia inicial** — a curva atual parece generosa e as primeiras ondas são deliberadamente muito fáceis. Validar antes de alterar números.
-2. **Identidade/power budget dos campeões** — campeões recentes têm passivas muito mais densas do que parte do elenco original. Comparar contribuição real, não somente descrição.
+1. **Economia inicial** — confirmada como rápida demais; a primeira correção está sendo testada via progressão de estrelas antes de cortar renda.
+2. **Identidade/power budget dos campeões** — próximos reworks prioritários: Shava, Nerith, Raio, Ímã e Shecry.
 3. **Legibilidade do midgame** — muitas fontes independentes de aleatoriedade podem acumular ao mesmo tempo. Verificar se o jogador entende por que venceu/perdeu.
 4. **Criaturas corrompidas e fim de onda** — confirmar em jogo se a onda encerrar com corrompidos vivos é desejado ou produz vitórias prematuras/confusas.
 5. **Itens dominantes** — observar se alguns combinados, principalmente de longa distância, eliminam escolhas alternativas em vez de criar builds diferentes.
 
+## Backlog confirmado pelo playtest
+
+- reorganizar Loja de Itens por caminhos de receita;
+- buff e identidade de relíquias de boss;
+- diferenciar Coração de Ferro e Muralha Viva;
+- reworks de Shava, Nerith, Raio, Ímã e Shecry;
+- reforçar identidade dos Lutadores e sua capacidade de alcançar Atiradores;
+- criar mais itens de Suporte;
+- placar com cura recebida, cura realizada, amplificação e participação de suporte;
+- criar modo de informação simplificada ("Preguiça/CLT Mode");
+- renomear `Itens` para `Loja de Itens`;
+- unir Placar, Conquistas e Perfil em uma área;
+- áudio iniciado pelo gesto de começar a partida e controle movido para Configurações;
+- remover fluxo de arrastar item para excluir/vender;
+- deixar cinematográfica de passiva muito mais lenta antes do tremor.
+
 ## Regra para esta passada
 
-Não adicionar personagem, item, bioma ou sistema novo até concluir esta lista.
-
-Corrigir primeiro bugs objetivos. Alterar números de balanceamento somente depois de evidência de playtest.
+Mudanças grandes continuam em blocos pequenos e testáveis. `main` permanece intocada até aprovação explícita.
