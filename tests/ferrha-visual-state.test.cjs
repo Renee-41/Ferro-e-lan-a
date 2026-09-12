@@ -45,6 +45,14 @@ test('stop settles to idle and teleport never advances gait',()=>{
 test('controller does not mutate combat snapshots',()=>{
   const u=Object.freeze(unit()),c=new Controller(u);assert.doesNotThrow(()=>tick(c,u,{attack:{start:100}}));
 });
+
+test('turn accelerates smoothly and pause freezes angular momentum',()=>{
+  const u=unit(),c=new Controller(u),target={rx:-1,ry:0};
+  tick(c,u,{target});const velocity=c.yawVelocity,yaw=c.yaw;
+  assert.ok(Math.abs(velocity)>0&&Math.abs(velocity)<10);
+  tick(c,u,{target},0);assert.equal(c.yaw,yaw);assert.equal(c.yawVelocity,velocity);
+  tick(c,u,{target});assert.ok(Math.abs(c.yawVelocity)>Math.abs(velocity));
+});
 test('preparation follows the existing timer, contact follows the actual attack event',()=>{
   const u=unit(),c=new Controller(u),target={id:2,rx:1,ry:0};u.actionTimer=120;
   tick(c,u,{target,anticipate:true});assert.equal(c.preparing,true);assert.equal(c.attackIndex,0);

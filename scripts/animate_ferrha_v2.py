@@ -1,6 +1,12 @@
 """Author animation v2 on the existing 26-bone rig. Existing topology/skin preserved; tactical proportions refined.
 Temporary IK constraints are baked into FK keys and removed before export.
 Original Ferrha.blend and Ferrha.glb remain the playable v1 baseline.
+
+Key-pose references (principles adapted to the short chibi reach, not copied sequences):
+https://www.wiktenauer.com/wiki/Fiore_de%27i_Liberi/Spear -- guard, offline beat, thrust.
+https://www.selohaar.org/CW2010/The_Spear_of_Fiore_dei_Liberi.pdf -- weight transfer, lateral beat.
+https://www.thearma.org/Manuals/Swetnam_Modernized_ARMA.pdf -- low guard and recovery, pp. 171-177.
+Hit and side collapse are original stylized reactions, not historical demonstrations.
 """
 from pathlib import Path
 import bpy,math,json,hashlib
@@ -26,7 +32,8 @@ for obj in scene.objects:
         for v in obj.data.vertices:
             old=v.co.copy();weight=next((g.weight for g in v.groups if head and g.group==head.index),0)
             v.co=Vector((old.x,old.y,body_z(old.z))).lerp(head_point(old),weight)
-            if obj.name=='Hair' and v.co.y>.20:v.co.y=.20+(v.co.y-.20)*.4
+            # Preserve the rear cap and four braid links outside the helmet.
+            # Floor contact belongs to the death pose, never to hair compression.
 bpy.context.view_layer.objects.active=rig;bpy.ops.object.mode_set(mode='EDIT')
 for b in rig.data.edit_bones:
     for attr in ['head','tail']:
@@ -54,25 +61,48 @@ for suf in ['L','R']:
     c.use_tail=True
     c=rig.pose.bones['Foot.'+suf].constraints.new('COPY_ROTATION');c.target=t
 sp=bpy.data.objects.new('Bake_spear',None);scene.collection.objects.link(sp);temporary.append(sp)
-sp.rotation_mode='QUATERNION';c=rig.pose.bones['Spear'].constraints.new('COPY_ROTATION');c.target=sp
-def spear(pitch=.18,roll=-.10,twist=0):sp.rotation_quaternion=Euler((pitch,roll,twist)).to_quaternion()@rest['Spear'].to_quaternion()
+sp.rotation_mode='QUATERNION';c=rig.pose.bones['Spear'].constraints.new('COPY_TRANSFORMS');c.target=sp
+hands={}
+for suf in ['R','L']:
+    h=bpy.data.objects.new('Bake_hand_'+suf,None);scene.collection.objects.link(h);temporary.append(h);hands[suf]=h
+    h.rotation_mode='QUATERNION'
+    c=rig.pose.bones['Forearm.'+suf].constraints.new('IK');c.target=h;c.chain_count=2;c.use_tail=True
+    c=rig.pose.bones['Hand.'+suf].constraints.new('COPY_ROTATION');c.target=h
+
+def weapon(grip,direction,second=False):
+    # Solve the wrist from the grip, not the other way around: no detached hand or sliding shaft.
+    q=Vector((0,0,1)).rotation_difference(Vector(direction).normalized())
+    sp.location=grip;sp.rotation_quaternion=q@rest['Spear'].to_quaternion()
+    hands['R'].location=Vector(grip)+q@Vector((.078,.025,.00216))
+    hands['R'].rotation_quaternion=q@rest['Hand.R'].to_quaternion()
+    hands['L'].location=(Vector(grip)+q@Vector((-.078,.025,.42216))) if second else Vector((.33,-.22,.68))
+    hands['L'].rotation_quaternion=q@rest['Hand.L'].to_quaternion() if second else rest['Hand.L'].to_quaternion()
+
+def smooth(x):
+    x=max(0,min(1,x));return x*x*(3-2*x)
+
+def key(t,poses):
+    for (a,p),(b,q) in zip(poses,poses[1:]):
+        if t<=b:return Vector(p).lerp(Vector(q),smooth((t-a)/(b-a)))
+    return Vector(poses[-1][1])
 def guard(t):
-    reset();offset('Hips',(.005*math.sin(t*2*math.pi),0,-.025+.003*math.sin(t*2*math.pi)))
-    rot('Spine',(.035+.008*math.sin(t*2*math.pi),.008*math.sin(t*2*math.pi),0))
-    rot('Head',(-.018,0,.012*math.sin(t*2*math.pi)))
+    reset();breath=math.sin(t*2*math.pi)
+    offset('Hips',(-.012,.012,-.037+.003*breath))
+    rot('Spine',(.055+.010*breath,-.015,.09));rot('Head',(-.035,0,-.09))
     for s,suf in [(1,'L'),(-1,'R')]:
         rot('UpperArm.'+suf,(-.16,s*.34,0));rot('Forearm.'+suf,(-.28,0,0))
         rot('Thigh.'+suf,(-.1,0,0));rot('Shin.'+suf,(.18,0,0))
-        targets[suf].location=(s*.132,-.025 if suf=='L' else .025,.073)
-    spear(.20+.012*math.sin(t*2*math.pi),-.12)
+        targets[suf].location=(s*.145,-.060 if suf=='L' else .055,.073)
+    weapon((-.37,-.18,.65+.003*breath),(.20,-.52,.83))
     for i in range(1,7):
         offset(f'Magnet.{i:02d}',(.005*math.cos(t*2*math.pi+i),0,.010*math.sin(t*2*math.pi+i*.7)))
         rot(f'Magnet.{i:02d}',(0,.025*math.sin(t*2*math.pi+i),0))
 def walk(t):
     guard(0);a=2*math.pi*t
-    offset('Hips',(.018*math.cos(a),0,-.029+.006*math.cos(2*a)))
-    rot('Hips',(0,.023*math.cos(a),.025*math.sin(a)))
-    rot('Spine',(.06,-.018*math.cos(a),-.028*math.sin(a)))
+    offset('Hips',(.020*math.cos(a),0,-.037+.008*math.cos(2*a)))
+    rot('Hips',(0,.033*math.cos(a),.04*math.sin(a)))
+    rot('Spine',(.075,-.027*math.cos(a),.09-.04*math.sin(a)))
+    rot('Head',(-.045,0,-.09+.02*math.sin(a)))
     for s,suf in [(1,'L'),(-1,'R')]:
         phase=(t+(0 if suf=='L' else .5))%1
         # Stance foot travels backwards at constant rate; swing foot lifts on its return.
@@ -81,33 +111,57 @@ def walk(t):
             u=(phase-.5)*2;y=.10-.20*(u*u*(3-2*u));lift=.058*math.sin(math.pi*u)**1.3
         targets[suf].location=(s*.132,y,.073+lift)
         rot('UpperArm.'+suf,(-.16+s*.12*math.sin(a),s*.34,0))
-    spear(.20+.045*math.sin(a+.35),-.12+.025*math.cos(a))
+    weapon((-.37+.01*math.cos(a),-.18+.016*math.sin(a),.65+.008*math.cos(2*a)),(.20,-.52+.02*math.sin(a+.3),.83))
+    hands['L'].location.y+=.04*math.sin(a)
     for i in range(1,7):offset(f'Magnet.{i:02d}',(.012*math.cos(a+i),.009*math.sin(a+i),.013*math.sin(a+.8+i*.4)))
 def pulse(t,a,b,c):
     if t<a or t>c:return 0
     u=(t-a)/(b-a) if t<b else (c-t)/(c-b)
     return u*u*(3-2*u)
 def attack(t,kind):
-    guard(0);v=pulse(t,.08,.40,.96);wind=pulse(t,0,.18,.38)
-    heavy=kind==2
-    offset('Hips',(0,.018*wind-(.073 if heavy else .026)*v,-.025-(.030 if heavy else .018)*wind))
-    rot('Spine',(.04+(.18 if heavy else .13)*v,0,(-.42 if kind==1 else -.09)*v+.06*wind))
-    rot('UpperArm.R',(-.16+.12*wind-.65*v,.05 if heavy else -.14,-.16*v))
-    rot('Forearm.R',(-.28-.20*v,0,-.10*v))
-    spear(.2+(1.32 if heavy else 1.20)*v-.18*wind,-.12,(.65 if kind==1 else .03)*math.sin(t*math.pi)*v)
-    targets['L'].location.y=-.025-(.075 if heavy else .04)*v
-    targets['L'].location.z=.073+.025*math.sin(math.pi*t)*v
-    for i in range(1,7):offset(f'Magnet.{i:02d}',(0,.023*v,.018*math.sin(t*math.pi)))
+    guard(0)
+    # Fiore: point on line, extension supported by weight transfer; beat across the line for B.
+    # Contact stays at 40% to match the combat event adapter. A/C retract along their thrust line.
+    g=(-.37,-.18,.65);d=(.20,-.52,.83)
+    if kind==0:
+        grip=key(t,[(0,g),(.22,(-.38,-.10,.71)),(.40,(-.32,-.40,.72)),(.48,(-.32,-.40,.72)),(.70,(-.38,-.15,.71)),(1,g)])
+        direction=key(t,[(0,d),(.20,(.02,-1,.05)),(.70,(.02,-1,.05)),(1,d)])
+        drive=pulse(t,.22,.40,.90);wind=pulse(t,0,.22,.40)
+        offset('Hips',(-.012,.025*wind-.032*drive,-.037-.01*wind))
+        rot('Spine',(.055+.10*drive,0,.09+.10*wind-.18*drive))
+    elif kind==1:
+        grip=key(t,[(0,g),(.25,(-.38,-.25,.73)),(.40,(-.22,-.34,.73)),(.55,(-.16,-.31,.72)),(.78,(-.30,-.28,.67)),(1,g)])
+        direction=key(t,[(0,d),(.25,(-.85,-.52,.08)),(.40,(.15,-1,.08)),(.55,(.82,-.57,.09)),(.78,(.35,-.75,.35)),(1,d)])
+        turn=key(t,[(0,(0,0,.09)),(.25,(.03,0,.36)),(.55,(.10,0,-.38)),(.78,(.04,0,-.14)),(1,(0,0,.09))])
+        rot('Spine',turn);rot('Hips',(0,0,turn.z*.22));rot('Head',(-.025,0,-turn.z*.4))
+        drive=pulse(t,.25,.50,.94);wind=pulse(t,0,.25,.45)
+        offset('Hips',(.027*math.sin(turn.z*3),0,-.037-.013*drive))
+    else:
+        grip=key(t,[(0,g),(.29,(-.40,-.08,.76)),(.40,(-.27,-.47,.74)),(.53,(-.27,-.47,.74)),(.82,(-.37,-.18,.69)),(1,g)])
+        direction=key(t,[(0,d),(.24,(.02,-1,.08)),(.72,(.02,-1,.04)),(1,d)])
+        drive=pulse(t,.29,.40,.96);wind=pulse(t,0,.29,.40)
+        offset('Hips',(-.012,.040*wind-.090*drive,-.037-.048*wind-.020*drive))
+        rot('Spine',(.055-.04*wind+.22*drive,0,.09+.20*wind-.22*drive))
+        step=key(t,[(0,(.145,-.06,.073)),(.29,(.145,-.07,.12)),(.40,(.145,-.18,.073)),(.66,(.145,-.18,.073)),(.83,(.145,-.10,.105)),(1,(.145,-.06,.073))])
+        targets['L'].location=step
+    weapon(grip,direction)
+    hands['L'].location=(.31,-.24-.055*drive,.68+.055*wind)
+    for i in range(1,7):
+        lag=pulse(t,.30,.49,.95)
+        offset(f'Magnet.{i:02d}',((-.025 if kind==1 else 0)*lag,.038*lag,.025*wind))
 def hit(t):
-    guard(0);v=pulse(t,0,.23,1);rot('Spine',(.035-.17*v,0,.035*v));rot('Head',(.05*v,0,0))
+    guard(0);v=pulse(t,0,.20,.76);settle=pulse(t,.35,.65,1)
+    rot('Spine',(.055-.23*v+.035*settle,-.035*v,.09+.055*v));rot('Head',(-.035+.13*v-.025*settle,0,-.09))
 def barrier(t):
-    guard(0);v=min(1,t/.42);v=v*v*(3-2*v)
-    offset('Hips',(0,.018,-.025-.045*v));rot('Spine',(.04+.12*v,0,0));rot('Head',(-.055*v,0,0))
-    rot('UpperArm.L',(-.50*v,.38,-.09));rot('Forearm.L',(-.38*v,0,.12*v));spear(.07,-.10)
+    guard(0);v=smooth(t/.54);brace=pulse(t,.30,.52,.80)
+    offset('Hips',(-.012,.012+.024*v,-.037-.053*v-.012*brace));rot('Spine',(.055+.11*v,0,.09*(1-v)));rot('Head',(-.035-.05*v,0,-.09*(1-v)))
+    weapon(Vector((-.37,-.18,.65)).lerp(Vector((-.22,-.29,.76)),v),Vector((.20,-.52,.83)).lerp(Vector((.97,-.10,.22)),v),True)
+    # Reach the front grip progressively instead of snapping the free hand onto the shaft.
+    hands['L'].location=Vector((.33,-.22,.68)).lerp(hands['L'].location,v)
     for i in range(1,7):
         b=rest[f'Magnet.{i:02d}'].translation
         angle=(i-1)*math.pi/3
-        goal=Vector((.62*math.cos(angle),-.45,1.06+.30*math.sin(angle)))
+        goal=Vector((.62*math.cos(angle),-.49-.025*brace,.98+.34*math.sin(angle)))
         stage=max(0,min(1,(t-.045*(i%3))/.44));stage=stage*stage*(3-2*stage)
         offset(f'Magnet.{i:02d}',(goal-b)*stage);rot(f'Magnet.{i:02d}',(0,.18*math.cos(angle)*stage,0))
 def death(t):
@@ -115,10 +169,14 @@ def death(t):
     wobble=pulse(t,.12,.33,.56)
     f=max(0,min(1,(t-.35)/.53));fall=f*f*(3-2*f)-.035*pulse(t,.86,.92,1)
     offset('Hips',(0,0,-.025-.05*wobble));rot('Spine',(-.17*impact+.13*wobble,0,.09*wobble))
-    rot('Root',(-1.46*fall,0,.13*fall));offset('Root',(0,0,.19*fall))
-    spear(.18-.35*wobble+1.12*fall,-.12-.35*fall)
+    # Side collapse keeps the restored braid clear of the floor. No clip owns horizontal facing.
+    rot('Root',(-.10*fall,-1.53*fall,0));offset('Root',(0,.045*wobble,.47*fall))
+    rot('Head',(-.035,-.22*fall,-.09*(1-fall)))
     # FK legs accompany the fall after the support attempt; IK targets descend with Root.
-    rootM=Matrix.Translation((0,0,.19*fall))@Euler((-1.46*fall,0,.13*fall)).to_matrix().to_4x4()
+    rootM=Matrix.Translation((0,.045*wobble,.47*fall))@Euler((-.10*fall,-1.53*fall,0)).to_matrix().to_4x4()
+    weapon(Vector((-.37,-.18,.65)).lerp(Vector((-.19,-.34,.68)),fall),Vector((.20,-.52,.83)).lerp(Vector((.05,-.99,.03)),fall))
+    for o in [sp,*hands.values()]:
+        o.location=rootM@o.location.copy();o.rotation_quaternion=rootM.to_quaternion()@o.rotation_quaternion.copy()
     for s,suf in [(1,'L'),(-1,'R')]:targets[suf].location=rootM@Vector((s*.132,-.025 if suf=='L' else .025,.073))
     for i in range(1,7):
         b=rest[f'Magnet.{i:02d}'].translation
@@ -129,7 +187,7 @@ def death(t):
         offset(f'Magnet.{i:02d}',local-b)
         rot(f'Magnet.{i:02d}',(.9*fall,.3*fall*(-1)**i,.2*fall))
 
-spec=[('Idle',2.4,guard),('Walk',1.,walk),('Attack_A',.64,lambda t:attack(t,0)),('Attack_B',.78,lambda t:attack(t,1)),('Attack_C',.94,lambda t:attack(t,2)),('Hit',.3,hit),('Barrier',.9,barrier),('Death',1.8,death)]
+spec=[('Idle',2.4,guard),('Walk',1.,walk),('Attack_A',.70,lambda t:attack(t,0)),('Attack_B',.90,lambda t:attack(t,1)),('Attack_C',1.10,lambda t:attack(t,2)),('Hit',.3,hit),('Barrier',1.,barrier),('Death',1.8,death)]
 baked={}
 for name,duration,fn in spec:
     samples=[];frames=round(duration*30)
@@ -165,6 +223,6 @@ bpy.ops.export_scene.gltf(filepath=str(OUT/'Ferrha_v2.glb'),export_format='GLB',
 scene.render.resolution_x=640;scene.render.resolution_y=640;scene.cycles.samples=12
 bpy.context.preferences.filepaths.save_version=0
 bpy.ops.wm.save_as_mainfile(filepath=str(OUT/'Ferrha_v2.blend'))
-report={'baseline_commit':'fd57f0a2fb797b8736244b3cba4e5e5f7094ee4b','baseline_sha256':{n:hashlib.sha256((OUT/n).read_bytes()).hexdigest() for n in ['Ferrha.glb','Ferrha.blend']},'bones':len(bones),'triangles':sum(sum(len(p.vertices)-2 for p in o.data.polygons) for o in meshes),'mesh_changes':'proportion only; topology and weights preserved','head_scale':.85,'compact_braid_for_ground_contact':True,'leg_segment_scale':1.15,'torso_segment_scale':1.08,'rig_structure_changes':False,'walk_stride_m':.4,'clips':{n:d for n,d,fn in spec},'temporary_ik_baked_and_removed':True}
+report={'baseline_commit':'fd57f0a2fb797b8736244b3cba4e5e5f7094ee4b','baseline_sha256':{n:hashlib.sha256((OUT/n).read_bytes()).hexdigest() for n in ['Ferrha.glb','Ferrha.blend']},'bones':len(bones),'triangles':sum(sum(len(p.vertices)-2 for p in o.data.polygons) for o in meshes),'mesh_changes':'rear hair restored; topology and weights preserved','head_scale':.85,'compact_braid_for_ground_contact':False,'leg_segment_scale':1.15,'torso_segment_scale':1.08,'rig_structure_changes':False,'walk_stride_m':.4,'clips':{n:d for n,d,fn in spec},'temporary_ik_baked_and_removed':True}
 (OUT/'animation_v2.json').write_text(json.dumps(report,indent=2),encoding='utf-8')
 print(json.dumps(report),flush=True)
