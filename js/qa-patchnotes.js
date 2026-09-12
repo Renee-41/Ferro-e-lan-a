@@ -18,7 +18,7 @@
   const dot=document.getElementById('patchnotes-dot');
   if(!panel) return;
 
-  const READ_KEY='ferroLancaNotesReadQaGameplayPolishV1Raio30';
+  const READ_KEY='ferroLancaNotesReadQaGameplayPolishV1StarterUi';
   const section=document.createElement('div');
   section.id='qa-gameplay-polish-notes';
   section.style.cssText='margin:0 0 18px;padding:12px;border:1px solid rgba(232,194,80,.38);border-radius:8px;background:rgba(232,194,80,.06);';
@@ -30,6 +30,7 @@
     <div class="subtitle" style="margin:0 0 10px;">Reworks e alterações desta versão de teste:</div>
     <ul style="margin-top:0;">
       <li><strong>Classes oficiais e vantagem de classe:</strong> Atirador vence Tanque, Tanque vence Lutador e Lutador vence Atirador. Lutadores também passam a buscar melhor a backline inimiga.</li>
+      <li><strong>Escolha inicial mais clara:</strong> os cards iniciais agora mostram a classe oficial do personagem; a confirmação deixa de exibir três slots vazios e remove a mensagem de “1 a 3”, deixando claro que a run começa com uma única unidade.</li>
       <li><strong>Progressão de estrelas:</strong> 1★→2★ exige 2 cópias, 2★→3★ exige 3 e 3★→4★ exige 4.</li>
       <li><strong>Shava rework:</strong> ganhou mais sobrevivência e, após o Golpe Aéreo, entra em Embalo com cura, resistência temporária e sustentação ofensiva.</li>
       <li><strong>Nerith:</strong> tentáculos agora herdam parte dos bônus de dano, velocidade e vida dos itens equipados nela.</li>
