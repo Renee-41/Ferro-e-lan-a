@@ -37,9 +37,9 @@ const server=http.createServer((req,res)=>{
     for(const [keys,yaw] of [[['d'],Math.PI/2],[['a'],-Math.PI/2],[['w'],Math.PI],[['s'],0],[['d','w'],Math.PI*.75],[['a','w'],-Math.PI*.75],[['d','s'],Math.PI*.25],[['a','s'],-Math.PI*.25]]){
       const before=await page.evaluate(()=>FerroLab.debug().position);
       for(const key of keys)await page.keyboard.down(key);
-      await new Promise(r=>setTimeout(r,420));
-      for(const key of keys)await page.keyboard.up(key);
-      const v=await page.evaluate(()=>FerroLab.debug());assert.notDeepEqual(before,v.position);
+      await page.waitForFunction(yaw=>{const v=FerroLab.debug();return v.base==='move'&&Math.abs(Math.atan2(Math.sin(v.yaw-yaw),Math.cos(v.yaw-yaw)))<.08;},yaw,{timeout:4000});
+      const v=await page.evaluate(()=>FerroLab.debug());
+      for(const key of keys)await page.keyboard.up(key);assert.notDeepEqual(before,v.position);
       assert.ok(Math.abs(Math.atan2(Math.sin(v.yaw-yaw),Math.cos(v.yaw-yaw)))<.15);headings.push(keys.join('+'));
     }
     const timing=[];
@@ -71,7 +71,7 @@ const server=http.createServer((req,res)=>{
     await page.getByRole('button',{name:'Attack_A',exact:true}).click();assert.equal(await page.evaluate(()=>FerroLab.debug().state),'death');
     await page.getByRole('button',{name:'Idle',exact:true}).click();await page.waitForFunction(()=>FerroLab.debug().state==='idle');
     await page.locator('#scale').fill('0.9');assert.equal(await page.evaluate(()=>FerroLab.debug().scale),.9);
-    await page.locator('#scale').fill('1');
+    await page.locator('#scale').fill('1');await page.locator('#scale').focus();await page.locator('#scale').press('ArrowLeft');assert.equal(await page.evaluate(()=>FerroLab.debug().scale),.95);await page.locator('#scale').fill('1');
     await new Promise(r=>setTimeout(r,400));await page.screenshot({path:path.join(art,'corrupted-lab-tactical.png')});
     await page.locator('#perspective').click();await new Promise(r=>setTimeout(r,250));await page.screenshot({path:path.join(art,'corrupted-lab-perspective.png')});
     await page.locator('#reset').click();

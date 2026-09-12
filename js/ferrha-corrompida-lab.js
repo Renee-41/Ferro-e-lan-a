@@ -17,7 +17,7 @@ try {
   const camera=new T.PerspectiveCamera(38,innerWidth/innerHeight,.05,150);
   const controls=new OrbitControls(camera,renderer.domElement);controls.enableDamping=true;
   controls.minDistance=3;controls.maxDistance=40;controls.maxPolarAngle=Math.PI*.48;
-  const view=tactical=>{controls.target.set(0,0,0);camera.position.set(tactical?0:10,tactical?17:11,tactical?12:14);controls.update();};
+  const view=tactical=>{controls.target.set(0,0,0);camera.position.set(tactical?0:12,tactical?19:12,tactical?14:16);controls.update();};
   document.getElementById('reset').onclick=()=>view(true);document.getElementById('top').onclick=()=>view(true);
   document.getElementById('perspective').onclick=()=>view(false);view(true);
   const loader=new GLTFLoader();
@@ -36,7 +36,7 @@ try {
   const heightAt=(x,z)=>nearest(x,z).position_gltf[1]-.025;
   holder.position.y=heightAt(0,0);
   const keys=new Set();
-  addEventListener('keydown',e=>{if(['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)){e.preventDefault();keys.add(e.code);walkingDemo=false;}});
+  addEventListener('keydown',e=>{if(e.target.matches?.('input,textarea,select')||e.target.isContentEditable)return;if(['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)){e.preventDefault();keys.add(e.code);walkingDemo=false;}});
   addEventListener('keyup',e=>keys.delete(e.code));addEventListener('blur',()=>keys.clear());
   const applySelection=name=>{
     if(name==='Idle'||name==='Walk'){
@@ -56,7 +56,7 @@ try {
   // Commands queued while paused are applied only when the lab clock resumes.
   const select=name=>{if(speed===0)pending=name;else applySelection(name);};
   const setSpeed=value=>{
-    speed=Number(value);document.querySelectorAll('#speeds button').forEach(b=>b.setAttribute('aria-pressed',Number(b.dataset.speed)===speed));
+    if(![0,.5,1,2].includes(Number(value)))return;speed=Number(value);document.querySelectorAll('#speeds button').forEach(b=>b.setAttribute('aria-pressed',Number(b.dataset.speed)===speed));
   };
   for(const value of [0,.5,1,2]){
     const b=document.createElement('button');b.textContent=value.toFixed(1)+'x';b.dataset.speed=value;
@@ -86,7 +86,7 @@ try {
     const v=ctrl.update({unit,hit,dt,now});holder.rotation.y=v.yaw;impact.rotation.z+=(-v.turnLean+v.hitSide*v.hitWeight*.045-impact.rotation.z)*(1-Math.exp(-dt*18));player.update(v,dt);
     controls.update();renderer.render(scene,camera);
     if(++frames&&t-meter>500){fps=Math.round(frames*1000/(t-meter));frames=0;meter=t;}
-    status.textContent=`${speed.toFixed(1)}x | ${v.state} · ${fps} FPS · ${renderer.info.render.calls} draw calls · ${renderer.info.render.triangles.toLocaleString()} tris · WASD / setas`;
+    status.textContent=`${speed.toFixed(1)}x | ${v.state} · ${fps} FPS · ${renderer.info.render.calls} draw calls · ${renderer.info.render.triangles.toLocaleString()} tris · WASD / setas${pending?" | pendente: "+pending:""}`;
   });
   addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
   window.FerroLab={ready:true,select,setSpeed,debug:()=>({...ctrl.snapshot(),position:holder.position.toArray(),scale:model.scale.x,speed,now,camera:camera.position.toArray(),triangles:renderer.info.render.triangles,weights:{...player.weights},clipTimes:Object.fromEntries(Object.entries(player.actions).map(([k,a])=>[k,a.time])),mixerTime:player.mixer.time,clips:ferrha.animations.map(c=>c.name),calls:renderer.info.render.calls})};
