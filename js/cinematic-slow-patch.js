@@ -1,4 +1,6 @@
-/* Ferro & Lança — QA: leitura longa nas cinematográficas de passiva. */
+/* Ferro & Lança — QA: leitura longa nas cinematográficas de passiva.
+   Exceção: a Voltra usa a timeline base mais curta para que os pulsos/puxões da Sobrecarga
+   continuem visíveis durante a habilidade em vez de acontecerem escondidos num freeze longo. */
 (function(){
   if(window.__ferroCinematicSlowPatchV1) return;
   window.__ferroCinematicSlowPatchV1=true;
@@ -13,6 +15,18 @@
   const HOLD_MS=2550;
   const IMPACT_MS=2700;
   const END_MS=3300;
+
+  function isVoltraScene(){
+    try{
+      const kicker=(overlay.querySelector('.combat-cine-kicker')?.textContent||'').toUpperCase();
+      if(kicker.includes('COLAPSO DE SOBRECARGA')) return true;
+      if(typeof dramaticUnitId!=='undefined' && Array.isArray(units)){
+        const u=units.find(x=>x&&x.id===dramaticUnitId);
+        if(u&&u.champId==='voltra') return true;
+      }
+    }catch(_){ }
+    return false;
+  }
 
   let baseShake=null;
   try{
@@ -85,6 +99,15 @@
     const n=Number(v);
     const abilityActive=!!window.__ferroAbilityCinematicActive;
 
+    // A ult/passiva letal da Voltra já tem 4 pulsos temporizados em tempo real.
+    // Se prolongarmos o freeze por ~2,5s, os primeiros puxões acontecem enquanto o jogo
+    // está congelado e parecem sumir. Para ela, preservamos a cinematográfica base:
+    // frase destacada + freeze curto + retomada em 0.5x enquanto os pulsos continuam visíveis.
+    if(abilityActive&&isVoltraScene()){
+      if(state&&!restoring) state=null;
+      return baseSetSpeed(v);
+    }
+
     if(abilityActive&&!state&&n===0.5){
       state={started:performance.now(),originalSpeed:api.getSpeed()||1,restoreSpeed:null,pendingShake:null};
       overlay.classList.add('show');
@@ -113,6 +136,7 @@
 
   window.FerroCinematicSlowPatch={
     holdMs:HOLD_MS,impactMs:IMPACT_MS,endMs:END_MS,
-    isHolding:()=>!!state
+    isHolding:()=>!!state,
+    voltraUsesBaseTimeline:true
   };
 })();
