@@ -162,6 +162,7 @@
   [
     ['gameplay-reworks','js/gameplay-reworks.js?v=gameplay-reworks-1'],
     ['support-systems','js/support-systems.js?v=support-systems-1'],
+    ['qa-visual-alignment','js/qa-visual-alignment.js?v=qa-visual-alignment-1'],
     ['starter-ui-polish','js/starter-ui-polish.js?v=starter-ui-polish-1'],
     ['qa-ux','js/qa-ux.js?v=qa-ux-1'],
     ['qa-patchnotes','js/qa-patchnotes.js?v=qa-patchnotes-1'],
