@@ -16,11 +16,11 @@
   "clips": {
     "Idle": 2.4,
     "Walk": 1.0,
-    "Attack_A": 0.64,
-    "Attack_B": 0.78,
-    "Attack_C": 0.94,
+    "Attack_A": 0.7,
+    "Attack_B": 0.9,
+    "Attack_C": 1.1,
     "Hit": 0.3,
-    "Barrier": 0.9,
+    "Barrier": 1.0,
     "Death": 1.8
   },
   "temporary_ik_baked_and_removed": true

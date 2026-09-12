@@ -8,13 +8,13 @@
   const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
   const angleDelta=(a,b)=>Math.atan2(Math.sin(b-a),Math.cos(b-a));
   const bearing=(dx,dy)=>Math.atan2(dx,dy);
-  const defaults={idle:2.4,move:1,attack_a:.64,attack_b:.78,attack_c:.94,hit:.3,barrier:.9,death:1.8};
+  const defaults={idle:2.4,move:1,attack_a:.7,attack_b:.9,attack_c:1.1,hit:.3,barrier:1,death:1.8};
   class Controller {
     constructor(u,config={}){
       this.duration={...defaults,...config.duration};
       this.stridePixels=config.stridePixels||8; // 0.4m cycle at 20 SVG units/m.
       this.x=u.rx;this.y=u.ry;this.yaw=u.team==='player'?Math.PI/2:-Math.PI/2;
-      this.desiredYaw=this.yaw;this.speed=0;this.moveWeight=0;this.phase=0;this.turnLean=0;
+      this.desiredYaw=this.yaw;this.yawVelocity=0;this.speed=0;this.moveWeight=0;this.phase=0;this.turnLean=0;
       this.base='idle';this.state='idle';this.sequence=0;this.attackIndex=0;
       this.attackToken=null;this.hitToken=null;this.hitSequence=0;
       this.hitWeight=0;this.hitSide=0;this.hitLeft=0;this.remaining=0;
@@ -45,7 +45,7 @@
       }
       if(!u.alive && !this.dead){this.dead=true;this.enter('death',this.duration.death);this.speed=0;}
       if(this.dead){
-        this.deathAge+=step;this.moveWeight=0;this.hitWeight=0;this.turnLean=0;
+        this.deathAge+=step;this.moveWeight=0;this.hitWeight=0;this.turnLean=0;this.yawVelocity=0;
         this.state='death';return this.snapshot();
       }
       if(barrier && !this.barrierActive){this.enter('barrier',this.duration.barrier);}
@@ -68,7 +68,13 @@
         if(Math.hypot(tx,ty)>.05)this.desiredYaw=bearing(tx,ty);
       }
       const difference=angleDelta(this.yaw,this.desiredYaw);
-      this.yaw+=clamp(difference*(1-Math.exp(-step*18)),-step*12,step*12);
+      // Accelerate into a turn and brake near the target; all in simulation seconds.
+      const desiredVelocity=clamp(difference*18,-10,10);
+      this.yawVelocity+=(desiredVelocity-this.yawVelocity)*(1-Math.exp(-step*24));
+      const turn=this.yawVelocity*step;
+      if(Math.sign(turn)===Math.sign(difference)&&Math.abs(turn)>Math.abs(difference)){
+        this.yaw=this.desiredYaw;this.yawVelocity=0;
+      }else this.yaw+=turn;
       this.yaw=Math.atan2(Math.sin(this.yaw),Math.cos(this.yaw));
       this.turnLean+=(clamp(difference,-1,1)*Math.min(this.speed/25,1)*.035-this.turnLean)*(1-Math.exp(-step*12));
       const weightTarget=(!locked && moving)?clamp(this.speed/6,0,1):0;
