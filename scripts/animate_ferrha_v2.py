@@ -26,7 +26,8 @@ for obj in scene.objects:
         for v in obj.data.vertices:
             old=v.co.copy();weight=next((g.weight for g in v.groups if head and g.group==head.index),0)
             v.co=Vector((old.x,old.y,body_z(old.z))).lerp(head_point(old),weight)
-            if obj.name=='Hair' and v.co.y>.20:v.co.y=.20+(v.co.y-.20)*.4
+            # Preserve the rear cap and four braid links outside the helmet.
+            # Floor contact belongs to the death pose, never to hair compression.
 bpy.context.view_layer.objects.active=rig;bpy.ops.object.mode_set(mode='EDIT')
 for b in rig.data.edit_bones:
     for attr in ['head','tail']:
@@ -165,6 +166,6 @@ bpy.ops.export_scene.gltf(filepath=str(OUT/'Ferrha_v2.glb'),export_format='GLB',
 scene.render.resolution_x=640;scene.render.resolution_y=640;scene.cycles.samples=12
 bpy.context.preferences.filepaths.save_version=0
 bpy.ops.wm.save_as_mainfile(filepath=str(OUT/'Ferrha_v2.blend'))
-report={'baseline_commit':'fd57f0a2fb797b8736244b3cba4e5e5f7094ee4b','baseline_sha256':{n:hashlib.sha256((OUT/n).read_bytes()).hexdigest() for n in ['Ferrha.glb','Ferrha.blend']},'bones':len(bones),'triangles':sum(sum(len(p.vertices)-2 for p in o.data.polygons) for o in meshes),'mesh_changes':'proportion only; topology and weights preserved','head_scale':.85,'compact_braid_for_ground_contact':True,'leg_segment_scale':1.15,'torso_segment_scale':1.08,'rig_structure_changes':False,'walk_stride_m':.4,'clips':{n:d for n,d,fn in spec},'temporary_ik_baked_and_removed':True}
+report={'baseline_commit':'fd57f0a2fb797b8736244b3cba4e5e5f7094ee4b','baseline_sha256':{n:hashlib.sha256((OUT/n).read_bytes()).hexdigest() for n in ['Ferrha.glb','Ferrha.blend']},'bones':len(bones),'triangles':sum(sum(len(p.vertices)-2 for p in o.data.polygons) for o in meshes),'mesh_changes':'rear hair restored; topology and weights preserved','head_scale':.85,'compact_braid_for_ground_contact':False,'leg_segment_scale':1.15,'torso_segment_scale':1.08,'rig_structure_changes':False,'walk_stride_m':.4,'clips':{n:d for n,d,fn in spec},'temporary_ik_baked_and_removed':True}
 (OUT/'animation_v2.json').write_text(json.dumps(report,indent=2),encoding='utf-8')
 print(json.dumps(report),flush=True)
