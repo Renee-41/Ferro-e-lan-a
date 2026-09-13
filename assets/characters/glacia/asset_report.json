@@ -4,7 +4,7 @@
   "element": "Agua / Gelo",
   "base_branch": "main",
   "base_commit": "b0b69128a84c994643234f5c106e1532a039c5e3",
-  "triangles": 21308,
+  "triangles": 22030,
   "mesh_objects": 5,
   "meshes": [
     "Scepter",
@@ -52,7 +52,7 @@
   "validation": {
     "blender_and_glb": "PASS",
     "glb_reimport": "PASS",
-    "triangles": 21308,
+    "triangles": 22030,
     "max_weights_per_vertex": 2,
     "scepter_grip_error_m": 1.6971804841223249e-07,
     "fx_socket_follow": "PASS",

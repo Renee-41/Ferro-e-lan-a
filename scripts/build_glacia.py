@@ -169,7 +169,14 @@ for sign,suf in [(-1,'R'),(1,'L')]:
     rod('Flowing cuff.'+suf,b,(sign*.525,-.008,.584),.09,iceblue,'Forearm.'+suf,20,r2=.115)
     rod('Cuff silver hem.'+suf,(sign*.508,-.007,.596),(sign*.528,-.008,.581),.112,silver,'Forearm.'+suf,16,r2=.114)
     rod('Wrist.'+suf,(sign*.518,-.008,.59),c,.060,skin,'Forearm.'+suf,16,r2=.048)
-    ball('Hand.'+suf,(sign*.622,-.017,.518),(.073,.069,.064),skin,'Hand.'+suf,26,18,.8)
+    if suf=='R':ball('Hand.R',(-.622,-.017,.518),(.073,.069,.064),skin,'Hand.R',26,18,.8)
+    else:
+        # An open offering palm reads as a healer, not a second striking fist.
+        ball('Open palm',(.625,-.025,.525),(.050,.028,.055),skin,'Hand.L',26,18,.85)
+        for i,(z,length) in enumerate([(.488,.042),(.523,.055),(.557,.045)]):
+            rod('Relaxed finger.'+str(i),(.654,-.025,z),(.654+length,-.023,z+.009),.014,skin,'Hand.L',12,r2=.012)
+            ball('Fingertip.'+str(i),(.654+length,-.023,z+.009),(.013,.013,.014),skin,'Hand.L',16,10)
+        rod('Open thumb',(.606,-.025,.561),(.617,-.025,.594),.018,skin,'Hand.L',12,r2=.015)
     rod('Trouser leg.'+suf,(sign*.118,0,.43),(sign*.126,0,.264),.091,cyan,'Thigh.'+suf,20,r2=.074)
     rod('Soft boot.'+suf,(sign*.128,0,.081),(sign*.126,0,.275),.083,ivory,'Shin.'+suf,16,r2=.086)
     box('Shoe.'+suf,(sign*.128,-.053,.07),(.182,.248,.14),iceblue,'Foot.'+suf,.024)
