@@ -1,0 +1,65 @@
+{
+  "name": "Glacia",
+  "class": "Suporte",
+  "element": "Agua / Gelo",
+  "base_branch": "main",
+  "base_commit": "b0b69128a84c994643234f5c106e1532a039c5e3",
+  "triangles": 21308,
+  "mesh_objects": 5,
+  "meshes": [
+    "Scepter",
+    "IceCrystal",
+    "Hair",
+    "Robes",
+    "Glacia_Body"
+  ],
+  "bones": 23,
+  "materials": 1,
+  "texture_resolution": 1024,
+  "texture_maps": [
+    "BaseColor",
+    "Normal",
+    "Roughness",
+    "Metallic",
+    "ORM",
+    "Emission"
+  ],
+  "normal_map": "Neutral tangent-space; large forms modeled",
+  "unit": "metre",
+  "root_pivot": [
+    0,
+    0,
+    0
+  ],
+  "rest_pose": "A-pose",
+  "head_height_m": 0.708,
+  "height_m": 1.55,
+  "weapon": "Scepter",
+  "weapon_origin": "right hand grip centre",
+  "fx_sockets": [
+    "CrystalFocus",
+    "HealPalm"
+  ],
+  "fx_status": "Attachment bones and subtle crystal emission provided; no gameplay particle effects included",
+  "clips": [
+    "Idle",
+    "Blessing_Test",
+    "Release_Test"
+  ],
+  "animation_status": "Starter idle/blessing/release inspection clips, not a full gameplay set",
+  "rig": "23-bone FK humanoid, blended elbows/waist/robe hem; separate focus; no cloth simulation or facial rig",
+  "visual_reference": "Refined Ferrha tactical family; original calm ice/water healer",
+  "validation": {
+    "blender_and_glb": "PASS",
+    "glb_reimport": "PASS",
+    "triangles": 21308,
+    "max_weights_per_vertex": 2,
+    "scepter_grip_error_m": 1.6971804841223249e-07,
+    "fx_socket_follow": "PASS",
+    "floor_min_m": -2.707791768585821e-09,
+    "embedded_textures": 4,
+    "uv_bounds": "0..1",
+    "preview_stage_excluded": true,
+    "all_vertices_weighted": true
+  }
+}
