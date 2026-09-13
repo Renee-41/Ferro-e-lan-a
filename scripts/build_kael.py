@@ -143,7 +143,8 @@ for j in range(rows+1):
     for i in range(n):
         a=2*math.pi*i/n;end=1.22 if math.sin(a)<-.3 else 1.85
         theta=.018+(end-.018)*j/rows
-        verts.append((.373*math.sin(theta)*math.cos(a),.292*math.sin(theta)*math.sin(a),1.21+.36*math.cos(theta)))
+        spow=lambda v:math.copysign(abs(v)**.82,v)
+        verts.append((.380*spow(math.sin(theta))*spow(math.cos(a)),.294*spow(math.sin(theta))*spow(math.sin(a)),1.21+.365*spow(math.cos(theta))))
 for j in range(rows):
     for i in range(n):
         a=j*n+i;b=j*n+(i+1)%n;faces.append((a,b,b+n,a+n))

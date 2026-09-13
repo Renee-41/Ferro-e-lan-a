@@ -47,5 +47,15 @@
   "rig": "21-bone FK humanoid; blended waist/elbows; rigid accessories; mitten hands",
   "visual_reference": "Refined Ferrha proportions and material family; original Kael design, dual-axe offensive archetype requested by user",
   "reference_url": "https://www.leagueoflegends.com/en-us/champions/olaf/",
-  "validation": {}
+  "validation": {
+    "blender_and_glb": "PASS",
+    "glb_reimport": "PASS",
+    "triangles": 19250,
+    "max_weights_per_vertex": 2,
+    "max_axe_grip_error_m": 0,
+    "embedded_textures": 4,
+    "uv_bounds": "0..1",
+    "preview_stage_excluded": true,
+    "all_vertices_weighted": true
+  }
 }
