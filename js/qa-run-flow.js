@@ -24,7 +24,7 @@
   document.head.appendChild(style);
 
   function visible(el){
-    if(!el || el.disabled) return false;
+    if(!el) return false;
     const s=getComputedStyle(el);
     return s.display!=='none' && s.visibility!=='hidden' && el.getClientRects().length>0;
   }
@@ -77,10 +77,12 @@
   floatActions.addEventListener('click',e=>{
     const proxy=e.target.closest('[data-qa-proxy]'); if(!proxy)return;
     const original=buttonByText(proxy.dataset.qaProxy==='confirm'?'CONFIRMAR POSIÇÕES':'POSIÇÕES PADRÃO');
-    if(original) original.click();
+    if(original && !original.disabled) original.click();
   });
   function syncFloatingActions(){
     const confirm=buttonByText('CONFIRMAR POSIÇÕES');
+    const proxyConfirm=floatActions.querySelector('[data-qa-proxy="confirm"]');
+    if(proxyConfirm) proxyConfirm.disabled=!!(confirm&&confirm.disabled);
     floatActions.classList.toggle('show',!!confirm && !autoRounds);
   }
 
@@ -115,10 +117,10 @@
     const confirm=buttonByText('CONFIRMAR POSIÇÕES');
     const defaults=buttonByText('POSIÇÕES PADRÃO');
     let target=null;
-    if(skip) target=skip;
+    if(skip && !skip.disabled) target=skip;
     else if(confirm){
-      if(confirm.disabled && defaults) target=defaults;
-      else target=confirm;
+      if(confirm.disabled && defaults && !defaults.disabled) target=defaults;
+      else if(!confirm.disabled) target=confirm;
     }
     if(!target) return;
     autoBusy=true;
@@ -164,7 +166,16 @@
 
   window.FerroQaRunFlow={
     getAuto:()=>autoRounds,
-    setAuto(v){autoRounds=!!v;try{localStorage.setItem(AUTO_KEY,autoRounds?'1':'0');}catch(_){ } if(autoBtn){autoBtn.textContent=autoRounds?'AUTO ✓':'AUTO';autoBtn.classList.toggle('on',autoRounds);} },
+    setAuto(v){
+      autoRounds=!!v;
+      try{localStorage.setItem(AUTO_KEY,autoRounds?'1':'0');}catch(_){ }
+      if(autoBtn){
+        autoBtn.textContent=autoRounds?'AUTO ✓':'AUTO';
+        autoBtn.classList.toggle('on',autoRounds);
+        autoBtn.setAttribute('aria-pressed',autoRounds?'true':'false');
+      }
+      syncFloatingActions();
+    },
     restoreInventorySelling,
     enforceMeleeTentacles
   };
