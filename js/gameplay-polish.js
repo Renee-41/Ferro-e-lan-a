@@ -69,9 +69,9 @@
 
   function copiesNeededForNextStar(stars){
     const s=Math.max(1,Number(stars)||1);
-    if(s<=1) return 2;
-    if(s===2) return 3;
-    return 4;
+    if(s<=1) return 3;
+    if(s===2) return 5;
+    return 7;
   }
   window.FerroCopiesNeededForNextStar=copiesNeededForNextStar;
 
@@ -165,7 +165,8 @@
     ['qa-visual-alignment','js/qa-visual-alignment.js?v=qa-visual-alignment-1'],
     ['starter-ui-polish','js/starter-ui-polish.js?v=starter-ui-polish-1'],
     ['qa-ux','js/qa-ux.js?v=qa-ux-1'],
-    ['qa-patchnotes','js/qa-patchnotes.js?v=qa-patchnotes-1'],
+    ['qa-run-flow','js/qa-run-flow.js?v=qa-run-flow-1'],
+    ['qa-patchnotes','js/qa-patchnotes.js?v=qa-patchnotes-2'],
     ['cinematic-slow-patch','js/cinematic-slow-patch.js?v=cinematic-slow-1']
   ].forEach(([key,src])=>{
     if(document.querySelector(`script[data-ferro-module="${key}"]`)) return;
