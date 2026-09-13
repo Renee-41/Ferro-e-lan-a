@@ -44,3 +44,4 @@ assert len(imported)==4 and any(o.type=='ARMATURE' and len(o.data.bones)==21 for
 report=json.loads((out/'asset_report.json').read_text(encoding='utf-8'))
 report['validation']={'blender_and_glb':'PASS','glb_reimport':'PASS','triangles':triangles,'max_weights_per_vertex':max_weights,'right_grip_error_m':grip_error,'left_aim_grip_error_m':support_error,'embedded_textures':len(gltf['images']),'uv_bounds':'0..1','preview_stage_excluded':True,'all_vertices_weighted':True}
 (out/'asset_report.json').write_text(json.dumps(report,indent=2,ensure_ascii=False),encoding='utf-8');print(json.dumps(report['validation']),flush=True)
+__import__('sys').stdout.flush();__import__('sys').stderr.flush();__import__('os')._exit(0)

@@ -4,7 +4,7 @@
   "element": "Agua",
   "base_branch": "main",
   "base_commit": "b0b69128a84c994643234f5c106e1532a039c5e3",
-  "triangles": 21892,
+  "triangles": 21922,
   "mesh_objects": 4,
   "meshes": [
     "HarpoonCrossbow",
@@ -44,5 +44,16 @@
   "animation_status": "Starter aim/recoil inspection clips, not a full gameplay animation set",
   "rig": "21-bone FK humanoid, temporary arm IK baked and removed, blended elbows/waist, rigid weapon and mantle",
   "visual_reference": "Refined Ferrha tactical family; original maritime explorer and ocean hunter",
-  "validation": {}
+  "validation": {
+    "blender_and_glb": "PASS",
+    "glb_reimport": "PASS",
+    "triangles": 21922,
+    "max_weights_per_vertex": 2,
+    "right_grip_error_m": 0.0008589737677346633,
+    "left_aim_grip_error_m": 1.4904179304664901e-05,
+    "embedded_textures": 4,
+    "uv_bounds": "0..1",
+    "preview_stage_excluded": true,
+    "all_vertices_weighted": true
+  }
 }

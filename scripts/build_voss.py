@@ -148,6 +148,7 @@ for j in range(rows+1):
 for j in range(rows):
     for i in range(n):
         a=j*n+i;b=j*n+(i+1)%n;faces.append((a,b,b+n,a+n))
+faces.append(tuple(range(n-1,-1,-1)))
 m=bpy.data.meshes.new('Swept hair cap');m.from_pydata(verts,[],faces);m.update();o=bpy.data.objects.new('Swept hair cap',m);scene.collection.objects.link(o);finish(o,o.name,hair,'Head',True);hairparts.append(o)
 for name,outline,y,depth in [
     ('Swept forelock',[(-.30,1.36),(-.22,1.48),(.08,1.56),(.27,1.49),(.12,1.45),(-.20,1.30)],-.252,.11),
@@ -222,6 +223,11 @@ for o in parts:
     bpy.ops.object.select_all(action='DESELECT');o.select_set(True);bpy.context.view_layer.objects.active=o
     bpy.ops.object.transform_apply(location=True,rotation=True,scale=True)
 # VOSS_ATLAS
+import bmesh
+for o in parts:
+    bm=bmesh.new();bm.from_mesh(o.data)
+    bmesh.ops.triangulate(bm,faces=[f for f in bm.faces if len(f.verts)>4])
+    bm.to_mesh(o.data);bm.free()
 # Unwrap together to allocate unique, non-overlapping islands for a shared 1K atlas.
 print('Unwrapping',len(parts),'meshes',flush=True)
 bpy.ops.object.select_all(action='DESELECT')
@@ -349,7 +355,7 @@ def rotate(name,xyz):
 def smooth(t):t=max(0,min(1,t));return t*t*(3-2*t)
 def pose(aim,breath=0,recoil=0):
     reset();q=Euler((.04*aim,0,.70*aim)).to_quaternion()
-    position=grip.lerp(Vector((-.18,-.17,.67)),aim)+q@Vector((0,.032*recoil,.002*breath))
+    position=grip.lerp(Vector((-.17,-.14,.67)),aim)+q@Vector((0,.032*recoil,.002*breath))
     sp.location=position;sp.rotation_quaternion=q@rest[weaponbone].to_quaternion()
     hands['R'].location=position+q@Vector((.067,.014,.029));hands['R'].rotation_quaternion=q@rest['Hand.R'].to_quaternion()
     leftgrip=position+q@(support-grip)
@@ -416,5 +422,7 @@ if '--no-render' not in __import__('sys').argv:
     for size in [40,60,80]:
         scene.render.resolution_x=size;scene.render.resolution_y=size;scene.render.filepath=str(OUT/'previews'/f'Voss_gameplay_{size}px.png');bpy.ops.render.render(write_still=True)
 print(json.dumps(report),flush=True)
+# Embedded bpy can retain worker threads after all exports/renders have finished.
+__import__('sys').stdout.flush();__import__('sys').stderr.flush();__import__('os')._exit(0)
 
 
