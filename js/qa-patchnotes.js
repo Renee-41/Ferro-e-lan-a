@@ -48,13 +48,13 @@
     ['Relíquias de chefe','Núcleo da Rachadura, Fragmento Corrompido e Coroa de Ferro ganharam efeitos mais marcantes.'],
     ['Suportes no pós-jogo','Resumo da run mostra cura recebida, cura feita, amplificação concedida e participação.'],
     ['Interface','Itens virou Loja de Itens; Perfil, Conquistas e Placar foram agrupados. O Modo CLT/Preguiça continua disponível.'],
-    ['Preparação entre ondas','Confirmar posições fica acessível sem rolar a página. O novo <strong>AUTO</strong> pula o intervalo e confirma automaticamente a próxima onda.'],
+    ['Preparação entre ondas','O botão flutuante de <strong>Confirmar posições</strong> agora só aparece depois de sair do intervalo com <strong>Pular</strong> e some novamente ao confirmar, evitando ficar sobre a batalha ativa. O <strong>AUTO</strong> continua pulando e confirmando sozinho.'],
     ['Câmera fixa','Novo botão 📷 trava a câmera em visão geral e bloqueia roda, pinça e duplo clique até ser liberada.'],
     ['Resumo da run','O espaço lateral livre da batalha passa a mostrar um painel discreto com onda, equipe, número de 4★, itens equipados e estado do Auto.'],
     ['Cinematográficas de passiva','Continuam mais lentas e legíveis, com frase em destaque antes do impacto e retomada do combate.']
   ];
 
-  const READ_KEY='ferroLancaNotesReadQaGameplayPolishV1RunFlow';
+  const READ_KEY='ferroLancaNotesReadQaGameplayPolishV1ConfirmGate';
   const section=document.createElement('div');
   section.id='qa-gameplay-polish-notes';
   section.innerHTML=`<div class="qa-notes-head"><strong class="qa-notes-title">Gameplay Polish v1</strong><span class="qa-notes-badge">EM TESTE · QA</span></div><div class="qa-notes-sub">Reworks e alterações desta versão de teste:</div><div class="qa-note-list">${entries.map(([title,text])=>`<article class="qa-note-card"><h4>${title}</h4><p>${text}</p></article>`).join('')}</div>`;
