@@ -7,6 +7,7 @@
   const arena=document.getElementById('arena');
   const wrap=arena&&arena.closest('.arena-wrap');
   let autoRounds=false;
+  let placementUnlocked=false;
   try{ autoRounds=localStorage.getItem(AUTO_KEY)==='1'; }catch(_){ }
 
   const style=document.createElement('style');
@@ -69,7 +70,9 @@
     try{ units.filter(u=>u&&u.isTentacle).forEach(t=>{ if(t.range!==1)t.range=1; }); }catch(_){ }
   }
 
-  /* Confirmação de posições sempre acessível, mesmo quando a grade/lista aumenta a página. */
+  /* Confirmação de posições fica acessível somente DEPOIS de sair da tela de intervalo
+     através do botão Pular. O botão original continua no DOM durante outras fases, então
+     sua mera existência não pode ser usada como sinal de que a preparação está ativa. */
   const floatActions=document.createElement('div');
   floatActions.id='qa-position-actions';
   floatActions.innerHTML='<button type="button" class="main-btn" data-qa-proxy="confirm">Confirmar posições</button><button type="button" class="ghost-btn" data-qa-proxy="default">Posições padrão</button>';
@@ -77,14 +80,30 @@
   floatActions.addEventListener('click',e=>{
     const proxy=e.target.closest('[data-qa-proxy]'); if(!proxy)return;
     const original=buttonByText(proxy.dataset.qaProxy==='confirm'?'CONFIRMAR POSIÇÕES':'POSIÇÕES PADRÃO');
-    if(original && !original.disabled) original.click();
+    if(original && !original.disabled){
+      original.click();
+      if(proxy.dataset.qaProxy==='confirm') placementUnlocked=false;
+    }
   });
   function syncFloatingActions(){
     const confirm=buttonByText('CONFIRMAR POSIÇÕES');
     const proxyConfirm=floatActions.querySelector('[data-qa-proxy="confirm"]');
     if(proxyConfirm) proxyConfirm.disabled=!!(confirm&&confirm.disabled);
-    floatActions.classList.toggle('show',!!confirm && !autoRounds);
+    floatActions.classList.toggle('show',placementUnlocked && !!confirm && !autoRounds);
   }
+
+  document.addEventListener('click',e=>{
+    const btn=e.target&&e.target.closest?e.target.closest('button'):null;
+    if(!btn) return;
+    const text=String(btn.textContent||'').trim().toUpperCase();
+    if(text==='PULAR'){
+      placementUnlocked=true;
+      setTimeout(syncFloatingActions,80);
+    }else if(text==='CONFIRMAR POSIÇÕES'){
+      placementUnlocked=false;
+      setTimeout(syncFloatingActions,0);
+    }
+  },true);
 
   /* Controles compactos da batalha. Camera-controls reutiliza este mesmo host. */
   let tools=document.getElementById('qa-battle-tools');
@@ -124,7 +143,10 @@
     }
     if(!target) return;
     autoBusy=true;
-    try{ target.click(); }catch(_){ }
+    try{
+      target.click();
+      if(target===confirm) placementUnlocked=false;
+    }catch(_){ }
     setTimeout(()=>{autoBusy=false;},420);
   }
 
