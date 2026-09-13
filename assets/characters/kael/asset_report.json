@@ -1,0 +1,51 @@
+{
+  "name": "Kael",
+  "class": "Lutador",
+  "element": "Fogo",
+  "base_branch": "main",
+  "base_commit": "b0b69128a84c994643234f5c106e1532a039c5e3",
+  "triangles": 19250,
+  "mesh_objects": 4,
+  "meshes": [
+    "Axe.R",
+    "Axe.L",
+    "Hair",
+    "Kael_Body"
+  ],
+  "bones": 21,
+  "materials": 1,
+  "texture_resolution": 1024,
+  "texture_maps": [
+    "BaseColor",
+    "Normal",
+    "Roughness",
+    "Metallic",
+    "ORM",
+    "Emission"
+  ],
+  "normal_map": "Neutral tangent-space; bevels and large forms modeled",
+  "unit": "metre",
+  "root_pivot": [
+    0,
+    0,
+    0
+  ],
+  "rest_pose": "A-pose",
+  "head_height_m": 0.7,
+  "height_with_hair_m": 1.74,
+  "weapons": [
+    "Axe.R",
+    "Axe.L"
+  ],
+  "weapon_origins": "grip centre; independent mesh and child bone for each hand",
+  "clips": [
+    "Idle",
+    "Axe_R_Test",
+    "Axe_L_Test"
+  ],
+  "animation_status": "Starter inspection clips only; complete gameplay animation set not included",
+  "rig": "21-bone FK humanoid; blended waist/elbows; rigid accessories; mitten hands",
+  "visual_reference": "Refined Ferrha proportions and material family; original Kael design, dual-axe offensive archetype requested by user",
+  "reference_url": "https://www.leagueoflegends.com/en-us/champions/olaf/",
+  "validation": {}
+}
