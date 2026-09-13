@@ -1,0 +1,48 @@
+{
+  "name": "Voss",
+  "class": "Atirador",
+  "element": "Agua",
+  "base_branch": "main",
+  "base_commit": "b0b69128a84c994643234f5c106e1532a039c5e3",
+  "triangles": 21892,
+  "mesh_objects": 4,
+  "meshes": [
+    "HarpoonCrossbow",
+    "Hair",
+    "ShoulderMantle",
+    "Voss_Body"
+  ],
+  "bones": 21,
+  "materials": 1,
+  "texture_resolution": 1024,
+  "texture_maps": [
+    "BaseColor",
+    "Normal",
+    "Roughness",
+    "Metallic",
+    "ORM",
+    "Emission"
+  ],
+  "normal_map": "Neutral tangent-space; large forms modeled",
+  "unit": "metre",
+  "root_pivot": [
+    0,
+    0,
+    0
+  ],
+  "rest_pose": "A-pose",
+  "head_height_m": 0.71,
+  "height_m": 1.56,
+  "weapon": "HarpoonCrossbow",
+  "weapon_origin": "right hand grip centre",
+  "support_socket": "SupportGrip",
+  "clips": [
+    "Idle",
+    "Aim_Test",
+    "Recoil_Test"
+  ],
+  "animation_status": "Starter aim/recoil inspection clips, not a full gameplay animation set",
+  "rig": "21-bone FK humanoid, temporary arm IK baked and removed, blended elbows/waist, rigid weapon and mantle",
+  "visual_reference": "Refined Ferrha tactical family; original maritime explorer and ocean hunter",
+  "validation": {}
+}
