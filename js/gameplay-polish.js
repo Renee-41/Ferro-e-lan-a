@@ -166,7 +166,9 @@
     ['starter-ui-polish','js/starter-ui-polish.js?v=starter-ui-polish-1'],
     ['qa-ux','js/qa-ux.js?v=qa-ux-1'],
     ['qa-run-flow','js/qa-run-flow.js?v=qa-run-flow-1'],
-    ['qa-patchnotes','js/qa-patchnotes.js?v=qa-patchnotes-2'],
+    ['character-interactions','js/character-interactions.js?v=character-interactions-1'],
+    ['ui-control-placement','js/ui-control-placement.js?v=ui-control-placement-1'],
+    ['qa-patchnotes','js/qa-patchnotes.js?v=qa-patchnotes-3'],
     ['cinematic-slow-patch','js/cinematic-slow-patch.js?v=cinematic-slow-1']
   ].forEach(([key,src])=>{
     if(document.querySelector(`script[data-ferro-module="${key}"]`)) return;
