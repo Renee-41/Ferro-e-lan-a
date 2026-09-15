@@ -49,14 +49,14 @@
     ['Suportes no pós-jogo','Resumo da run mostra cura recebida, cura feita, amplificação concedida e participação.'],
     ['Interface','Itens virou Loja de Itens; Perfil, Conquistas e Placar foram agrupados. O Modo CLT/Preguiça continua disponível.'],
     ['Preparação entre ondas','O botão flutuante de <strong>Confirmar posições</strong> agora só aparece depois de sair do intervalo com <strong>Pular</strong> e some novamente ao confirmar, evitando ficar sobre a batalha ativa. O <strong>AUTO</strong> continua pulando e confirmando sozinho.'],
-    ['Controles de batalha','O <strong>AUTO</strong> agora fica junto dos controles de velocidade no topo. O botão de <strong>travar a câmera</strong> foi movido para o canto inferior direito da arena.'],
+    ['Controles de batalha','O <strong>AUTO</strong> agora fica junto dos controles de velocidade no topo. O botão de <strong>travar a câmera</strong> fica no canto inferior direito, com a mensagem de estado posicionada imediatamente à esquerda para não haver sobreposição.'],
     ['Interações entre personagens','Primeiro pacote de diálogos contextuais entre aliados: <strong>Ferrha + Ímã, Kael + Glacia, Voss + Zeph, Jedegar + Terrus, Gélida + Frosk e Raio + Voltra</strong>. Falas de passiva, ultimate e finalização sempre têm prioridade e interrompem/adiam diálogos de dupla.'],
     ['Câmera fixa','O botão de câmera fixa trava a visão geral e bloqueia roda, pinça e duplo clique até ser liberada.'],
     ['Resumo da run','O espaço lateral livre da batalha passa a mostrar um painel discreto com onda, equipe, número de 4★, itens equipados e estado do Auto.'],
     ['Cinematográficas de passiva','Continuam mais lentas e legíveis, com frase em destaque antes do impacto e retomada do combate.']
   ];
 
-  const READ_KEY='ferroLancaNotesReadQaGameplayPolishV1Interactions';
+  const READ_KEY='ferroLancaNotesReadQaGameplayPolishV1CameraStatus';
   const section=document.createElement('div');
   section.id='qa-gameplay-polish-notes';
   section.innerHTML=`<div class="qa-notes-head"><strong class="qa-notes-title">Gameplay Polish v1</strong><span class="qa-notes-badge">EM TESTE · QA</span></div><div class="qa-notes-sub">Reworks e alterações desta versão de teste:</div><div class="qa-note-list">${entries.map(([title,text])=>`<article class="qa-note-card"><h4>${title}</h4><p>${text}</p></article>`).join('')}</div>`;
