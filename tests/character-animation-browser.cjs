@@ -1,4 +1,4 @@
-/* Headless integration against the real index.html and combat functions.
+/* Headless validation of exported character GLBs and their animation previews.
    Test-only CDN routing uses the same Three 0.180.0 package, never user profiles. */
 const fs=require('node:fs'),path=require('node:path'),http=require('node:http'),os=require('node:os'),assert=require('node:assert/strict');
 const root=path.resolve(__dirname,'..');const tools=process.env.FERRO_TEST_TOOLS||path.join(os.tmpdir(),'ferrha-v2-testtools','node_modules');
