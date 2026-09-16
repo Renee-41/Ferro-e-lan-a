@@ -1,18 +1,12 @@
 import * as T from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
-import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
-import {RoomEnvironment} from 'three/addons/environments/RoomEnvironment.js';
+import {createCharacterPreviewStage} from './character-preview-stage.js';
 import {CharacterAnimationPlayer} from './character-animation-player.js';
 const name=document.body.dataset.character,base=document.body.dataset.assetBase||`assets/characters/${name.toLowerCase()}/`;
 try{
   const manifest=await (await fetch(base+'animation_manifest.json')).json();const gltf=await new GLTFLoader().loadAsync(base+manifest.model);
-  const renderer=new T.WebGLRenderer({antialias:true,preserveDrawingBuffer:true});renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));renderer.setSize(innerWidth,innerHeight);renderer.toneMapping=T.ACESFilmicToneMapping;renderer.toneMappingExposure=1.05;document.getElementById('app').appendChild(renderer.domElement);
-  const scene=new T.Scene();scene.background=new T.Color(0x111923);const envScene=new RoomEnvironment(),pm=new T.PMREMGenerator(renderer),env=pm.fromScene(envScene,.04);scene.environment=env.texture;envScene.dispose();pm.dispose();
-  scene.add(new T.HemisphereLight(0xe2edf7,0x30343e,2.1));const light=new T.DirectionalLight(0xffffff,3);light.position.set(-3,6,5);scene.add(light);
-  const stage=new T.Mesh(new T.CylinderGeometry(2.4,2.4,.12,6),new T.MeshStandardMaterial({color:0x293e4b,roughness:.9}));stage.position.y=-.06;scene.add(stage);
+  const {renderer,scene,camera,controls,view}=createCharacterPreviewStage(document.getElementById('app'));
   const player=new CharacterAnimationPlayer(gltf,manifest);scene.add(player.root);
-  const camera=new T.PerspectiveCamera(35,innerWidth/innerHeight,.03,100),controls=new OrbitControls(camera,renderer.domElement);controls.enableDamping=true;controls.minDistance=2;controls.maxDistance=15;controls.maxPolarAngle=Math.PI*.49;
-  function view(top=false){camera.position.set(top?0:3,top?5:2.6,top?3.8:4.6);controls.target.set(0,.70,0);controls.update();}view();
   document.getElementById('reset').onclick=()=>view();document.getElementById('tactical').onclick=()=>view(true);
   let speed=1,auto=false,direction=new T.Vector3(0,0,1),position=new T.Vector3(),target=null,queued=null;
   const marker=new T.Mesh(new T.CylinderGeometry(.055,.12,.35,8),new T.MeshStandardMaterial({color:0xbd9972}));marker.position.set(1.25,.175,1.25);marker.visible=false;scene.add(marker);
@@ -36,6 +30,6 @@ try{
     player.update({dt,position,target});controls.update();renderer.render(scene,camera);
     const state=player.debug();document.getElementById('status').textContent=`${name} · ${state.state} · ${speed}x · ${renderer.info.render.triangles.toLocaleString('pt-BR')} tris${queued?' · ação aguardando retomada':''}`;
   }requestAnimationFrame(frame);
-  addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
+
   window.CharacterLab={ready:true,select,setSpeed,debug:()=>({...player.debug(),speed,camera:camera.position.toArray(),triangles:renderer.info.render.triangles}),testStep:data=>player.update(data),resetPosition:()=>{position.set(0,0,0);player.position.copy(position);player.root.position.copy(position);},manifest};
 }catch(e){const error=document.getElementById('error');error.style.display='grid';error.textContent='Falha ao carregar animações: '+e.message;console.error(e);}

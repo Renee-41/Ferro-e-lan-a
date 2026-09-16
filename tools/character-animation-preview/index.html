@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Personagens · Animações · Ferro &amp; Lança</title>
+  <link rel="icon" href="data:,">
+  <style>
+    :root{color-scheme:dark;font-family:system-ui,sans-serif}*{box-sizing:border-box}
+    body{margin:0;background:#24272b;color:#edf3f7}#app{position:fixed;inset:0}canvas{display:block;touch-action:none}
+    #hud{position:fixed;z-index:2;top:14px;left:14px;right:14px;display:flex;gap:10px;align-items:end;flex-wrap:wrap;padding:14px;background:#171b20ed;border:1px solid #4a5058;border-radius:9px}
+    .title{margin-right:auto;align-self:center}h1{font-size:14px;margin:0 0 5px;letter-spacing:.05em}small{color:#adb6c0;font-size:11px}
+    label{display:grid;gap:5px;font-size:11px;color:#bbc5d0}select,button{min-height:38px;border:1px solid #546474;background:#233340;color:#edf3f7;border-radius:6px;padding:8px 12px;font:600 12px system-ui;cursor:pointer}
+    button:hover{background:#354d60}button:disabled,select:disabled{opacity:.45;cursor:wait}:focus-visible{outline:2px solid #aadcf6;outline-offset:3px}
+    #clip{min-width:145px}#transport{display:flex;gap:6px}.loop{display:flex;align-items:center;gap:5px;min-height:38px}
+    #status{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);max-width:calc(100vw - 28px);padding:10px 15px;border-radius:8px;background:#171b20ed;border:1px solid #4a5058;font-size:12px;text-align:center}
+    #error{position:fixed;z-index:3;left:50%;top:50%;transform:translate(-50%,-50%);background:#352529;padding:22px;border:1px solid #b2757b;border-radius:8px;max-width:480px}
+    [hidden]{display:none!important}@media(max-width:700px){#hud{gap:7px;padding:10px}.title{width:100%}select,button{padding:7px}#clip{min-width:115px}}
+  </style>
+  <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"}}</script>
+</head>
+<body>
+  <main id="app" aria-label="Prévia 3D"></main>
+  <section id="hud" aria-label="Controles de animação">
+    <div class="title"><h1>FERRO &amp; LANÇA · ANIMAÇÕES</h1><small>Arrastar: câmera · roda: zoom · escala original dos modelos</small></div>
+    <label>Personagem<select id="character"><option value="kael">Kael</option><option value="glacia">Glacia</option><option value="voss">Voss</option><option value="ferrha">Ferrha V3</option></select></label>
+    <label>Clip do GLB<select id="clip" disabled></select></label>
+    <div id="transport"><button id="play" disabled>Pausar</button><button id="restart" disabled>Reiniciar clip</button></div>
+    <label>Velocidade<select id="speed"><option value="0.5">0.5x</option><option value="1" selected>1x</option><option value="1.5">1.5x</option><option value="2">2x</option></select></label>
+    <label class="loop"><input type="checkbox" id="loop" checked>Repetir</label>
+    <button id="reset" disabled>Resetar câmera</button>
+  </section>
+  <output id="status" aria-live="polite">Carregando Kael…</output>
+  <div id="error" role="alert" hidden></div>
+  <script type="module" src="./viewer.js"></script>
+</body>
+</html>
