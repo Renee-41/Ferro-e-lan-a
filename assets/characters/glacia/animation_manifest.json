@@ -1,0 +1,50 @@
+{
+  "character": "Glacia",
+  "model": "Glacia.glb",
+  "clips": {
+    "Idle": 3.0,
+    "Walk": 0.9333333333333333,
+    "Attack_A": 0.6666666666666666,
+    "Attack_B": 1.0666666666666667,
+    "Attack_C": 1.2,
+    "Hit": 0.3,
+    "Death": 2.1333333333333333,
+    "Special": 1.8
+  },
+  "stride_m": 0.32,
+  "walk_speed_m_s": 0.33684210526315794,
+  "impacts": {
+    "Attack_A": [
+      0.4
+    ],
+    "Attack_B": [
+      0.4
+    ],
+    "Attack_C": [
+      0.49
+    ],
+    "Special": [
+      0.62
+    ]
+  },
+  "forward": "+Z glTF; world facing owned by renderer",
+  "socket_adjustments": {},
+  "notes": "Frost flick, circular seal and grounded ice pulse; Special lifts the healing palm and crystal focus. Existing FX sockets retained.",
+  "validation": {
+    "geometry_preserved": true,
+    "geometry_sha256": "567d27802808f8be6cbadc53bcdfd283d3dd0caf953b6dbd3ca45211d2a03ceb",
+    "death_floor_min_m": 0.003999914973974228,
+    "max_grip_error_m": 1.2377834115800373e-07,
+    "max_wrist_ik_error_m": 0.00010477962537249105,
+    "worst_wrist_sample": {
+      "clip": "Attack_C",
+      "frame": 21,
+      "side": "L"
+    },
+    "worst_grip_sample": {
+      "clip": "Death",
+      "frame": 54,
+      "weapon": "Scepter"
+    }
+  }
+}

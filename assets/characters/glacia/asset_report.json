@@ -43,23 +43,33 @@
   "fx_status": "Attachment bones and subtle crystal emission provided; no gameplay particle effects included",
   "clips": [
     "Idle",
-    "Blessing_Test",
-    "Release_Test"
+    "Walk",
+    "Attack_A",
+    "Attack_B",
+    "Attack_C",
+    "Hit",
+    "Death",
+    "Special"
   ],
-  "animation_status": "Starter idle/blessing/release inspection clips, not a full gameplay set",
+  "animation_status": "Authored gameplay test clips; in-place locomotion; external state and facing",
   "rig": "23-bone FK humanoid, blended elbows/waist/robe hem; separate focus; no cloth simulation or facial rig",
   "visual_reference": "Refined Ferrha tactical family; original calm ice/water healer",
   "validation": {
-    "blender_and_glb": "PASS",
-    "glb_reimport": "PASS",
-    "triangles": 22030,
-    "max_weights_per_vertex": 2,
-    "scepter_grip_error_m": 1.6971804841223249e-07,
-    "fx_socket_follow": "PASS",
-    "floor_min_m": -2.707791768585821e-09,
-    "embedded_textures": 4,
-    "uv_bounds": "0..1",
-    "preview_stage_excluded": true,
-    "all_vertices_weighted": true
-  }
+    "geometry_preserved": true,
+    "geometry_sha256": "567d27802808f8be6cbadc53bcdfd283d3dd0caf953b6dbd3ca45211d2a03ceb",
+    "death_floor_min_m": 0.003999914973974228,
+    "max_grip_error_m": 1.2377834115800373e-07,
+    "max_wrist_ik_error_m": 0.00010477962537249105,
+    "worst_wrist_sample": {
+      "clip": "Attack_C",
+      "frame": 21,
+      "side": "L"
+    },
+    "worst_grip_sample": {
+      "clip": "Death",
+      "frame": 54,
+      "weapon": "Scepter"
+    }
+  },
+  "animation_manifest": "animation_manifest.json"
 }
