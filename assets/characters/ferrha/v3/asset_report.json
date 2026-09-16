@@ -62,7 +62,7 @@
     "geometry_preserved": true,
     "geometry_sha256": "966ccca1d1a4a877a3bca12938b57fc4662dd06159784fc991be587d0c9ec77e",
     "death_floor_min_m": 0.003996772691607475,
-    "max_grip_error_m": 1.0323827311807139e-07,
+    "max_grip_error_m": 1.0323827311807139e-7,
     "max_wrist_ik_error_m": 0.004823199534727228,
     "worst_wrist_sample": {
       "clip": "Attack_B",
@@ -82,9 +82,30 @@
     "preview_stage_excluded": true,
     "all_vertices_weighted": true,
     "loop_matrix_error": 0,
-    "stance_foot_error_m": 2.2739171981811523e-05,
-    "max_spear_grip_error_m": 1.97686242482388e-07
+    "stance_foot_error_m": 0.000022739171981811523,
+    "max_spear_grip_error_m": 1.97686242482388e-7
   },
   "animation_status": "Authored gameplay test clips; in-place locomotion; external state and facing",
-  "animation_manifest": "animation_manifest.json"
+  "animation_manifest": "animation_manifest.json",
+  "browser_validation": {
+    "status": "PASS",
+    "directions": 8,
+    "time_scales": [
+      0,
+      0.5,
+      1,
+      2
+    ],
+    "paused_camera": true,
+    "barrier_hold": true,
+    "death_hold": true,
+    "real_cdn_preview": "PASS"
+  },
+  "comparison": {
+    "preview": "previews/Ferrha_family_comparison.png",
+    "kael_commit": "69915b3",
+    "voss_commit": "3744a55",
+    "glacia_commit": "e83242d",
+    "same_lighting_and_metre_scale": true
+  }
 }

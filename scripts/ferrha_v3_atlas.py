@@ -75,5 +75,3 @@ links.new(inode(emission,-650,-480).outputs['Color'],p.inputs['Emission Color'])
 for o in parts:
     o.data.materials.clear();o.data.materials.append(atlas)
     for face in o.data.polygons:face.material_index=0
-
-

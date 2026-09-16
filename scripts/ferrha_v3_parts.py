@@ -106,5 +106,3 @@ def join(obs,name,bone=None):
     o=bpy.context.object;o.name=name;parts.append(o)
     if bone:bind[o.name]=bone
     return o
-
-
