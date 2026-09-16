@@ -40,22 +40,35 @@
   "weapon_origins": "grip centre; independent mesh and child bone for each hand",
   "clips": [
     "Idle",
-    "Axe_R_Test",
-    "Axe_L_Test"
+    "Walk",
+    "Attack_A",
+    "Attack_B",
+    "Attack_C",
+    "Hit",
+    "Death",
+    "Special",
+    "FrenzyIdle"
   ],
-  "animation_status": "Starter inspection clips only; complete gameplay animation set not included",
+  "animation_status": "Authored gameplay test clips; in-place locomotion; external state and facing",
   "rig": "21-bone FK humanoid; blended waist/elbows; rigid accessories; mitten hands",
   "visual_reference": "Refined Ferrha proportions and material family; original Kael design, dual-axe offensive archetype requested by user",
   "reference_url": "https://www.leagueoflegends.com/en-us/champions/olaf/",
   "validation": {
-    "blender_and_glb": "PASS",
-    "glb_reimport": "PASS",
-    "triangles": 19250,
-    "max_weights_per_vertex": 2,
-    "max_axe_grip_error_m": 0,
-    "embedded_textures": 4,
-    "uv_bounds": "0..1",
-    "preview_stage_excluded": true,
-    "all_vertices_weighted": true
-  }
+    "geometry_preserved": true,
+    "geometry_sha256": "14d4547efa2fb5fe101015e0c3a80a715e5f78d68968e4e8bb60ca30562fe94e",
+    "death_floor_min_m": 0.003999888896942139,
+    "max_grip_error_m": 1.2065570608304177e-07,
+    "max_wrist_ik_error_m": 0.012608363009484466,
+    "worst_wrist_sample": {
+      "clip": "Attack_B",
+      "frame": 4,
+      "side": "R"
+    },
+    "worst_grip_sample": {
+      "clip": "Attack_C",
+      "frame": 9,
+      "weapon": "Axe.R"
+    }
+  },
+  "animation_manifest": "animation_manifest.json"
 }

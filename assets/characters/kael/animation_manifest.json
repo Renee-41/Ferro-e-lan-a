@@ -1,0 +1,52 @@
+{
+  "character": "Kael",
+  "model": "Kael.glb",
+  "clips": {
+    "Idle": 2.3,
+    "Walk": 0.8,
+    "Attack_A": 0.6333333333333333,
+    "Attack_B": 1.0666666666666667,
+    "Attack_C": 1.1333333333333333,
+    "Hit": 0.3333333333333333,
+    "Death": 1.6666666666666667,
+    "Special": 1.3,
+    "FrenzyIdle": 0.9
+  },
+  "stride_m": 0.42,
+  "walk_speed_m_s": 0.5249999999999999,
+  "impacts": {
+    "Attack_A": [
+      0.4
+    ],
+    "Attack_B": [
+      0.32,
+      0.63
+    ],
+    "Attack_C": [
+      0.44
+    ],
+    "Special": [
+      0.53
+    ]
+  },
+  "forward": "+Z glTF; world facing owned by renderer",
+  "socket_adjustments": {},
+  "notes": "Dual-axe chop, alternating combination, heavy double chop; Special enters FrenzyIdle. No gameplay damage or timers.",
+  "validation": {
+    "geometry_preserved": true,
+    "geometry_sha256": "14d4547efa2fb5fe101015e0c3a80a715e5f78d68968e4e8bb60ca30562fe94e",
+    "death_floor_min_m": 0.003999888896942139,
+    "max_grip_error_m": 1.2065570608304177e-07,
+    "max_wrist_ik_error_m": 0.012608363009484466,
+    "worst_wrist_sample": {
+      "clip": "Attack_B",
+      "frame": 4,
+      "side": "R"
+    },
+    "worst_grip_sample": {
+      "clip": "Attack_C",
+      "frame": 9,
+      "weapon": "Axe.R"
+    }
+  }
+}
