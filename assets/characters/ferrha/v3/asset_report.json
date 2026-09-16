@@ -1,0 +1,90 @@
+{
+  "name": "Ferrha V3",
+  "class": "Tanque",
+  "element": "Metal",
+  "triangles": 23714,
+  "mesh_objects": 9,
+  "meshes": [
+    "Spear",
+    "MagneticPlate_01",
+    "MagneticPlate_02",
+    "MagneticPlate_03",
+    "MagneticPlate_04",
+    "MagneticPlate_05",
+    "Hair",
+    "Helmet",
+    "Ferrha_Body"
+  ],
+  "bones": 26,
+  "materials": 1,
+  "texture_resolution": 1024,
+  "texture_maps": [
+    "BaseColor",
+    "Normal",
+    "Roughness",
+    "Metallic",
+    "ORM",
+    "Emission"
+  ],
+  "normal_map": "Neutral tangent-space; bevels and major forms modeled",
+  "unit": "metre",
+  "root_pivot": [
+    0,
+    0,
+    0
+  ],
+  "rest_pose": "A-pose",
+  "magnetic_meshes": [
+    "MagneticPlate_01",
+    "MagneticPlate_02",
+    "MagneticPlate_03",
+    "MagneticPlate_04",
+    "MagneticPlate_05"
+  ],
+  "spear_mesh": "Spear",
+  "rig": "26 bones; blended cloth elbows/waist; rigid armor; independent spear and magnetic segments",
+  "clips": [
+    "Idle",
+    "Walk",
+    "Attack_A",
+    "Attack_B",
+    "Attack_C",
+    "Hit",
+    "Death",
+    "Special",
+    "Barrier"
+  ],
+  "limitations": [
+    "No facial/finger rig",
+    "Visual animation adapter; gameplay events remain owned by game logic"
+  ],
+  "validation": {
+    "geometry_preserved": true,
+    "geometry_sha256": "966ccca1d1a4a877a3bca12938b57fc4662dd06159784fc991be587d0c9ec77e",
+    "death_floor_min_m": 0.003996772691607475,
+    "max_grip_error_m": 1.0323827311807139e-07,
+    "max_wrist_ik_error_m": 0.004823199534727228,
+    "worst_wrist_sample": {
+      "clip": "Attack_B",
+      "frame": 18,
+      "side": "R"
+    },
+    "worst_grip_sample": {
+      "clip": "Death",
+      "frame": 43,
+      "weapon": "Spear"
+    },
+    "glb_reimport": "PASS",
+    "triangles": 23714,
+    "max_weights_per_vertex": 2,
+    "embedded_textures": 4,
+    "uv_bounds": "0..1",
+    "preview_stage_excluded": true,
+    "all_vertices_weighted": true,
+    "loop_matrix_error": 0,
+    "stance_foot_error_m": 2.2739171981811523e-05,
+    "max_spear_grip_error_m": 1.97686242482388e-07
+  },
+  "animation_status": "Authored gameplay test clips; in-place locomotion; external state and facing",
+  "animation_manifest": "animation_manifest.json"
+}
