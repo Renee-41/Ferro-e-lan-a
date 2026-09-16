@@ -1,0 +1,56 @@
+{
+  "character": "Voss",
+  "model": "Voss.glb",
+  "clips": {
+    "Idle": 2.7,
+    "Walk": 0.8333333333333334,
+    "Attack_A": 0.5666666666666667,
+    "Attack_B": 0.7666666666666667,
+    "Attack_C": 1.0666666666666667,
+    "Hit": 0.26666666666666666,
+    "Death": 1.6666666666666667,
+    "Special": 1.4
+  },
+  "stride_m": 0.32,
+  "walk_speed_m_s": 0.3902439024390244,
+  "impacts": {
+    "Attack_A": [
+      0.32
+    ],
+    "Attack_B": [
+      0.41
+    ],
+    "Attack_C": [
+      0.53
+    ],
+    "Special": [
+      0.64
+    ]
+  },
+  "forward": "+Z glTF; world facing owned by renderer",
+  "socket_adjustments": {
+    "SupportGrip": [
+      -0.658,
+      -0.222,
+      0.566
+    ]
+  },
+  "notes": "Straight forward aim, fast shot, canted shot, braced heavy shot and charged piercing preparation. Existing appearance/weapon preserved; support socket moved within the existing grip.",
+  "validation": {
+    "geometry_preserved": true,
+    "geometry_sha256": "48718c76f3c282148a5616df4a4683f24d3da3b122cac71691d12495a4cd79d9",
+    "death_floor_min_m": 0.0039999037981033325,
+    "max_grip_error_m": 8.462232866585662e-08,
+    "max_wrist_ik_error_m": 3.3227173782648555e-05,
+    "worst_wrist_sample": {
+      "clip": "Attack_C",
+      "frame": 13,
+      "side": "L"
+    },
+    "worst_grip_sample": {
+      "clip": "Death",
+      "frame": 29,
+      "weapon": "HarpoonCrossbow"
+    }
+  }
+}

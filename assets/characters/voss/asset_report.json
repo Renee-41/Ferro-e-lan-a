@@ -38,22 +38,33 @@
   "support_socket": "SupportGrip",
   "clips": [
     "Idle",
-    "Aim_Test",
-    "Recoil_Test"
+    "Walk",
+    "Attack_A",
+    "Attack_B",
+    "Attack_C",
+    "Hit",
+    "Death",
+    "Special"
   ],
-  "animation_status": "Starter aim/recoil inspection clips, not a full gameplay animation set",
+  "animation_status": "Authored gameplay test clips; in-place locomotion; external state and facing",
   "rig": "21-bone FK humanoid, temporary arm IK baked and removed, blended elbows/waist, rigid weapon and mantle",
   "visual_reference": "Refined Ferrha tactical family; original maritime explorer and ocean hunter",
   "validation": {
-    "blender_and_glb": "PASS",
-    "glb_reimport": "PASS",
-    "triangles": 21922,
-    "max_weights_per_vertex": 2,
-    "right_grip_error_m": 0.0008589737677346633,
-    "left_aim_grip_error_m": 1.4904179304664901e-05,
-    "embedded_textures": 4,
-    "uv_bounds": "0..1",
-    "preview_stage_excluded": true,
-    "all_vertices_weighted": true
-  }
+    "geometry_preserved": true,
+    "geometry_sha256": "48718c76f3c282148a5616df4a4683f24d3da3b122cac71691d12495a4cd79d9",
+    "death_floor_min_m": 0.0039999037981033325,
+    "max_grip_error_m": 8.462232866585662e-08,
+    "max_wrist_ik_error_m": 3.3227173782648555e-05,
+    "worst_wrist_sample": {
+      "clip": "Attack_C",
+      "frame": 13,
+      "side": "L"
+    },
+    "worst_grip_sample": {
+      "clip": "Death",
+      "frame": 29,
+      "weapon": "HarpoonCrossbow"
+    }
+  },
+  "animation_manifest": "animation_manifest.json"
 }
