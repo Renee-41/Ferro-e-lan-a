@@ -590,6 +590,24 @@ function elemMultiplier(atk,def){
   return 1;
 }
 
+
+// Visual-test portraits: real face art when available, readable fallback for the rest.
+// Kept local to the test branch so the production game remains untouched.
+const CHAMPION_PORTRAITS = {
+  voltra: 'data:image/jpeg;base64,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'
+};
+function championPortraitHtml(id, def){
+  const src = CHAMPION_PORTRAITS[id];
+  if(src){
+    return `<div class="champ-portrait has-art" data-element="${def.element}" title="${def.name}">
+      <img src="${src}" alt="Retrato de ${def.name}">
+    </div>`;
+  }
+  return `<div class="champ-portrait portrait-fallback elem-${def.element}" data-element="${def.element}" title="${def.name}">
+    <span>${def.name.slice(0,1).toUpperCase()}</span>
+  </div>`;
+}
+
 const CHAMPION_CATALOG = {
   ferrha:{name:'Ferrha',element:'metal',role:'Tanque · Lança',cost:90,hp:210,atk:15,range:1,speed:0.9,taunt:2,special:'lanca',desc:'Provoca inimigos próximos e crava a lança com dano extra a cada 3º golpe. Passiva: ao chegar a 1 de HP, ergue uma barreira de ferro — fica imune a todo dano e imóvel, empurra inimigos adjacentes 2 blocos pra trás, cura 45% da vida e ganha +15% de defesa por estrela por 2s (uma vez por batalha). Assim que a barreira acaba, ela puxa todo inimigo num raio de 5 blocos de volta pra perto dela e os atordoa por 1,6s.'},
   voss:{name:'Voss',element:'agua',role:'Atiradora',cost:80,hp:95,atk:19,range:3,speed:1,special:'perfuro',desc:'A cada 4 tiros, dispara um disparo perfurante que ignora parte da defesa do alvo. Como todo Stack User de longa distância, causa mais dano quanto mais longe estiver do alvo (+8% por bloco além do 1º).'},
@@ -1541,9 +1559,14 @@ function renderShop(){
         : `<div class="champ-stats" style="color:var(--steel);">Só dá pra comprar durante uma partida</div>`;
     }
     card.innerHTML = `
-      <div class="champ-name">${def.name}</div>
-      <span class="champ-tag elem-${def.element}">${def.element.toUpperCase()}</span>
-      <span class="champ-tag" style="background:#333;color:#ccc;">${def.role}</span>
+      <div class="champ-card-head">
+        ${championPortraitHtml(id, def)}
+        <div class="champ-card-head-copy">
+          <div class="champ-name">${def.name}</div>
+          <span class="champ-tag elem-${def.element}">${def.element.toUpperCase()}</span>
+          <span class="champ-tag" style="background:#333;color:#ccc;">${def.role}</span>
+        </div>
+      </div>
       <div class="champ-desc">${def.desc}</div>
       <div class="champ-stats">HP ${def.hp} · ATK ${def.atk} · ALC ${def.range} · VEL ${def.speed}</div>
       ${ownedBlock}
@@ -1758,12 +1781,15 @@ function renderRoster(){
       <div class="equip-slot${prog.relicId?' filled':''}" data-equip-relic="${id}" title="${prog.relicId?ITEM_CATALOG[prog.relicId].name:'Slot de relíquia — funciona mesmo com os 3 itens normais cheios'}">${relicIcon}</div>
     `;
     card.innerHTML = `
-      <div style="display:flex;align-items:center;gap:8px;justify-content:space-between;">
-        <div class="champ-name" style="margin:0;">${def.name}</div>
-        ${relicSlotHtml}
+      <div class="champ-card-head champ-card-head-roster">
+        ${championPortraitHtml(id, def)}
+        <div class="champ-card-head-copy">
+          <div class="champ-name" style="margin:0;">${def.name}</div>
+          <span class="champ-tag elem-${def.element}">${def.element.toUpperCase()}</span>
+          <span class="champ-tag" style="background:#333;color:#ccc;">${def.role}</span>
+        </div>
+        <div class="champ-card-head-relic">${relicSlotHtml}</div>
       </div>
-      <span class="champ-tag elem-${def.element}">${def.element.toUpperCase()}</span>
-      <span class="champ-tag" style="background:#333;color:#ccc;">${def.role}</span>
       <div class="champ-desc">${def.desc}</div>
       <div class="champ-stats" style="color:var(--gold);">${starIcons(prog.stars)} · Nível ${prog.level} · XP ${formatXp(prog.xp)}/${xpToNextLevel(prog.level)}</div>
       <div class="champ-stats">HP ${computeUnitStats(def,prog).hp} · ATK ${computeUnitStats(def,prog).atk}</div>
