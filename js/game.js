@@ -1745,8 +1745,13 @@ function renderRecommended(){
       </div>`;
     }).join('');
     card.innerHTML = `
-      <div class="champ-name">${def.name}</div>
-      <span class="champ-tag elem-${def.element}">${def.element.toUpperCase()}</span>
+      <div class="champ-card-head">
+        ${championPortraitHtml(id, def)}
+        <div class="champ-card-head-copy">
+          <div class="champ-name">${def.name}</div>
+          <span class="champ-tag elem-${def.element}">${def.element.toUpperCase()}</span>
+        </div>
+      </div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin:8px 0;">${iconsRow}</div>
       <div class="champ-desc">${rec.note}</div>
     `;
@@ -2221,9 +2226,14 @@ function openStarterPick(){
     const card = document.createElement('div');
     card.className = 'champ-card bg-'+def.element;
     card.innerHTML = `
-      <div class="champ-name">${def.name}</div>
-      <span class="champ-tag elem-${def.element}">${def.element.toUpperCase()}</span>
-      <span class="champ-tag" style="background:#333;color:#ccc;">${def.role}</span>
+      <div class="champ-card-head">
+        ${championPortraitHtml(id, def)}
+        <div class="champ-card-head-copy">
+          <div class="champ-name">${def.name}</div>
+          <span class="champ-tag elem-${def.element}">${def.element.toUpperCase()}</span>
+          <span class="champ-tag" style="background:#333;color:#ccc;">${def.role}</span>
+        </div>
+      </div>
       <div class="champ-desc">${def.desc}</div>
       <div class="champ-stats">HP ${def.hp} · ATK ${def.atk} · ALC ${def.range} · VEL ${def.speed}</div>
       <button class="main-btn" style="margin-top:8px;width:100%;">Escolher</button>
@@ -2290,8 +2300,13 @@ function openPvpDraft(label, onConfirm){
     card.className = 'champ-card bg-'+def.element;
     card.dataset.id = id;
     card.innerHTML = `
-      <div class="champ-name">${def.name}</div>
-      <span class="champ-tag elem-${def.element}">${def.element.toUpperCase()}</span>
+      <div class="champ-card-head">
+        ${championPortraitHtml(id, def)}
+        <div class="champ-card-head-copy">
+          <div class="champ-name">${def.name}</div>
+          <span class="champ-tag elem-${def.element}">${def.element.toUpperCase()}</span>
+        </div>
+      </div>
       <div class="champ-desc">${def.desc}</div>
       <div class="champ-stats">HP ${def.hp} · ATK ${def.atk} · ALC ${def.range} · VEL ${def.speed}</div>
     `;
@@ -2372,9 +2387,14 @@ function openTeamSelect(title){
     card.className = 'champ-card bg-'+def.element + (teamDraft.includes(id) ? ' selected' : '');
     card.dataset.id = id;
     card.innerHTML = `
-      <div class="champ-name">${def.name}</div>
-      <span class="champ-tag elem-${def.element}">${def.element.toUpperCase()}</span>
-      <span class="champ-tag" style="background:#333;color:#ccc;">${def.role}</span>
+      <div class="champ-card-head">
+        ${championPortraitHtml(id, def)}
+        <div class="champ-card-head-copy">
+          <div class="champ-name">${def.name}</div>
+          <span class="champ-tag elem-${def.element}">${def.element.toUpperCase()}</span>
+          <span class="champ-tag" style="background:#333;color:#ccc;">${def.role}</span>
+        </div>
+      </div>
       <div class="champ-desc">${def.desc}</div>
       <div class="champ-stats">${starIcons(prog.stars)} · Nv.${prog.level} · HP ${computeUnitStats(def,prog).hp} · ATK ${computeUnitStats(def,prog).atk}</div>
     `;
