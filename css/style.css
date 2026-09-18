@@ -30,6 +30,27 @@
   .champ-card:hover{border-color:var(--molten);}
   .champ-card.selected{border-color:var(--ember);background:rgba(209,72,31,0.14);box-shadow:0 0 10px rgba(209,72,31,0.25);}
   .champ-card.locked{opacity:0.55;cursor:default;}
+  .champ-card-head{display:flex;align-items:center;gap:9px;margin-bottom:5px;min-width:0;}
+  .champ-card-head-copy{min-width:0;flex:1;}
+  .champ-card-head-roster{align-items:flex-start;}
+  .champ-card-head-relic{margin-left:auto;flex-shrink:0;}
+  .champ-portrait{
+    width:52px;height:52px;flex:0 0 52px;border-radius:9px;overflow:hidden;
+    border:1px solid #555d67;background:#171a1f;position:relative;
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.03),0 2px 8px rgba(0,0,0,.28);
+  }
+  .champ-portrait.has-art img{width:100%;height:100%;object-fit:cover;display:block;object-position:center 36%;}
+  .champ-card:hover .champ-portrait{border-color:var(--molten);}
+  .champ-card.locked .champ-portrait.has-art img{filter:saturate(.45) brightness(.72);}
+  .portrait-fallback{display:flex;align-items:center;justify-content:center;font-family:'Oswald',sans-serif;font-size:22px;font-weight:700;color:#f1eadf;}
+  .portrait-fallback span{text-shadow:0 1px 3px rgba(0,0,0,.7);}
+  .portrait-fallback.elem-fogo{background:linear-gradient(145deg,#51291f,#1a1b1f);}
+  .portrait-fallback.elem-agua{background:linear-gradient(145deg,#214057,#1a1b1f);}
+  .portrait-fallback.elem-terra{background:linear-gradient(145deg,#4c3a27,#1a1b1f);}
+  .portrait-fallback.elem-vento{background:linear-gradient(145deg,#254538,#1a1b1f);}
+  .portrait-fallback.elem-metal{background:linear-gradient(145deg,#41464d,#1a1b1f);}
+  .portrait-fallback.elem-gelo{background:linear-gradient(145deg,#31505a,#1a1b1f);}
+  .portrait-fallback.elem-eletrico{background:linear-gradient(145deg,#4f4921,#1a1b1f);}
   .champ-name{font-weight:700;color:#eae4d8;font-size:14px;}
   .champ-tag{display:inline-block;font-family:'JetBrains Mono',monospace;font-size:9px;padding:1px 6px;border-radius:3px;margin-top:3px;margin-right:4px;}
   .champ-desc{font-size:11px;color:var(--steel);margin-top:6px;line-height:1.4;}
