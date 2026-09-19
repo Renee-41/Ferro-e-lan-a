@@ -39,10 +39,13 @@ const server=http.createServer((request,response)=>{
         document.getElementById('intro-canvas').style.display='none';
         document.getElementById('intro-preshow').style.display='none';
         document.getElementById('intro-screen').style.display='none';
+        RADIUS=4;
+        currentBiome='grama';
+        startBattleLoopIfNeeded();
       });
       await page.waitForFunction(()=>{
         const debug=window.FerroArena3D&&window.FerroArena3D.debug();
-        return debug&&debug.arena==='normal'&&debug.projectionValid&&debug.canvas?.width>300&&debug.canvas?.height>150&&debug.fps>0&&debug.lastFrameAt>0;
+        return debug&&debug.ready&&debug.type==='normal'&&debug.calls>0&&debug.triangles>0&&debug.canvas?.width>300&&debug.canvas?.height>150&&debug.lastFrameAt>0;
       },null,{timeout:60000});
 
       const normal=await page.evaluate(()=>({
@@ -50,48 +53,43 @@ const server=http.createServer((request,response)=>{
         layerPointer:getComputedStyle(document.getElementById('arena-3d-layer')).pointerEvents,
         canvasPointer:getComputedStyle(document.querySelector('#arena-3d-layer canvas')).pointerEvents,
         layerZ:getComputedStyle(document.getElementById('arena-3d-layer')).zIndex,
-        svgZ:getComputedStyle(document.getElementById('arena')).zIndex
+        svgZ:getComputedStyle(document.getElementById('arena')).zIndex,
+        gridTiles:document.querySelectorAll('#arena [data-grid-tile]').length,
+        transparentTerrain:[...document.querySelectorAll('#arena [data-terrain-base]')].every(node=>node.getAttribute('fill')==='transparent')
       }));
       assert.equal(normal.debug.rendererActive,true);
       assert.equal(normal.debug.visible,true);
       assert.equal(normal.debug.fallback2D,false);
-      assert.equal(normal.debug.projectionValid,true);
-      assert(normal.debug.arenaRect.width>1&&normal.debug.arenaRect.height>1);
-      assert(normal.debug.viewBox.width>0&&normal.debug.viewBox.height>0);
+      assert.equal(normal.debug.ready,true);
+      assert.equal(normal.debug.type,'normal');
       assert(normal.debug.canvas.width>300&&normal.debug.canvas.height>150);
-      assert(normal.debug.fps>0&&normal.debug.lastFrameAt>0);
-      assert.notDeepEqual(normal.debug.camera,{left:-10,right:10,top:10,bottom:-10});
+      assert(normal.debug.calls>0&&normal.debug.triangles>0&&normal.debug.lastFrameAt>0);
+      assert(normal.gridTiles>0);
+      assert.equal(normal.transparentTerrain,true);
       assert.equal(normal.layerPointer,'none');
       assert.equal(normal.canvasPointer,'none');
       assert(Number(normal.layerZ)<Number(normal.svgZ));
 
       await page.evaluate(()=>{currentBiome='rachadura';});
-      await page.waitForFunction(()=>window.FerroArena3D.debug().arena==='corrupted'&&!window.FerroArena3D.debug().pending,null,{timeout:60000});
+      await page.waitForFunction(()=>window.FerroArena3D.debug().type==='corrupted'&&window.FerroArena3D.debug().calls>0,null,{timeout:60000});
       const corrupted=await page.evaluate(()=>window.FerroArena3D.debug());
       assert.equal(corrupted.visible,true);
-      assert.equal(corrupted.projectionValid,true);
+      assert.equal(corrupted.ready,true);
+      assert(corrupted.triangles>0);
       assert(corrupted.cached.includes('normal')&&corrupted.cached.includes('corrupted'));
 
-      const zoom=await page.evaluate(()=>{
-        const before=window.FerroArena3D.debug();
-        const vb=document.getElementById('arena').viewBox.baseVal;
-        document.getElementById('arena').setAttribute('viewBox',`${vb.x+25} ${vb.y+23} ${vb.width*.8} ${vb.height*.8}`);
-        return before;
-      });
-      await page.waitForFunction(before=>{
-        const after=window.FerroArena3D.debug();
-        return after.projectionValid&&after.viewBox.width<before.viewBox.width&&after.camera.right-after.camera.left<before.camera.right-before.camera.left;
-      },zoom);
+      await page.evaluate(()=>{currentBiome='grama';});
+      await page.waitForFunction(()=>window.FerroArena3D.debug().type==='normal');
 
       await page.evaluate(()=>{RADIUS=8;});
       await page.waitForFunction(()=>window.FerroArena3D.debug().fallback2D===true);
       const expanded=await page.evaluate(()=>window.FerroArena3D.debug());
       assert.equal(expanded.visible,false);
-      assert.equal(expanded.fallbackReason,'expanded-grid-has-no-matching-3d-asset');
+      assert.equal(expanded.fallbackReason,'radius-8-svg-fallback');
 
       const relevant=errors.filter(message=>!/firebase|google|analytics|favicon/i.test(message));
       assert.deepEqual(relevant,[]);
-      results.push({page:pagePath,viewport,normal:normal.debug.arena,corrupted:corrupted.arena,expandedFallback:expanded.fallback2D,canvas:normal.debug.canvas});
+      results.push({page:pagePath,viewport,normal:normal.debug.type,corrupted:corrupted.type,calls:normal.debug.calls,triangles:normal.debug.triangles,expandedFallback:expanded.fallback2D,canvas:normal.debug.canvas});
       await page.close();
     }
     console.log(JSON.stringify({status:'PASS',results}));

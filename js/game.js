@@ -1,6378 +1,2022 @@
-(function(){
-  const container = document.getElementById('intro-sparks-container');
-  if(container){
-    for(let i=0;i<26;i++){
-      const s = document.createElement('div');
-      s.className = 'intro-spark';
-      s.style.left = (Math.random()*100)+'%';
-      s.style.animationDelay = (Math.random()*1.4)+'s';
-      s.style.setProperty('--drift', (Math.random()*60-30)+'px');
-      container.appendChild(s);
-    }
-  }
-
-  const music = document.getElementById('intro-music');
-  const preshow = document.getElementById('intro-preshow');
-  const splashEl = document.getElementById('intro-splash-text');
-  const introScreen = document.getElementById('intro-screen');
-  const glowWrap = document.getElementById('intro-glow-wrap');
-  const volSlider = document.getElementById('intro-volume-slider');
-  const soundHint = document.getElementById('intro-sound-hint');
-  const pressStartBtn = document.getElementById('intro-press-start-btn');
-  const overallFade = document.getElementById('intro-overall-fade');
-
-  // m√∫sica j√° vem cortada certinha (come√ßa em 0:00 = o antigo 1:43) ‚Äî toca do
-  // zero sem precisar pular pra lugar nenhum, ent√£o n√£o sofre mais dos bugs de seek.
-  const CLIMAX_AT = 24;         // cl√≠max exato dentro do arquivo j√° cortado
-  const WAIT_DURATION = CLIMAX_AT; // ~24s de logos antes do cl√≠max
-  const BG_REVEAL_DELAY = 700;  // ms ‚Äî o "fundo" da logo entra este tempo depois das letras
-  const PRESS_START_DELAY = 2400; // ms depois do cl√≠max at√© o bot√£o aparecer
-
-  // 3 logos fict√≠cias, comprimidas nesses ~24s (cada uma com fade-in/hold/fade-out)
-  const SPLASH_CARDS = [
-    {start:1,  end:7,  text:'RACHADURA STUDIOS'},
-    {start:8,  end:14, text:'em parceria com FORJA COLETIVA'},
-    {start:15, end:21, text:'RENEE41 apresenta'},
-  ];
-  let titleTriggered = false;
-  let introEnded = false;
-  let introBattleActive = false; // as bolinhas s√≥ lutam a partir do cl√≠max (nome do jogo)
-
-  /* ============ CANVAS: simula√ß√£o de guerra + brasa + feixe de luz ============ */
-  const canvas = document.getElementById('intro-canvas');
-  const ctx = canvas ? canvas.getContext('2d') : null;
-  function resizeIntroCanvas(){
-    if(!canvas) return;
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-  }
-  resizeIntroCanvas();
-  window.addEventListener('resize', resizeIntroCanvas);
-
-  const ARMY_COLORS = [ ['#e0693a','#c9a53a'], ['#4a9fd8','#8f97a3'], ['#7ec98a','#b06fd6'] ];
-  let soldiers = [];
-  function initSoldiers(){
-    soldiers = [];
-    if(!canvas) return;
-    const w = canvas.width, h = canvas.height;
-    const groundY = h*0.86;
-    const perSide = 6;
-    for(let side=0; side<2; side++){
-      for(let i=0;i<perSide;i++){
-        const homeX = side===0 ? w*0.06 + i*(w*0.05) : w*0.94 - i*(w*0.05);
-        const pair = ARMY_COLORS[i % ARMY_COLORS.length];
-        soldiers.push({
-          side, homeX, x:homeX, y: groundY,
-          r: 6+Math.random()*3,
-          phase: Math.random()*Math.PI*2,
-          colorA: pair[0], colorB: pair[1],
-        });
-      }
-    }
-  }
-  initSoldiers();
-
-  let embers = [];
-  function spawnEmber(x,y){
-    embers.push({x,y, vy:-(18+Math.random()*26), vx:(Math.random()*20-10), life:1, maxLife: 1.3+Math.random()*1.3, size:1.4+Math.random()*2});
-  }
-  function spawnEmberBurst(x,y,count){
-    for(let i=0;i<count;i++){
-      embers.push({ x, y, vx:(Math.random()*160-80), vy:(Math.random()*-140-40), life:1, maxLife:0.6+Math.random()*0.6, size:1.5+Math.random()*2.5 });
-    }
-  }
-
-  let projectiles = [];
-  function spawnProjectile(){
-    if(!canvas) return;
-    const w = canvas.width, h = canvas.height;
-    const fromLeft = Math.random()<0.5;
-    const groundY = h*0.86;
-    projectiles.push({
-      startX: fromLeft ? w*0.08 : w*0.92, endX: fromLeft ? w*0.92 : w*0.08,
-      startY: groundY-10, t:0, duration: 1.1+Math.random()*0.4
-    });
-  }
-
-  let beamActive = false, beamStart = 0;
-  const BEAM_DURATION = 1300;
-  function triggerBeam(){ beamActive = true; beamStart = performance.now(); }
-
-  let lightningActive = false, lightningStart = 0, lightningX = 0, lightningY = 0;
-  const LIGHTNING_DURATION = 380;
-  function triggerLightning(x,y){ lightningActive = true; lightningStart = performance.now(); lightningX = x; lightningY = y; }
-
-  function drawSoldier(s){
-    ctx.beginPath(); ctx.arc(s.x, s.y, s.r, -Math.PI/2, Math.PI/2); ctx.closePath();
-    ctx.fillStyle = s.colorA; ctx.fill();
-    ctx.beginPath(); ctx.arc(s.x, s.y, s.r, Math.PI/2, Math.PI*1.5); ctx.closePath();
-    ctx.fillStyle = s.colorB; ctx.fill();
-  }
-
-  let lastClashCycle = -1;
-  let lastProjectileCycle = -1;
-  function updateSoldiers(now, dt){
-    if(!canvas) return;
-    const CYCLE = 5000;
-    const t = now % CYCLE;
-    const cycleIndex = Math.floor(now/CYCLE);
-    const w = canvas.width, h = canvas.height;
-    const centerX = w/2;
-    const groundY = h*0.86;
-
-    soldiers.forEach(s=>{
-      const dirSign = s.side===0 ? 1 : -1;
-      const clashX = centerX + dirSign*(-26);
-      let targetX;
-      if(t < 2000){
-        targetX = s.homeX + (clashX - s.homeX) * (t/2000);
-      } else if(t < 2700){
-        targetX = clashX + Math.sin(now/70 + s.phase)*3;
-      } else if(t < 4700){
-        targetX = clashX + (s.homeX - clashX) * ((t-2700)/2000);
-      } else {
-        targetX = s.homeX;
-      }
-      s.x += (targetX - s.x) * Math.min(1, dt*6);
-      s.y = groundY + Math.sin(now/300 + s.phase)*2.5;
-    });
-
-    if(t>=2000 && t<2060 && lastClashCycle !== cycleIndex){
-      lastClashCycle = cycleIndex;
-      spawnEmberBurst(centerX, groundY-8, 10);
-    }
-    if(t>=900 && t<960 && lastProjectileCycle !== cycleIndex){
-      lastProjectileCycle = cycleIndex;
-      if(Math.random()<0.7) spawnProjectile();
-    }
-  }
-
-  function updateAndDrawProjectiles(dt){
-    projectiles = projectiles.filter(p=>{
-      p.t += dt/p.duration;
-      if(p.t>=1) return false;
-      const x = p.startX + (p.endX-p.startX)*p.t;
-      const arcHeight = 80;
-      const y = p.startY - Math.sin(Math.PI*p.t)*arcHeight;
-      const dir = p.endX>p.startX ? 1 : -1;
-      ctx.save();
-      ctx.translate(x,y);
-      ctx.rotate(dir*(-0.3+p.t*0.6));
-      ctx.strokeStyle = 'rgba(220,200,180,0.85)';
-      ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.moveTo(-13*dir,0); ctx.lineTo(13*dir,0); ctx.stroke();
-      ctx.fillStyle = 'rgba(230,210,190,0.9)';
-      ctx.beginPath();
-      ctx.moveTo(13*dir,0); ctx.lineTo(7*dir,-4); ctx.lineTo(7*dir,4); ctx.closePath(); ctx.fill();
-      ctx.restore();
-      return true;
-    });
-  }
-
-  function updateAndDrawEmbers(dt){
-    embers = embers.filter(e=>{
-      e.life -= dt/e.maxLife;
-      if(e.life<=0) return false;
-      e.x += e.vx*dt; e.y += e.vy*dt;
-      ctx.globalAlpha = Math.max(0, e.life);
-      ctx.fillStyle = '#f2a541';
-      ctx.beginPath(); ctx.arc(e.x, e.y, e.size, 0, Math.PI*2); ctx.fill();
-      ctx.globalAlpha = 1;
-      return true;
-    });
-    if(canvas && Math.random()<0.18){
-      spawnEmber(Math.random()*canvas.width, canvas.height*(0.9+Math.random()*0.1));
-    }
-  }
-
-  function drawBeamIfActive(now){
-    if(!beamActive || !canvas) return;
-    const elapsed = now - beamStart;
-    if(elapsed > BEAM_DURATION){ beamActive = false; return; }
-    const p = elapsed/BEAM_DURATION;
-    const alpha = p<0.15 ? p/0.15 : Math.max(0, 1-((p-0.15)/0.85));
-    const grad = ctx.createLinearGradient(0, canvas.height*0.5-70, 0, canvas.height*0.5+70);
-    grad.addColorStop(0,'rgba(255,235,200,0)');
-    grad.addColorStop(0.5,`rgba(255,235,200,${0.6*alpha})`);
-    grad.addColorStop(1,'rgba(255,235,200,0)');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, canvas.height*0.5-70, canvas.width, 140);
-    ctx.fillStyle = `rgba(255,255,255,${0.4*alpha})`;
-    ctx.fillRect(0, canvas.height*0.5-2, canvas.width, 4);
-  }
-
-  function drawLightningIfActive(now){
-    if(!lightningActive || !canvas) return;
-    const elapsed = now - lightningStart;
-    if(elapsed > LIGHTNING_DURATION){ lightningActive = false; return; }
-    ctx.save();
-    ctx.strokeStyle = 'rgba(255,255,255,0.9)';
-    ctx.lineWidth = 2;
-    for(let b=0;b<3;b++){
-      let cx = lightningX + (Math.random()*50-25), cy = 0;
-      ctx.beginPath(); ctx.moveTo(cx,cy);
-      while(cy < lightningY){
-        cx += (Math.random()*36-18); cy += 22+Math.random()*22;
-        ctx.lineTo(cx,cy);
-      }
-      ctx.stroke();
-    }
-    ctx.restore();
-    ctx.fillStyle = `rgba(255,235,200,${0.25*(1-elapsed/LIGHTNING_DURATION)})`;
-    ctx.fillRect(0,0,canvas.width,canvas.height);
-  }
-
-  let canvasRunning = true;
-  let lastFrameTime = performance.now();
-  function canvasLoop(now){
-    if(!canvasRunning) return;
-    if(canvas && ctx){
-      const dt = Math.min(0.05, (now-lastFrameTime)/1000);
-      lastFrameTime = now;
-      ctx.clearRect(0,0,canvas.width,canvas.height);
-      if(introBattleActive){
-        updateSoldiers(now, dt);
-        soldiers.forEach(s=>drawSoldier(s));
-      }
-      updateAndDrawProjectiles(dt);
-      updateAndDrawEmbers(dt);
-      drawBeamIfActive(now);
-      drawLightningIfActive(now);
-    }
-    requestAnimationFrame(canvasLoop);
-  }
-  requestAnimationFrame(canvasLoop);
-
-  function endIntroSequence(){
-    if(introEnded) return;
-    introEnded = true;
-    canvasRunning = false;
-    if(preshow && preshow.parentNode) preshow.remove();
-    if(introScreen && introScreen.parentNode) introScreen.remove();
-    if(overallFade && overallFade.parentNode) overallFade.remove();
-    if(canvas && canvas.parentNode) canvas.remove();
-  }
-
-  // Pula direto pro cl√≠max (nome do jogo + Press Start).
-  // Agora isso s√≥ √© acionado pelo bot√£o expl√≠cito "Pular".
-  function skipToClimax(){
-    if(introEnded || titleTriggered) return;
-    clearInterval(tickInterval);
-    clockStart = performance.now() - WAIT_DURATION*1000; // realinha o rel√≥gio pro instante do cl√≠max
-    tryPlayAudio(); // conta como gesto do usu√°rio, libera o √°udio se ainda n√£o tinha
-    seekWebAudioTo(CLIMAX_AT);
-    triggerClimax();
-  }
-  if(preshow){
-    const skipIntroBtn = document.createElement('button');
-    skipIntroBtn.id = 'intro-skip-btn';
-    skipIntroBtn.type = 'button';
-    skipIntroBtn.textContent = 'Pular';
-    skipIntroBtn.setAttribute('aria-label','Pular introdu√ß√£o');
-    preshow.appendChild(skipIntroBtn);
-    skipIntroBtn.addEventListener('click', (e)=>{
-      e.preventDefault();
-      e.stopPropagation();
-      tryPlayAudio();
-      skipToClimax();
-    });
-  }
-
-  // volume base (0-1) ajust√°vel pelo slider a qualquer momento
-  let userVolume = 0.7;
-  if(volSlider){
-    volSlider.addEventListener('input', ()=>{
-      userVolume = volSlider.value/100;
-      if(music && !music.paused) applyRampedVolume((performance.now()-clockStart)/1000);
-    });
-  }
-
-  function applyRampedVolume(elapsed){
-    if(!gainNode) return;
-    let ramp;
-    if(elapsed < WAIT_DURATION){
-      const progress = Math.min(1, Math.max(0, elapsed / WAIT_DURATION));
-      ramp = 0.10 + progress*progress*0.85;
-    } else if(elapsed < WAIT_DURATION + 6){
-      ramp = 0.95;
-    } else {
-      ramp = 0.35;
-    }
-    gainNode.gain.value = Math.max(0, Math.min(1, ramp * userVolume));
-  }
-
-  function triggerClimax(){
-    titleTriggered = true;
-    introBattleActive = true;
-    splashEl.style.opacity = '0';
-    if(introScreen) introScreen.style.display = 'flex';
-    triggerBeam();
-    if(introScreen){
-      introScreen.classList.add('impact-shake');
-      setTimeout(()=> introScreen.classList.remove('impact-shake'), 350);
-    }
-    if(glowWrap){
-      glowWrap.classList.remove('show');
-      setTimeout(()=> glowWrap.classList.add('show'), BG_REVEAL_DELAY);
-    }
-    setTimeout(()=>{
-      if(pressStartBtn) pressStartBtn.classList.add('show');
-    }, PRESS_START_DELAY);
-  }
-
-  if(pressStartBtn){
-    pressStartBtn.addEventListener('click', ()=>{
-      if(introEnded) return;
-      const rect = pressStartBtn.getBoundingClientRect();
-      triggerLightning(rect.left+rect.width/2, rect.top+rect.height/2);
-      spawnEmberBurst(rect.left+rect.width/2, rect.top+rect.height/2, 24);
-      pressStartBtn.classList.add('impact-flash');
-      pressStartBtn.classList.remove('show');
-      if(overallFade) overallFade.classList.add('show');
-      setTimeout(()=>{
-        endIntroSequence();
-        document.getElementById('mobile-mode-ask-overlay').classList.add('show');
-      }, 850);
-    });
-  }
-
-  // rel√≥gio pr√≥prio (n√£o depende do √°udio) ‚Äî a intro roda automaticamente ao carregar a p√°gina
-  let clockStart = performance.now();
-  function currentIntroElapsed(){
-    return Math.max(0, (performance.now() - clockStart) / 1000);
-  }
-
-  /* ============ √ÅUDIO VIA WEB AUDIO API ============ */
-  // <audio>.currentTime tem comportamento inconsistente entre navegadores (seek
-  // ignorado, reset sozinho pro 0:00, etc). A Web Audio API agenda a reprodu√ß√£o
-  // de um jeito preciso e n√£o sofre desses bugs ‚Äî uma vez iniciado no ponto
-  // certo, ele NUNCA volta sozinho.
-  let audioCtx = null, audioBuffer = null, gainNode = null, sourceNode = null;
-  let webAudioReady = false, audioIsPlaying = false, decodingStarted = false;
-
-  function initWebAudio(){
-    if(decodingStarted || !music) return;
-    decodingStarted = true;
-    try{
-      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-      if(!AudioContextClass) return;
-      audioCtx = new AudioContextClass();
-      gainNode = audioCtx.createGain();
-      gainNode.gain.value = 0.1 * userVolume;
-      gainNode.connect(audioCtx.destination);
-      const sourceEl = music.querySelector('source');
-      const dataUri = sourceEl ? sourceEl.getAttribute('src') : '';
-      const base64 = dataUri.slice(dataUri.indexOf(',')+1);
-      const binary = atob(base64);
-      const bytes = new Uint8Array(binary.length);
-      for(let i=0;i<binary.length;i++){ bytes[i] = binary.charCodeAt(i); }
-      audioCtx.decodeAudioData(bytes.buffer, (buffer)=>{
-        audioBuffer = buffer;
-        webAudioReady = true;
-        if(audioUnlockRequested) tryPlayAudio();
-      }, ()=>{ /* falha ao decodificar ‚Äî segue sem m√∫sica, o visual continua normal */ });
-    }catch(e){ /* Web Audio n√£o suportado ‚Äî segue sem m√∫sica */ }
-  }
-
-  function startWebAudioAt(offsetSeconds){
-    if(!audioCtx || !audioBuffer || audioCtx.state !== 'running') return false;
-    try{ if(sourceNode){ sourceNode.onended = null; sourceNode.stop(); } }catch(e){}
-    sourceNode = audioCtx.createBufferSource();
-    sourceNode.buffer = audioBuffer;
-    sourceNode.connect(gainNode);
-    const safeOffset = Math.max(0, Math.min(offsetSeconds, audioBuffer.duration - 0.05));
-    try{ sourceNode.start(0, safeOffset); }catch(e){ return false; }
-    audioIsPlaying = true;
-    if(soundHint) soundHint.style.opacity = '0';
-    return true;
-  }
-
-  // usado quando a partida de verdade come√ßa ‚Äî a m√∫sica do lobby n√£o faz sentido continuar
-  // tocando durante a batalha, ent√£o some com um fade curtinho em vez de cortar seco.
-  window.stopIntroMusic = function(fadeMs){
-    if(!audioIsPlaying || !sourceNode) return;
-    fadeMs = fadeMs || 600;
-    try{
-      if(gainNode && audioCtx){
-        const now2 = audioCtx.currentTime;
-        gainNode.gain.cancelScheduledValues(now2);
-        gainNode.gain.setValueAtTime(gainNode.gain.value, now2);
-        gainNode.gain.linearRampToValueAtTime(0, now2 + fadeMs/1000);
-      }
-      const nodeToStop = sourceNode;
-      setTimeout(()=>{ try{ nodeToStop.stop(); }catch(e){} }, fadeMs + 50);
-      audioIsPlaying = false;
-    }catch(e){}
-  };
-
-  let audioUnlockRequested = false;
-  function tryPlayAudio(){
-    audioUnlockRequested = true;
-    if(audioIsPlaying) return;
-    if(!decodingStarted){ initWebAudio(); }
-    if(!audioCtx) return;
-
-    const startWhenReady = ()=>{
-      if(audioIsPlaying) return;
-      if(webAudioReady) startWebAudioAt(currentIntroElapsed());
-    };
-
-    if(audioCtx.state === 'running'){
-      startWhenReady();
-      return;
-    }
-
-    // Sem gesto o navegador pode recusar; no primeiro toque/clique chamamos de novo
-    // dentro da ativa√ß√£o do usu√°rio e retomamos exatamente no tempo atual da intro.
-    audioCtx.resume().then(startWhenReady).catch(()=>{});
-  }
-
-  // pula a m√∫sica direto pro ponto certo (usado no cl√≠max via Espa√ßo, por exemplo)
-  function seekWebAudioTo(offsetSeconds){
-    if(webAudioReady){ startWebAudioAt(offsetSeconds); }
-  }
-
-  initWebAudio(); // decodifica em segundo plano
-  tryPlayAudio(); // autoplay best-effort; se o navegador bloquear, aguarda o primeiro gesto
-
-  function unlockAudioFromGesture(){
-    tryPlayAudio();
-  }
-  document.addEventListener('pointerdown', unlockAudioFromGesture, {once:true, capture:true});
-  document.addEventListener('keydown', unlockAudioFromGesture, {once:true, capture:true});
-
-  const tick = ()=>{
-    if(introEnded){ return; }
-    const elapsed = (performance.now() - clockStart) / 1000;
-    applyRampedVolume(elapsed);
-    if(!titleTriggered){
-      if(elapsed >= WAIT_DURATION){
-        clearInterval(tickInterval);
-        triggerClimax();
-      } else {
-        const card = SPLASH_CARDS.find(c=> elapsed>=c.start && elapsed<=c.end);
-        splashEl.textContent = card ? card.text : '';
-        splashEl.style.opacity = card ? '1' : '0';
-      }
-    }
-  };
-  const tickInterval = setInterval(tick, 200);
-  tick();
-})();
-
-/* ============ TUTORIAL GUIADO ============ */
-let tutorialSteps = [];
-let tutorialStepIndex = 0;
-let tutorialOnComplete = null;
-
-function startGuidedTutorial(steps, onComplete){
-  tutorialSteps = steps;
-  tutorialStepIndex = 0;
-  tutorialOnComplete = onComplete || null;
-  document.getElementById('tutorial-overlay').style.display = 'block';
-  showTutorialStep();
-}
-
-function showTutorialStep(){
-  const step = tutorialSteps[tutorialStepIndex];
-  if(!step){ endGuidedTutorial(); return; }
-  // espera o layout assentar de verdade (√∫til logo ap√≥s trocar de tela) antes de medir a posi√ß√£o do alvo
-  requestAnimationFrame(()=> requestAnimationFrame(()=> positionTutorialStep(step)));
-}
-
-function positionTutorialStep(step){
-  const target = document.querySelector(step.selector);
-  if(!target || target.offsetParent===null){
-    tutorialStepIndex++;
-    showTutorialStep();
-    return;
-  }
-  if(target.scrollIntoView) target.scrollIntoView({block:'center', behavior:'auto'});
-  const rect = target.getBoundingClientRect();
-  if(rect.width<4 || rect.height<4){
-    // ainda n√£o renderizou de verdade ‚Äî tenta de novo no pr√≥ximo quadro em vez de desenhar um anel errado
-    requestAnimationFrame(()=> requestAnimationFrame(()=> positionTutorialStep(step)));
-    return;
-  }
-  const pad = 8;
-  const ring = document.getElementById('tutorial-ring');
-  ring.style.left = (rect.left-pad)+'px';
-  ring.style.top = (rect.top-pad)+'px';
-  ring.style.width = (rect.width+pad*2)+'px';
-  ring.style.height = (rect.height+pad*2)+'px';
-
-  const tooltip = document.getElementById('tutorial-tooltip');
-  const isLast = tutorialStepIndex === tutorialSteps.length-1;
-  tooltip.innerHTML = `
-    <div id="tutorial-step-count">Passo ${tutorialStepIndex+1} de ${tutorialSteps.length}</div>
-    <h4>${step.title}</h4>
-    <p>${step.text}</p>
-    <div style="display:flex;justify-content:space-between;gap:8px;">
-      <button class="ghost-btn" id="tutorial-skip-btn" style="flex:1;">Pular</button>
-      <button class="main-btn" id="tutorial-next-btn" style="flex:1;">${isLast ? 'Concluir' : 'Pr√≥ximo'}</button>
-    </div>
-  `;
-  let tx = rect.left;
-  let ty = rect.bottom + 16;
-  const tooltipH = 160;
-  if(ty + tooltipH > window.innerHeight) ty = rect.top - tooltipH;
-  if(ty < 8) ty = 8;
-  if(tx + 290 > window.innerWidth) tx = window.innerWidth - 300;
-  if(tx < 8) tx = 8;
-  tooltip.style.left = tx+'px';
-  tooltip.style.top = ty+'px';
-
-  document.getElementById('tutorial-next-btn').onclick = ()=>{ tutorialStepIndex++; showTutorialStep(); };
-  document.getElementById('tutorial-skip-btn').onclick = endGuidedTutorial;
-}
-
-function endGuidedTutorial(){
-  document.getElementById('tutorial-overlay').style.display = 'none';
-  const cb = tutorialOnComplete;
-  tutorialOnComplete = null;
-  if(cb) cb();
-}
-
-const TUTORIAL_STEPS_MENU = [
-  {selector:'[data-screen="shop"]', title:'Loja', text:'Clique aqui ‚Äî √© a loja onde voc√™ compra Stack Users novos e c√≥pias pra evoluir de estrela. S√≥ funciona durante uma partida.'},
-  {selector:'[data-screen="items"]', title:'Itens', text:'Aqui voc√™ compra itens e equipa at√© 3 em cada Stack User. Alguns itens combinam dois mais fracos num mais forte.'},
-  {selector:'[data-screen="recommended"]', title:'Itens Recomendados', text:'N√£o sabe o que comprar? Aqui tem sugest√£o de build pra cada personagem.'},
-  {selector:'[data-screen="roster"]', title:'Meu Time', text:'Veja todos os Stack Users que voc√™ j√° possui, com n√≠vel e estrelas.'},
-  {selector:'#mode-pve', title:'Contra Bot', text:'O modo principal: sobreviva a ondas de inimigos cada vez mais fortes, ganhando moedas e XP pelo caminho.'},
-  {selector:'#mode-pvp', title:'2 Jogadores', text:'Jogue no mesmo aparelho contra um amigo, cada um com seu time e suas moedas.'},
-];
-
-const TUTORIAL_STEPS_BATTLE = [
-  {selector:'#roundinfo', title:'Onda e clima', text:'Aqui mostra em qual onda voc√™ est√° e o clima do dia ‚Äî o clima pode mudar o combate (chuva, nevasca, vento forte...).'},
-  {selector:'#arena', title:'A arena', text:'Seu time fica √† esquerda, os inimigos √† direita. A batalha acontece sozinha ‚Äî seu trabalho √© montar o time, os itens e a posi√ß√£o certa antes dela come√ßar.'},
-];
-
-let hasSeenBattleTutorial = false;
-
-document.getElementById('guided-tutorial-btn').addEventListener('click', ()=>{
-  if(mode!==null) return;
-  showScreen('menu');
-  startGuidedTutorial(TUTORIAL_STEPS_MENU);
-});
-
-document.getElementById('patchnotes-btn').addEventListener('click', ()=>{
-  document.getElementById('patchnotes-panel').classList.toggle('open');
-  document.getElementById('patchnotes-dot').classList.remove('show');
-  try{ localStorage.setItem('ferroLancaNotesReadVersion', GAME_VERSION); }catch(e){}
-});
-document.getElementById('patchnotes-close').addEventListener('click', ()=>{
-  document.getElementById('patchnotes-panel').classList.remove('open');
-});
-document.getElementById('tutorial-btn').addEventListener('click', ()=>{
-  document.getElementById('tutorial-panel').classList.toggle('open');
-});
-document.getElementById('tutorial-close').addEventListener('click', ()=>{
-  document.getElementById('tutorial-panel').classList.remove('open');
-});
-
-/* ============ DATA ============ */
-const ELEMENT_COLORS = {fogo:'#e0693a',agua:'#4f9fd4',terra:'#b08a52',vento:'#7fd49a',metal:'#c7cfd9',gelo:'#8fd4e8',eletrico:'#f5e663',corrupted:'#9b4fd9'};
-const SPECIAL_CHARGE_THRESHOLD = {lanca:3, cura:4, perfuro:4, rajada:3, furia:4, couraca:4, explosao:3, chuva:4, ima:4, congelamento:5};
-// Nova roda elemental: √°gua > fogo > gelo > terra > el√©trico > metal > vento > √°gua (fecha o ciclo)
-const ADVANTAGES = [['agua','fogo'],['fogo','gelo'],['gelo','terra'],['terra','eletrico'],['eletrico','metal'],['metal','vento'],['vento','agua']];
-// Resist√™ncia de controle: Metal resiste bastante (metade da dura√ß√£o) a atordoamento/controle vindo
-// de qualquer elemento QUE N√ÉO SEJA el√©trico (a eletricidade conduz pelo metal sem perder for√ßa).
-function applyCC(target, ms, sourceElement){
-  let mult = 1;
-  if(target.element==='metal') mult = sourceElement==='eletrico' ? 0.75 : 0.5;
-  const reduced = ms*mult;
-  target.actionTimer += reduced;
-  return reduced;
-}
-function elemMultiplier(atk,def){
-  if(ADVANTAGES.some(([a,d])=>a===atk&&d===def)) return 1.5;
-  if(ADVANTAGES.some(([a,d])=>a===def&&d===atk)) return 0.67;
-  return 1;
-}
-
-
-// Visual-test portraits: real face art when available, readable fallback for the rest.
-// Kept local to the test branch so the production game remains untouched.
-const CHAMPION_PORTRAITS = {
-  gelida: 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCAgICAgMCAgIDAwMDBAYEBAQEBAgGBgUGCQgKCgkICQkKDA8MCgsOCwkJDRENDg8QEBEQCgwSExIQEw8QEBD/2wBDAQMDAwQDBAgEBAgQCwkLEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBD/wAARCABAAEADASIAAhEBAxEB/8QAHAAAAgMAAwEAAAAAAAAAAAAABwgEBQYBAwkC/8QAOBAAAQMDAwIEBAQCCwAAAAAAAQIDBAUGEQASIQdBCBMxURQiMmEjQoHRYnEWJCUzUmN0kZSh8P/EABgBAQEBAQEAAAAAAAAAAAAAAAUEAgMG/8QAIxEAAQQCAgICAwAAAAAAAAAAAQACAxEEIRIxIkEFUWHR8P/aAAwDAQACEQMRAD8AlortyKwTX6l+stz99Sk1q4VEf25Uc/6pz99Q2GwEjjtoadeurDXTi2XINHebcuCooUxGbQ6A5FJA/GUOwAJI++NKOcGiyoxbjpajqL14pnS+Gl6v3NVXpT25MeHHecU48sflznCfuSeNL5XfFp1jrEpQoV8OW+yoFaEPLDpJzwknadntjJJ99CCBAddqLEuuTn5s99aVrBdU44Uk5wVEnGfYc+vI03/QLwcWl1Yp5vi/4b7EFTRMGlMPlK3Ek8yHsfMAfRPoMD/eGXJIFlWw4xkNBUXRHxLX1fdZZt25KuSt2O+4uUzMW0W1tDPzJKsYUPTv+vGjXIrlxDkV+pe4xLcwf+9DPqv4JrTosWTWenk+TAksoJRFkuF5pahz9R5B4GCc4wDrL+G2+bxr8St25fEt6bJpc3yGJb7hW7v2FSmnCfZKCUkdkkEeh10x8kS6WcjGdBsozruK5Ec/0gqf/Lc/fXSq6LlH1XDVMfaY5++uX2kkHOoKkDn141ZpSq3q8xmkUOdUnnFNojR1r3pTuKTjAIHfkjjSRHph1Fvi4ajeMex6+xCnSVKj/GNOIU5n6U+Y58yz7kcknto5+Mmr1yj2XRIVMQ+iJUZbiZj6M7QEJSpCDj0JOT/JOPfWW6Pivwrci3JW6hKqtw1KKVWxbZkKXtjhQQZjwJ3BGThKEkbu+Brg4sJIkuhsrTWv0I+z0r3pP4dno1XapFUmx5F4T2wr4FCiW6HFJIU68pOfxVAKShsEkcqPzYxuLjsTxByapCo02zI8BdMmeTTqlQJDkRbTG5KU7FtJTgYyo+YrPBBBONaTw5WTXaDW7lrrkt+XKk1AFch5JS4QEgFJSfp2qCk7R6bcdtNm/W6PBpKLiuWsQqYloAvSZbiW08DuVep+3Oh8jJa+SmDQ6/vteixMMxxAvPke/wBJbOvN+Xb0dsK3adIDFdqNSSqLLqVU3eUhxI3HzC0ASSn0UAM4OedKx05vVmj9Y5lZj/DTKfWYbMypMwkrww4AWi8hCskqTkqIycoWr7DTK3Pd9E6gXc/bkDqKuvUh1MiTOhSYpj4JCQhTICR8g5HJ3EkqJxgANdP7Qs6k+JGp0y3ghESnQ2JLTbgztkfC4kIB7kKWhfPPrnnVWC0kWpPkhR/COy2m3kBxpQUhaQtJHoQRkEarX2ShRHbVzDhqiQWY5RtDSNiU4+lIPyj9E4H6aiS2huKiDpMIXpZzxEP2VG6V1IXsjdHcBEVCVYcU/tONvv64PbB540j903BcK7+Yr9Lq8mlzYKWBFlMOlBhRm0JCSkj0GMnHfOO+mY8YzylxIDLwCYjJLRSvKVvPbgoobHqoAAFZAxnYnOSRpVJTMqtVBinSH2osuQlCHFvObW0pQk7As4zkJAH32+51NO6zxXaMVTgn/wDDvfT1o9MqZfdaj1OqQrnU5LnSuXlx5BWrO5I52qAzxxuCvTOjhTurXSi44wRLu2I2yoZ2uoSFJ/RY4P30uvRDq50rtbpIxY1TuPfIgQ20pKIzpbW6MBR3FOEjOTz741A6/WJa9Op1OuW0LjiyBUY7Uh1mLuIAWkK3c8A4J4Hr66JdiSh3JzaBT7MyPgGtNmlrrtpNmMXSLxo1ZdqcSCHZbq3X9yk5yDyPyqxt2+nI+2sdZfTufZ9Nj3TWFB2um4m51QdQcpC5IU280D3CQ82k9soOgpR0XFSb/jUq4XahEtGe02w/KUj+rOrejqUg7sYUQoggf5ZPbTh2tENwdObfjyI/lyXERky0AE4cacBdJ+5UgnnnknS+MwMYG/SGy5zM/ku+Qhe3AGoLkJ6SVIQOQhbhH8KRlR/Qa1SqPIfkeQy2XHFgqCBjcoAgEgd8EjP89fVmUiqVy/VW6yllUFqNNbeW2rcV4juZ5BxgKxz/AAjSEOO6a3DoC0bNO2Kgeyi11F6YdMepNCiNXJRqbUkyB+DIhqSstr5I2KHzYJ54Pvka81PFJ4ZEdH7rjXXRZ4lUOry33GEqRs+HV2ZUftk4PcDtp97R6sW/SJy4cSO1SpMpSEiNUHPLRvPP1JHlrzkYV8qh7dtVXiet2mdUOl9ZakU1ceTDDk34dKg263LYQV+UvI+ULSAQruOeeNQji7tIEa0vOG32XU0t1LTzD/yhSfKeSotq/wAKh3BGeffRQgVOZcXQGqIhtH4m03HlLZxhamnBhB55IT5ivTsM9tYq0LLqNfoVRrzNCkNwqNE+KnznSlcdhOOEFZwrepRSlKUgklXYc62nSzqrJ6VzEJnW1AqcBUwSnEuRyJAIGOFKJSQAOEkdyQRq2SpoqbtTtuN1lC3rHVV06bTLVYmrVForvkBG4pQVx2W0Zx6AgqWMjTweHCfOqFjwqJMCn34sVmdHfRlXnMSCpScnutKgtCj7pz6EaX3qNYlDvluqdV+nVNpT1FgOKqblPkPJ+IQpShvUtKvpQjds299gc+Ycgq+FXqxRK7WW7YlSXKHVoYU01H/uVlgpxlH5FoBPIGSPXGpzp9+lpoLm17W7q1doz/Ve0pz1XamUJlbkOUmBIBcDjqVB0HH0qSkI/wDZ0a7ftmjUWnSR07rwfEBje48+gJecjrcCgE49MJ4We/A4B5Xjq9RUdMrjoEuLAdq9ITVhJdZcO11kqcTvT5ieC2ecZBI5weca1jdzLjRqlcVEqT1IbgIbD0eRlTLjqXdrjAAHzkocTgcZCTzwNOYnlHTTodj0UJmNIfvv0v/Z',
-  raio: 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCAgICAgMCAgIDAwMDBAYEBAQEBAgGBgUGCQgKCgkICQkKDA8MCgsOCwkJDRENDg8QEBEQCgwSExIQEw8QEBD/2wBDAQMDAwQDBAgEBAgQCwkLEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBD/wAARCABAAEADASIAAhEBAxEB/8QAGwAAAwEBAAMAAAAAAAAAAAAABQcIBgQBAwn/xAA0EAABAwMDAgUDAwMEAwAAAAABAgMEBQYRBxIhADEIExQiQTJRYRUzcUJDgRcjJFJykcH/xAAZAQADAQEBAAAAAAAAAAAAAAACAwQFAQb/xAApEQACAQIEAwkBAAAAAAAAAAABAgMAEQQSITFBYfATIlFxgZGx0eGh/9oADAMBAAIRAxEAPwBHaoeIS55dan29QFogRaaVsPrjOlZeezt2lzA9oOfpAzg9+lMnT287juBmz4ADM9Eb1tUfkuFpqEkpCj5qz+2hCSCo4zk45OB0f0VNEReVv1C646naWuptSKgojduSlYURzwTjnB78jqydQdBTYelGq2otu1Zivx7kLJh1WM4Fn063vMXvGcpWClsbT23bvjj0uFwyPGGc2uaw8VizC+RR1+VCNZjaQWUoxVSZl61YK/3JCw7ChtBPfy0581wnH1K2ADsnPICnWrUJyd6+3KkzbUZLCIkeJS21M7Y6VEpQVJO7GSVEqVkkknJ6zFapzrLrweypbruXFck7MZCf4PW70e0mr+pNbEOjUxp5qGUuyn35DcaOynIBU884QltAJA5Pcj56CFpJn7NO6OtzTZQkK9pIbnnTQ0i8UuokGYiFXK6ake4j1b3Nuj5SmQMFpWO27KSe+Orn0ruPTq+qIuu01uqRnXXN82GjywpmQQMhST9JOMhQ9qu+M56kDV/XCyNK3G7A0i0c02qcSkMIYk3DJp4nvz5QQPNebU6ohKAvdsyFZA3fOOvdoL42mLUuSL/qrp5BqFMe4XMpsNqnzWm89kLYCGn2xn9txP8ABT1prIkamN9T5dD+1mMkk1pEFh51dky2FNpalwi6/Gez5ai3tVkd0qHPI/BI68XFbf6fT4Et9pUZ2YlalR1g5SEqwlfPOFc/+j8dCn/Hfoe3SmBYc8xo6gVLdkwHFOoz3TtwQB98E9FaBqhZOtzTsqFclNenjBTKZUUpIPGx5B5R+FYx8H79TlGIvlsD7/zb3okkYAZtbddaVJ/hb0e011FqrPobooshcxeydaUp5Tbp45dZdxwed6QcKBBHIPL8qd2aaWvp/e2kmmN4Q3ay84iOmj1tTbIlbSUuNs7jsUo8AJO1RI45x1Demr1x2VPg6j26H/Otd5C5DTIIRuZdCVFfHIVvSOT8kDoleOpdj1O9UaoMWbSrmRPW8/No1bS460pbhJcbUpCkkFKlHCgc4CFfcdPWXLCCbDY28bG/zQSYYyTkkkj4pD6jNPwq5KjvRjHfYeILeCMYJ9pB5BBBGD9+uWlXRctQpD1lUOSINFSDNqG0AF91G4hxxeM4TuO1PYd8Z5611/UydeUyqX3Eai0ylvSQYlK9Y5NciJUQA16hYC3AkDI35OMDJ79FL700trTDTZ+quXcxVq5dcFluls0dbMmIIy1JW6pTqFkgoSkIIIB3LAx3IgWOQOzjRd/StNnQqqkXO3jr+UjlS5b0pXo6o6+scYdUE7j/AOOf/uemnoVqBbNtXZFi6h2y3V7ckuBup050cqbP9xo/0uJ7pUMZxg9+lDR2ktykuSoxISrJUkYUn885BHVJzPDXWKvpdR9V7YQ3U6ZUPMbdRFdAkRpDZwpvYeCTkK2jIO4YwTjoMKJHOdNxwosS0ajI+x41Wde8GWjN8W0L/wBIJdYtqMsIeaLUsyYzra87FtlWFcEe5OTjn7Y6RNUtvUPw8XlDuKRPRPZadTultoLSpbJ4UlacYV9sgkj5HboBoV4mtQdJIbtluzPX0IPFxylVJKwhlzPLjf8AU0vnBwefkHqqrC1hsTV8fo1RgsxfUYGyRsmR1KPGDtG5H8qR/nrQVWk1QenH9rPv2ItIdPGl74cKOq69Jb0tB5DTU+83/LpKXAAX5iN0osoWfoK0oUMZ9xQkdyOpmmUFFu1ep0uqRHkKDxQtltISpCwSFn3YxjBz9uqjuyhLs3wWUCqtqMeqw60zNbWrKHXZCQ4XEkDBA8ktEfyeporOsNAvepKpepvktVdAAg1taFBmpMHHltzPLClJdCSAHwDuHCxn3nkwjRVQ6Hn7VzDM7s7jYmurS+1KrqRebliWy8GKc2wX3mZa0ttNhJPmPBYyCEoUtwnceUnIwCOgd+UCNqLdlM070yYf/SqHHdiUl1ScPVV0rK3XyPhSyAEI/pQhAPuJ6s3wm6DNWFYdbduSlx25N0vrDkdhZUyunlA8varggq3r5GDsVg43HpRV+zadpNrrAqD8d8Uam1lp4YHubbKgoH88EHjuPz1wjOohG/H68hTFazmU7cPv1pFWJo3UrlrLtqzGRHrzGVMwZKPJXNwDvbbJGA7jPsVwr4OemPpxqhWdC6fXdIr4ts1u0aosu+mWssPw3iNoeQcEA4CcpII3ITyCM9VnVaZpFrRUGkxarHZuGKoOxpsJYRIynkKSrA8wDAOD7hj4x11XV4e6LqJGbReU2KuWwMeuiwSl1/7qWN+3d9zyD8jo4VRNGOUjx61oJ3L6gZhyqNE3K22/TrgrtCcmmA95kCrqhpeZnRwrmNLbzhWOQFZ3pzghQxildMtXdBrrmx4gsuiUaqOEFDU2mtICnD2Db6Mc/bO0/wCehsPwiVKzqsufZmrFVpiCchCYKfLX9t7RWUKH4IPS91h011httIqU2vs1mnhX7jMRDSEHvhTSQAnt8Dp10Y91teVK1tZl051TviboVAr9mL0ZtZPpGIEdL1PfeTtBqaT+wtXypxAWnHwUpznv18zdJbebq2qlGi1ZsNt06Y0hDbgwfMW8lDIOf+qljjj6Or3b8SWl2szdI1BvVqsUh2mSmnVORWfVU111IztcSnK46+PpIUk90k9ukU54e5k6rzNQ9Lblg16MzPFQZmxHM+UtLgcQH2zhbOVJHKkbdwHOCeuyQCXs3XUje53+9aRhpjhleKTS/LrhV12neVq3syzBpcws1Npj2sPoKPPaQdgW2T9YynGU5GeDg9Dry0ys6/UFFxwXESCjyvVsEBwAdtyTwrB/g/GesneNouRNDKxeNuwpzXpnEXNbwjpSp+m1F1e59gbf7YdKwodihZ7ggdanTfUmj6pWrDuamuoEpTbaKnDxtciSwkeY2tHce7JB7EEY+ep5g0D50OvXxxqjDumIjyHauCjeGixYCmaii6GP1mK4l6LUGYzrLgWnlPmp9yF54BwEn89OyFTqFb1OZq9VhOPy3kK8uKUhccLHclYPvT8jGOMZ+ese26oEkgj/AB0Un1R5VvRYCAVttvOOOHvtUcAD8DA/ySelTTyTiz0yPDrA11O9cNeuhU5alTKdTnQfp/4wSUj7ZTjj+esFcLUKsxn4slhry3kFCkhIAI/jt0Uqz5TuOe3x1k6lUktpJJ6jErKdKsESkV//2Q==',
-  jedegar: 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAoHCAkIBgoJCAkMCwoMDxoRDw4ODx8WGBMaJSEnJiQhJCMpLjsyKSw4LCMkM0Y0OD0/QkNCKDFITUhATTtBQj//2wBDAQsMDA8NDx4RER4/KiQqPz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz//wAARCABAAEADASIAAhEBAxEB/8QAGwAAAgMBAQEAAAAAAAAAAAAABQcDBAYCAQD/xAA0EAACAQMDAgQDBwMFAAAAAAABAgMABBEFEiExQRMiUWEGcYEUMpGx0eHwI1KhBxUkQpL/xAAYAQADAQEAAAAAAAAAAAAAAAABAgMABP/EAB0RAAICAwEBAQAAAAAAAAAAAAABAhEDEiIxIUH/2gAMAwEAAhEDEQA/ANVJdTu7HxnHPZqq6hq6aZbePeXUiKTgAEksfQCoNU1CHTbZ7icEhewIGfxpf/EXxE+tlIraF4YFXD5IJbnPX6DioJWXLGtfGWp6jNtsbqa1tU9JCGc/ztQsa9rhQs2oXSk9Ha4b8s1VmCQ6KhCgvNIPOccAZOPyqskrkCNE3A92FOqYGXTr+rhsJq187nv4zY/OuoPiXWYZwzajdOvceO/61VhUI4VY97t69T/PWrMelPPC8zeQDlMd/wBqzlFehUJPwaeg6+mqafCUvg9wsa+Mocghse9FhczKR/Vf/wBGkbpl1Jb3oeUbvCcFgOpGeRTnguEureO4iOUlAZT86RqjIxn+oV7CUhslyZUfxG4+6O389qwg/qRsIwQg4LMcZPsKYfxhYRR5u5BuhLvI6jq8mAqA+36GlxIZDCEUfe4HsKaIGWJJmdYolAl8P7oPReP2qVUvJLd5UgBVOuwY/wA1zBHHPC/hzKGyECA4Yn29q0ejFobYQsuB7Uk56r4Wx49n6BrW2nQwyiLZ4o3YbDhhnHmFGNT1JLciEIrSEebLbQtEJtsMJcIck/8AVcn/ABQi4itrmWecMudu0yBQeCORzUdtnbLaOCpABJPD1KSZQCFlzheR68U3dBVBZyRQnMCyb4cf2OAwH0yR9KTljGxkKr1c+XPrmmb8AyTf7fPbyg7Y38pPVecbT+Y+tdEjkQfvYI7u2nt5VVkkUrhhn60qNX0i50y9+xyruJG6Nl53D+A028eY1V1FrGOES3xRfDIZWI8wI54pU6DQnrOFBfR+G2W6Djp8619rPHMvA2yLwynqKo6jc6Rc6lENPsjBsYsW3dR8u1e6nb7SZomKSKe3Wp5Omi+HmLZYvvtEakpLPsPYAED5+1Bb2WQWog3AyOcttGOKK6ams6kqxxpGIe80mVXHt/d9KNRadDprxu1slw8eWM0kYxk9/n86EefQzla5Mz8PaVJc6tbwlGVIZAZmxyOf2pmaNafZLeUFNnjTNIFPUA9M+/61BoTWCWrm2CRyFi8u58sT6knrRSGaGZgsUqO2cYDc1RuyFEFyCsExDiMhThjxisFq0bNbmdXkuEYZ83JB9OKbVxpllcjE8AcehJwfpmoYvh/SYgRHZqoLbvvN1/GhTApISVjZXM7GUweHzt8VxtBB7Z70ZhskinQti6mJyPEPkGOen6007jQNKldWksFkYnbnc3A/GoF0PTY2Eq6T5wm/lzw3p161mmwqSRmY5kjieeXIUcBiO3bAoXJDNq8pe5ytsp8kXTcfemC2kae2AbDcEIVTuOMHuOe1dwaTYbD/AMIR4JUAseg6Ec0ig0M8iZiLaytoF2Roo9SFr5V3zrtGFDde9bs6TYFSptlwfc/rXselWEbApaoCOnU0dH+g3R//2Q==',
-  terrus: 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAoHCAkIBgoJCAkMCwoMDxoRDw4ODx8WGBMaJSEnJiQhJCMpLjsyKSw4LCMkM0Y0OD0/QkNCKDFITUhATTtBQj//2wBDAQsMDA8NDx4RER4/KiQqPz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz//wAARCABAAEADASIAAhEBAxEB/8QAGgAAAgMBAQAAAAAAAAAAAAAABQYDBAcCAf/EADMQAAIBAwMCBAQFAwUAAAAAAAECAwAEEQUSIQYxEyJBcRRRYZEjMkKBsQdSwWKh0fDx/8QAGAEBAQEBAQAAAAAAAAAAAAAAAgEDBAD/xAAcEQADAQADAQEAAAAAAAAAAAAAAQIREiExA2H/2gAMAwEAAhEDEQA/AHjnOSeB9aTNX69gt7gw6dAJ9khVpJG2qcf245PvTTrMTS6JexrKsTPCwEjNtCnHcn0rB+UMjO4kcEooTnH1zREPd3/Ua6a18O0tIxckkGUMSo9gfWg79U9QPu8bVXjAOdoAH8CglhBHOwGzLfqcnhR7/OnSx0u2lvAggTwYUXykcOTyc/P0oVSk0iHRR0zrXUrW5ZZrtbmIjO2RcgH6YrS9M1C31SxjuLd1O9dxUMCVpS1HSrCbMbWkagflKDafuKl6TtF03UibZGEc6sro2eNuCCP2b/Y0ZtNir5uUN7naM8n2FcCTP6X+1STKSpwCTnsDioQpU52Nn6vWpiCOsbee60WSKKZYYVRpJmJwSF7KPcmsgitpLiAJCpcKSSu4Av8Afua2DrS1mvNC+HhJVWYvIR/aqk4rMtFIns5rWNlSXdnlcnb3/kd6LeLRxKp4ddOWwmuX8QHEQ/IeAD7Ucu7bWF8V4HaNeWBjkxz6dhn/ABQ6yQLqN4ELRgkEZPY4pitpZFQvcygxqMjJwBWNU906IlccBmjvrkqu15LkBS0YdRlm9OaJ9F6nqd5qNzHdQIIxhmbB8p3ADB7fQ0K1XqL4W9XwfDnjxy6kn07Y/wA02dHeLL4zmNFhkjV/Lz58+hqzu60G844mMkykpgBTz+qoPDOMbIyP3q0wzmudprY5yTw1kTbIAVPoayPWunLjStaguB+FHMz7dhwUwTx9sUZ6w6s1C3vvh9KuUWAkbZFGc+UE+/JpEtr24uNYSe7neWRt3Ltkng1H4VdNF43HwV7cRyOS2787HlvrUjXpvDFbSOyxmTLkHsO2Kl1yy+JMUyDzOvel/M2n3OJRlQc4+dGcZpWy/wAGG/iitpVitbRXVuC3iksPpnPFNXQN3b2MOoLdXaRW0TAI0zhceuOaz+61RLiWER4RQMEY/mo7y6S5uDJIqlQAoQju3qSaSkNXpu8uo2qaYb5JFlgxlShzv+QFLOl9UyHVDaXzpulOUzwE/wBOaAaVIun9Otd3niNPLhlQtgAYOwYPvn2oMttNLOs8g8snmLE8c0fWTMRQvy5h0+JiSzI2B9qpWewss0u4SRDaVA9O1X4dKvJ5TLcCSOVnyCFJwKZNG6etGDy3ULOxbYd7lSzEemPvTbUz2RJ09QJe/gawhjdiHXg54obMI5C0swaTI43HFMd1oVkkg+HjljkOfznxB+3/ALQu50G6Z928TY7l1Ix7DtUnghU7fpWtdOSWz+JklSOI/oiU7j+/b0qbTrOK51OO3hjEcKeaVyckqPr9e1EZ7OTEUMCs0ad3CkBj9vlUGmzHTNT8KWCU205AkIQ8EHgivNtoixMKanNHczRq/wCIqchW4Un5n58eles0ccYaRDJIBgLwNv8AxVm5tUu33WcJTccCRs/iHPcfL/vvXAtpI2WKaF1PcEj1/wA0YazC1un/2Q==',
-  voltra: 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAoHCAkIBgoJCAkMCwoMDxoRDw4ODx8WGBMaJSEnJiQhJCMpLjsyKSw4LCMkM0Y0OD0/QkNCKDFITUhATTtBQj//2wBDAQsMDA8NDx4RER4/KiQqPz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz//wAARCABAAEADASIAAhEBAxEB/8QAGgAAAwEBAQEAAAAAAAAAAAAABAUGAwcCAP/EADMQAAIBAgUCBQIEBgMAAAAAAAECAwQRAAUSITEGQRMiUWFxMpEjQoGhFCQzNFJyweHw/8QAGQEAAgMBAAAAAAAAAAAAAAAAAwQAAgUB/8QAHxEAAgICAgMBAAAAAAAAAAAAAAECEQMhEjETIkFh/9oADAMBAAIRAxEAPwDq5iryP7qO9u0fsP8As/rhZ1hmsmU9N1MsRRqgoVW5AuxHb39BgTqHqOqiogMpozMKqQU9PUtIAhcg+YAXLKLHfYbY4jWVNU9fVNNJ485chn5u/cg9sQ6kYZjV5hWzSNWMZqx/rkk8zD59MLtEiowklZ0O5sb/AGwapiSMqwDT2uNLXA9mHrglJKfSqSU7IBu5AJJ+P2xDtAU00VOyPA0hsoL+IL2bvsO2C3pfFoXqoJvxU0sV08g+hvjOSCORB4QbW5NlI/KO5wRkVU1LBmFIqh5aiMKmoXGxuAPQ4LiSlKmDyXFWhTFG0yv5tBjIvvxg+AEvGFcLHcXdjwb2vjGWOSao/l42jY7FSp29iDjSIGKV6eom0oo31rtiiW6LX9KfqnqTOZaijpJIZaRaOMIq/QpYDkgcG1hbtiYgm8UzySuzWvpPYt8dhc4bdZVq13U9TOrGTWQRY303Fyo7f+OE8z2roo2Tw4lYCy4qurLfaH2QdLCojSaqfkeUKMOc76dpaSjFVTrqnHa5uT2GCOnsxoJRLDSzhnVriM7MBYX2+b4EzjMMyrZTBHRiKlj8wWVtPiEbAkjn/UfrhO5uY7xgoaRO19FPTaSVkF0FwW9RfnuMKShlGqBG0xi7uqny4t8vp53yF5MxCx60KrGqkAIO59++AMopmhgIkiFtLPIzEgoOx+3/ADgiy0n+Anitr9JSCrkWQmrlkktcfUSR6YMzSc1FLTySRL4pjs0i/mAOxPvxhfBEJRqHIYk/GGBq5ocvWnkhSSNGJUMLFCfcdvbDsXppvsTktqh31JkjZLRZbIrmU1MfiT1CbqH7J8gEfJOEMlI0tY6ag8kh/C0ktr746D/D5mKWioM3zHxqWGUTPSIdcikcIznb99r8YnZ8tq6Wtmq43iowsjTxSAnyH/Ec79sL+SN1Yfxzq6C8kpaemhpJbomhgbuBdfUX5xY0bJUwakU2U82Iv8XxAR1kOXrHFUTBqipJZ7WYR3tpuPvcfGKrLI6+VA1TNK0I4GsKvxYb2wrli07Y5hknGke6uMSzyU8xtGxJVTwVPI+98R/UslXCXpoqi1LO+kpsC2kDYn0xU12YeJOaWi/EmOzMOEHfCDqymCQUaKCWQleLljiYl7KzmZ+jokGikjYgixBsVvg6hdYxIJCzQNG1xfa5439QcZGJdSsh373wwyvLnzMx0UW0zSEqdJa+3oBjSg6dozZK1TOlZXl8dFRok7lyo++B83hpqqkkikU6CLkKbHbfbH1XVckPjCjmjqWN7tbax74yN9mvrolM6y6ePKYq8f1gxcEr+Qna/vxvhCmbZrDTLTCqlEP0gDsPS+L3P1SjyaoCRqgcaAB6k4jo55Wy2WNooisklw1rFTxe4+BhzE+S2J5lxlpjXJc1SjiIeEMXt5la1xgjqDNpI6nL8woEWSVZVZFkQMp8p2IxPWLqdK6Cu5B5B+fTB9fFVQ5ZQKiLKjuWWSM6hxxccHnY4JLHFSUolI5G4uMhx0nl1BPBVzV8ojjqYGijmKlvBkuCQ3cEi+/pjfpfJqyfNhFQZgtLIpOmU3Gob8Y89CdZw5FTT0GZ0wankcus8cepkc8gjuNhjpeTxZZXZg+bx18FTJKBpWKyootYbHcn5wS6An//2Q=='
-};
-function championPortraitHtml(id, def){
-  const src = CHAMPION_PORTRAITS[id];
-  if(src){
-    return `<div class="champ-portrait has-art" data-element="${def.element}" title="${def.name}">
-      <img src="${src}" alt="Retrato de ${def.name}">
-    </div>`;
-  }
-  return `<div class="champ-portrait portrait-fallback elem-${def.element}" data-element="${def.element}" title="${def.name}">
-    <span>${def.name.slice(0,1).toUpperCase()}</span>
-  </div>`;
-}
-
-const CHAMPION_CATALOG = {
-  ferrha:{name:'Ferrha',element:'metal',role:'Tanque ¬∑ Lan√ßa',cost:90,hp:210,atk:15,range:1,speed:0.9,taunt:2,special:'lanca',desc:'Provoca inimigos pr√≥ximos e crava a lan√ßa com dano extra a cada 3¬∫ golpe. Passiva: ao chegar a 1 de HP, ergue uma barreira de ferro ‚Äî fica imune a todo dano e im√≥vel, empurra inimigos adjacentes 2 blocos pra tr√°s, cura 45% da vida e ganha +15% de defesa por estrela por 2s (uma vez por batalha). Assim que a barreira acaba, ela puxa todo inimigo num raio de 5 blocos de volta pra perto dela e os atordoa por 1,6s.'},
-  voss:{name:'Voss',element:'agua',role:'Atiradora',cost:80,hp:95,atk:19,range:3,speed:1,special:'perfuro',desc:'A cada 4 tiros, dispara um disparo perfurante que ignora parte da defesa do alvo. Como todo Stack User de longa dist√¢ncia, causa mais dano quanto mais longe estiver do alvo (+8% por bloco al√©m do 1¬∫).'},
-  nyx:{name:'Nyx',element:'vento',role:'Assassina',cost:90,hp:100,atk:15,range:1,speed:1.8,special:'rajada',desc:'A cada 3 golpes, ataca duas vezes seguidas no mesmo alvo. Como todo Stack User de Vento, tem 20% de chance de esquivar de ataques f√≠sicos (sobe pra 30% com menos de 40% de vida). N√£o vale contra habilidades/passivas.'},
-  shava:{name:'Shava',element:'vento',role:'Lutadora de Capoeira',cost:120,hp:140,atk:16,range:1,speed:1.3,special:'shava',desc:'Quando um inimigo est√° a 3+ blocos, avan√ßa at√© ele (dano dobrado), priorizando quem tem mais vida ‚Äî recarrega em 10s e s√≥ ativa com o alvo a at√© 5 blocos. Se o alvo estiver abaixo de 10% de vida, executa na hora e arremessa o corpo em outro inimigo pr√≥ximo (atordoa 2s, reduz dano dele por 5s). Sen√£o, empurra o alvo at√© 5 blocos ‚Äî se bater em parede/obst√°culo, atordoa 4s e reduz armadura por 3s. A cada 3 golpes, cura 10% do dano causado. A cada 6 golpes no mesmo alvo, cria um v√≥rtice que atordoa (0,8s, sem dano) inimigos num raio de 2 blocos, exceto o pr√≥prio alvo.'},
-  kael:{name:'Kael',element:'fogo',role:'Berserker',cost:110,hp:120,atk:18,range:1,speed:1,special:'furia',desc:'Quanto menor a vida dele, mais forte ataca ‚Äî e a cada 4 golpes solta um golpe flamejante ainda mais forte. Passiva: ao chegar a 1 de HP, entra em frenesi por 3s (uma vez por batalha) ‚Äî fica imortal, mais r√°pido, com dano ainda maior (escala com estrela) e vampirismo de 9 de vida por golpe.'},
-  terrus:{name:'Terrus',element:'terra',role:'Guardi√£o',cost:110,hp:230,atk:11,range:1,speed:0.8,special:'couraca',desc:'Reduz todo dano recebido em 20% ‚Äî e a cada 4 golpes causa um tremor que d√° mais dano e cura um pouco dele mesmo. Passiva: ao cair pela primeira vez abaixo de 30% de vida, petrifica a pele ‚Äî fica imune por 2s, cura 20% da vida e ganha defesa extra permanente pro resto da batalha (uma vez por batalha).'},
-  jedegar:{name:'Jedegar',element:'terra',role:'Pilar da Perseveran√ßa',cost:130,hp:190,atk:10,range:1,speed:0.9,special:'jedegar',desc:'A cada 3,1s ergue um pilar de pedra perto do aliado MAIS DISTANTE dela (assim os pilares se espalham pelo time, mesmo se ela avan√ßar sozinha) ‚Äî pilares amplificam o dano de aliados num raio de 2 blocos em 10% (dobra pra 20% depois do 5¬∫ pilar), e cada um aguenta 2 golpes de inimigo comum (1 de chefe) antes de cair. Ao ser atingido, um pilar libera energia que fortalece os pilares pr√≥ximos por 3s. Ao erguer o 5¬∫ pilar da partida, o efeito de todos dobra permanentemente e inimigos perto de pilares perdem 30% de defesa. Na primeira vez que cai abaixo de 30% de vida, ergue um pilar debaixo do inimigo mais pr√≥ximo (arremessando ele longe) e foge sobre uma fileira de pedra rec√©m-criada. Ao morrer, ergue um c√≠rculo protetor ao redor do aliado mais ferido (escudo, dano e velocidade de ataque por 5s) ‚Äî os pilares dela desmoronam 5s depois da sua morte.'},
-  pyra:{name:'Pyra',element:'fogo',role:'Maga',cost:85,hp:100,atk:21,range:3,speed:0.7,special:'explosao',desc:'A cada 3 golpes, sua explos√£o tamb√©m atinge o inimigo mais pr√≥ximo do alvo com dano total. Como todo Stack User de longa dist√¢ncia, causa mais dano quanto mais longe estiver do alvo (+8% por bloco al√©m do 1¬∫).'},
-  glacia:{name:'Glacia',element:'agua',role:'Suporte',cost:70,hp:100,atk:11,range:2,speed:1,special:'cura',desc:'A cada 4 ataques, cura 25% da vida do aliado mais ferido. Como todo Stack User de longa dist√¢ncia, causa mais dano quanto mais longe estiver do alvo (+8% por bloco al√©m do 1¬∫).'},
-  zeph:{name:'Zeph',element:'vento',role:'Arqueira veloz',cost:95,hp:80,atk:14,range:3,speed:1.12,special:'chuva',desc:'A cada 4 tiros, dispara uma flecha extra em outro inimigo aleat√≥rio. Como todo Stack User de Vento, tem 20% de chance de esquivar de ataques f√≠sicos (sobe pra 30% com menos de 40% de vida). N√£o vale contra habilidades/passivas. Como todo Stack User de longa dist√¢ncia, causa mais dano quanto mais longe estiver do alvo (+8% por bloco al√©m do 1¬∫).'},
-  ima:{name:'√çm√£',element:'metal',role:'Controladora',cost:100,hp:105,atk:15,range:1,speed:1,special:'ima',desc:'A cada 4 golpes, magnetiza o alvo, puxando-o pra perto dela e causando dano extra. Passiva: aliados de metal adjacentes a ela ganham +8% de defesa.'},
-  frosk:{name:'Frosk',element:'gelo',role:'Lutador Congelante',cost:70,hp:115,atk:16,range:1,speed:1.25,special:'congelamento',desc:'Passiva: pele de gelo permanente, reduz todo dano recebido em 15%. A cada 4 golpes, congela o alvo, paralisando por 1,5s ‚Äî e causa 30% de dano extra nesse golpe.'},
-  gelida:{name:'G√©lida',element:'gelo',role:'Espectro Glacial',cost:115,hp:130,atk:20,range:1,speed:1,special:'congelamento',desc:'A cada 5 golpes, congela o alvo, paralisando por 0,5s. Passiva: ao morrer, fica em espectro por 5s ‚Äî mira o inimigo com MENOS vida da arena inteira. Se ele j√° estiver com 5% de vida ou menos, ela o executa na hora (s√≥ demora 3s pra trocar de lugar); sen√£o, arremessa um pilar de gelo nele, jogando-o at√© a parede, atordoando-o por 3s (im√≥vel at√© acabar) e causando 30 de dano a cada 0,5s. Se o alvo morrer antes do espectro acabar, ela toma o lugar dele, volta √† batalha com 60% de vida E dobra o pr√≥prio dano at√© o fim da onda. S√≥ pode renascer 2 vezes por partida ‚Äî depois disso, se morrer de novo, √© de vez.'},
-  raio:{name:'Raio',element:'eletrico',role:'Combatente El√©trico',cost:140,hp:104,atk:17,range:1,speed:1.2,special:null,desc:'Habilidade √∫nica: a cada 5 golpes acertados, OU sempre que chegar a 10% de vida (pode repetir depois que curar), dispara um combo rel√¢mpago de 8 golpes em ~3 segundos ‚Äî empurra o inimigo pra longe, se teleporta do lado dele, bate e repete. Fica imune a todo dano durante o combo. Cada golpe consome 5% da vida dele mesmo como combust√≠vel, e quanto menos vida ele tiver, mais forte ele bate (at√© +150%). O 8¬∫ golpe n√£o empurra, atordoa (se o inimigo sobreviver) e causa 10x o dano dos outros golpes (+10% se tiver item de dano equipado). Se terminar com 3% de vida ou menos, fica atordoado por 3s (ainda imune) e depois sofre uma sobrecarga: cura 10% da vida e ganha velocidade de ataque por 5s.'},
-  shecry:{name:'Shecry',element:'gelo',role:'Colosso Glacial',cost:125,hp:245,atk:18,range:1,speed:0.85,special:null,desc:'Quanto mais vida ela perdeu, mais dano ela causa (at√© +120%); quanto mais vida ela ainda tem, mais resistente ela fica (at√© +35% de redu√ß√£o de dano). Passiva: ao cair abaixo de 30% de vida (uma vez por batalha), ganha um escudo baseado na vida m√°xima e cria uma aura que reduz a velocidade de movimento e ataque de quem estiver a at√© 2 blocos dela ‚Äî o efeito da aura vai enfraquecendo aos poucos ao longo de 6 segundos.'},
-  nerith:{name:'Nerith',element:'agua',role:'Profetisa das Mar√©s',cost:135,hp:300,atk:5,range:1,speed:0.9,special:null,desc:'Bate muito fraco sozinha ‚Äî sua for√ßa de verdade s√£o os tent√°culos. Invoca um tent√°culo perto dela mesma, num ritmo que cresce a cada um (2,5s, 3s, 3,5s, 4s), at√© um limite de 4 vivos ao mesmo tempo ‚Äî se um for destru√≠do, o pr√≥ximo demora s√≥ 1,5s. Os tent√°culos n√£o se movem, atacam com alcance de 3 blocos, causam dano consider√°vel, mas t√™m pouca vida ‚Äî f√°ceis de destruir. Se Nerith morrer, todos os tent√°culos vivos entram em frenesi: atacam mais r√°pido e miram inimigos aleat√≥rios at√© serem destru√≠dos.'},
-  voltra:{name:'Voltra',element:'eletrico',role:'Tecel√£ de Correntes',cost:135,hp:110,atk:16,range:3,speed:1,special:null,desc:'Corrente El√©trica: cada ataque eletrifica o alvo, reduzindo a velocidade dele com base no seu ataque ‚Äî e se outro inimigo estiver a at√© 3 blocos, o efeito se propaga pra ele tamb√©m (25% mais fraco a cada salto). Rea√ß√£o em Cadeia: cada inimigo tocado pela corrente d√° 1 carga; ao acumular 10, ela entra em Sobrecarga por 5s. Se ela morrer durante esse per√≠odo, fica imune por 4s carregando energia ao m√°ximo antes de explodir numa onda de choque que atinge a arena inteira ‚Äî puxa todo inimigo pra perto de onde ela caiu, paralisa todos por 5s e causa dano extra (mais forte quanto mais inimigos estiverem eletrificados/por perto).'},
-};
-
-const ITEM_CATALOG = {
-  luneta:{name:'Luneta de Longo Alcance', kind:'longa dist√¢ncia', cost:60, desc:'+1 de alcance e +15% de dano ‚Äî s√≥ faz efeito em Stack Users de alcance 2+.', effect:{range:1, atkPct:0.15, appliesTo:'ranged'}},
-  mira:{name:'Mira Telesc√≥pica', kind:'longa dist√¢ncia', cost:65, desc:'+20% de velocidade de ataque ‚Äî s√≥ faz efeito em Stack Users de alcance 2+.', effect:{speedPct:0.20, appliesTo:'ranged'}},
-  manopla:{name:'Manopla de A√ßo', kind:'corpo a corpo', cost:60, desc:'+35% de dano ‚Äî s√≥ faz efeito em Stack Users corpo a corpo (alcance 1).', effect:{atkPct:0.35, appliesTo:'melee'}},
-  punho_serra:{name:'Punho de Serra', kind:'corpo a corpo', cost:70, desc:'Ignora 15% da redu√ß√£o de dano do alvo a cada golpe, e d√° +40 de HP ‚Äî s√≥ corpo a corpo (alcance 1). √ìtimo contra tanques.', effect:{hpFlat:40, appliesTo:'melee'}},
-  presas_sangrentas:{name:'Presas Sangrentas', kind:'corpo a corpo', cost:75, desc:'Cura 8% do dano causado como vida a cada golpe, e d√° +35 de HP ‚Äî s√≥ corpo a corpo (alcance 1). Vampirismo bem mais forte que o Amuleto Vital, mas exclusivo de quem luta de perto.', effect:{hpFlat:35, appliesTo:'melee'}},
-  furia_crescente:{name:'F√∫ria Crescente', kind:'corpo a corpo', cost:70, desc:'18% de chance a cada golpe de causar 50% de dano b√¥nus ‚Äî s√≥ corpo a corpo (alcance 1).', effect:{appliesTo:'melee'}},
-  botas_lutador:{name:'Botas de Lutador', kind:'corpo a corpo', cost:65, desc:'+22% de velocidade de ataque ‚Äî s√≥ corpo a corpo (alcance 1). Mais forte que as Botas Aceleradas normais, mas exclusiva de quem luta de perto.', effect:{speedPct:0.22, appliesTo:'melee'}},
-  brasa:{name:'Brasa Selvagem', kind:'dano ativo', cost:80, desc:'A cada 5s, queima os inimigos ao redor por 4 de dano m√°gico. Efeito varia pelo elemento de quem usa: Fogo e Vento formam uma onda que se espalha pelos blocos (1s de atraso por bloco de dist√¢ncia ‚Äî Vento alcan√ßa 6 blocos, Fogo alcan√ßa 3), √Ågua vaporiza (+20% da vida atual do alvo ap√≥s 2s), Terra atordoa por 0,5s, Metal marca o alvo (vulner√°vel, +15% de dano por 3s), Gelo aplica queimadura gelada (dano cont√≠nuo que n√£o para at√© o fim da rodada), El√©trico causa sobrecarga (-20% de velocidade por 4s, com chance de saltar pra outro inimigo perto).', effect:{}},
-  placa:{name:'Placa de Blindagem', kind:'tanque', cost:70, desc:'+40 de HP m√°ximo e reduz 10% do dano recebido.', effect:{hpFlat:40, dmgReductionPct:0.10, appliesTo:'all'}},
-  botas:{name:'Botas Aceleradas', kind:'velocidade', cost:65, desc:'+15% de velocidade de ataque, em qualquer Stack User.', effect:{speedPct:0.15, appliesTo:'all'}},
-  amuleto:{name:'Amuleto Vital', kind:'vampirismo', cost:75, desc:'Cura 3 de vida a cada golpe acertado, em qualquer Stack User. Empilha se equipar mais de um.', effect:{}},
-  amplificador:{name:'N√∫cleo Amplificador', kind:'passiva', cost:90, desc:'+20% de for√ßa em toda passiva especial do usu√°rio (dura√ß√£o, cura, dano b√¥nus, defesa permanente). Empilha at√© 3x.', effect:{}},
-  furia_blindada:{name:'F√∫ria Blindada', kind:'combinado ¬∑ corpo a corpo', recipe:['manopla','placa'], desc:'Combina√ß√£o de Manopla de A√ßo + Placa de Blindagem. +35% de dano, +30 de HP e 5% de redu√ß√£o de dano ‚Äî s√≥ corpo a corpo.', effect:{atkPct:0.35, hpFlat:30, dmgReductionPct:0.05, appliesTo:'melee'}},
-  carniceiro:{name:'Carniceiro', kind:'combinado ¬∑ corpo a corpo', recipe:['punho_serra','presas_sangrentas'], desc:'Combina√ß√£o de Punho de Serra + Presas Sangrentas. Ignora 25% da redu√ß√£o de dano do alvo, cura 12% do dano causado como vida, e d√° +65 de HP ‚Äî s√≥ corpo a corpo.', effect:{hpFlat:65, appliesTo:'melee'}},
-  fio_mortal:{name:'Fio Mortal', kind:'combinado ¬∑ corpo a corpo', recipe:['manopla','punho_serra'], desc:'Combina√ß√£o de Manopla de A√ßo + Punho de Serra. +35% de dano, ignora 25% da redu√ß√£o de dano do alvo, e d√° +45 de HP ‚Äî s√≥ corpo a corpo. Build de dano com um pouco de f√¥lego.', effect:{atkPct:0.35, hpFlat:45, appliesTo:'melee'}},
-  investida_feroz:{name:'Investida Feroz', kind:'combinado ¬∑ corpo a corpo', recipe:['manopla','botas_lutador'], desc:'Combina√ß√£o de Manopla de A√ßo + Botas de Lutador. +35% de dano e +22% de velocidade de ataque ‚Äî s√≥ corpo a corpo. Build agressiva, √≥tima pra quem depende de acertar v√°rios golpes r√°pido pra ativar a habilidade (Raio, Frosk, Nyx).', effect:{atkPct:0.35, speedPct:0.22, appliesTo:'melee'}},
-  olho_falcao:{name:'Olho de Falc√£o', kind:'combinado ¬∑ longa dist√¢ncia', recipe:['luneta','botas'], desc:'Combina√ß√£o de Luneta de Longo Alcance + Botas Aceleradas. +1 de alcance e +15% de dano ‚Äî mas o efeito de verdade √© a mira: em vez de atacar o inimigo mais pr√≥ximo, sempre foca automaticamente em quem estiver com MENOS vida dentro do alcance. S√≥ alcance 2+.', effect:{range:1, atkPct:0.15, appliesTo:'ranged'}},
-  coracao_ferro:{name:'Cora√ß√£o de Ferro', kind:'combinado ¬∑ tanque', recipe:['amuleto','placa'], desc:'Combina√ß√£o de Amuleto Vital + Placa de Blindagem. +60 de HP e 15% de redu√ß√£o de dano, em qualquer Stack User.', effect:{hpFlat:60, dmgReductionPct:0.15, appliesTo:'all'}},
-  nucleo_eterno:{name:'N√∫cleo Eterno', kind:'combinado ¬∑ passiva', recipe:['amplificador','placa'], desc:'Combina√ß√£o de N√∫cleo Amplificador + Placa de Blindagem. +30% de for√ßa em toda passiva especial (mais forte que o Amplificador sozinho), +40 de HP e 10% de redu√ß√£o de dano.', effect:{hpFlat:40, dmgReductionPct:0.10, appliesTo:'all'}},
-  coracao_vital:{name:'Cora√ß√£o Vital', kind:'vida', cost:65, desc:'+80 de HP m√°ximo, em qualquer Stack User.', effect:{hpFlat:80, appliesTo:'all'}},
-  manto_robusto:{name:'Manto Robusto', kind:'vida', cost:75, desc:'+15% de HP m√°ximo, em qualquer Stack User.', effect:{hpPct:0.15, appliesTo:'all'}},
-  muralha_viva:{name:'Muralha Viva', kind:'combinado ¬∑ vida/tanque', recipe:['coracao_vital','placa'], desc:'Combina√ß√£o de Cora√ß√£o Vital + Placa de Blindagem. +150 de HP m√°ximo e 20% de redu√ß√£o de dano, em qualquer Stack User.', effect:{hpFlat:150, dmgReductionPct:0.20, appliesTo:'all'}},
-  precisao_mortal:{name:'Precis√£o Mortal', kind:'combinado ¬∑ longa dist√¢ncia', recipe:['mira','luneta'], desc:'Combina√ß√£o de Mira Telesc√≥pica + Luneta de Longo Alcance. +2 de alcance, +30% de dano e +30% de velocidade de ataque ‚Äî s√≥ alcance 2+.', effect:{range:2, atkPct:0.30, speedPct:0.30, appliesTo:'ranged'}},
-  brasa_eterna:{name:'Brasa Eterna', kind:'combinado ¬∑ dano ativo', recipe:['brasa','amplificador'], desc:'Combina√ß√£o de Brasa Selvagem + N√∫cleo Amplificador. A Brasa Selvagem ativa 30% mais r√°pido (a cada 3,5s) e causa 75% mais dano ‚Äî o efeito elemental de cada personagem continua o mesmo.', effect:{}},
-  vigor_absoluto:{name:'Vigor Absoluto', kind:'combinado ¬∑ vida', recipe:['manto_robusto','coracao_vital'], desc:'Combina√ß√£o de Manto Robusto + Cora√ß√£o Vital. +20% de HP m√°ximo, e regenera 2% da vida m√°xima a cada 3 segundos enquanto estiver vivo ‚Äî √≥timo pra batalhas longas, diferente da defesa de impacto da Muralha Viva.', effect:{hpPct:0.20, appliesTo:'all'}},
-  nucleo_rachadura:{name:'N√∫cleo da Rachadura', kind:'rel√≠quia ¬∑ chefe', isRelic:true, desc:'Rel√≠quia rara ‚Äî s√≥ dropa de chefe. +35% de dano e +20% de velocidade, em qualquer Stack User. N√£o tem receita, n√£o d√° pra comprar.', effect:{atkPct:0.35, speedPct:0.20, appliesTo:'all'}},
-  fragmento_corrompido:{name:'Fragmento Corrompido', kind:'rel√≠quia ¬∑ chefe', isRelic:true, desc:'Rel√≠quia rara ‚Äî s√≥ dropa de chefe. A cada abate, 25% de chance de curar 15% da vida m√°xima na hora. N√£o tem receita, n√£o d√° pra comprar.', effect:{onKillHealChance:0.25, onKillHealPct:0.15, appliesTo:'all'}},
-  coroa_ferro:{name:'Coroa de Ferro', kind:'rel√≠quia ¬∑ chefe', isRelic:true, desc:'Rel√≠quia rara ‚Äî s√≥ dropa de chefe. +220 de HP m√°ximo e 18% de redu√ß√£o de dano, em qualquer Stack User. N√£o tem receita, n√£o d√° pra comprar.', effect:{hpFlat:220, dmgReductionPct:0.18, appliesTo:'all'}},
-};
-
-// ---- √çcones simples (linha, sem emoji) pros itens ----
-const ITEM_ICON_SHAPES = {
-  telescope: '<line x1="7" y1="25" x2="24" y2="8"/><circle cx="24" cy="8" r="4"/><circle cx="7" cy="25" r="2"/>',
-  crosshair: '<circle cx="16" cy="16" r="9"/><line x1="16" y1="2" x2="16" y2="9"/><line x1="16" y1="23" x2="16" y2="30"/><line x1="2" y1="16" x2="9" y2="16"/><line x1="23" y1="16" x2="30" y2="16"/>',
-  fist: '<rect x="8" y="13" width="16" height="12" rx="3"/><circle cx="12" cy="10" r="3"/><circle cx="17" cy="8" r="3"/><circle cx="22" cy="10" r="3"/>',
-  flame: '<path d="M16 4c-6 8-8 12-8 16a8 8 0 0 0 16 0c0-4-2-8-4-11-1 3-3 4-4 2-1-2 0-5 0-7z"/>',
-  shield: '<path d="M16 3 27 8V16C27 23 22 27 16 29 10 27 5 23 5 16V8Z"/>',
-  boot: '<path d="M11 4h6v14h6a4 4 0 0 1 4 4v2H8v-6a4 4 0 0 1 3-4z"/>',
-  gem: '<path d="M16 3 27 13 16 29 5 13Z"/><path d="M5 13H27M16 3 11 13M16 3 21 13M16 29 11 13M16 29 21 13"/>',
-  core: '<circle cx="16" cy="16" r="6"/><line x1="16" y1="2" x2="16" y2="7"/><line x1="16" y1="25" x2="16" y2="30"/><line x1="2" y1="16" x2="7" y2="16"/><line x1="25" y1="16" x2="30" y2="16"/><line x1="6" y1="6" x2="9.5" y2="9.5"/><line x1="22.5" y1="22.5" x2="26" y2="26"/><line x1="6" y1="26" x2="9.5" y2="22.5"/><line x1="22.5" y1="9.5" x2="26" y2="6"/>',
-  eye: '<path d="M3 16C8 8 24 8 29 16 24 24 8 24 3 16Z"/><circle cx="16" cy="16" r="4"/>',
-  heart: '<path d="M16 27C6 19 3 13 3 9a6 6 0 0 1 13-2 6 6 0 0 1 13 2c0 4-3 10-13 18z"/>',
-  cloak: '<path d="M16 4 6 28Q16 22 26 28Z"/>',
-  fang: '<path d="M10 4 14 20 10 28 6 20Z"/><path d="M22 4 26 20 22 28 18 20Z"/>',
-  burst: '<path d="M16 2 19 12 29 9 21 16 29 23 19 20 16 30 13 20 3 23 11 16 3 9 13 12Z"/>',
-};
-const ITEM_ICON_SHAPE_BY_ID = {
-  luneta:'telescope', mira:'crosshair', manopla:'fist', brasa:'flame', placa:'shield', botas:'boot',
-  amuleto:'gem', amplificador:'core', furia_blindada:'fist', olho_falcao:'crosshair', coracao_ferro:'heart',
-  nucleo_eterno:'core', coracao_vital:'heart', manto_robusto:'cloak', muralha_viva:'heart',
-  precisao_mortal:'crosshair', brasa_eterna:'flame', vigor_absoluto:'heart',
-  punho_serra:'fist', presas_sangrentas:'fang', furia_crescente:'burst', carniceiro:'fang', fio_mortal:'fist',
-  botas_lutador:'boot', investida_feroz:'boot',
-};
-function itemIconSVG(itemId, size){
-  size = size || 32;
-  const shapeKey = ITEM_ICON_SHAPE_BY_ID[itemId] || 'gem';
-  const shape = ITEM_ICON_SHAPES[shapeKey];
-  const isCombined = !!(ITEM_CATALOG[itemId] && ITEM_CATALOG[itemId].recipe);
-  const backdrop = isCombined ? '<polygon points="16,1 30,8.5 30,23.5 16,31 2,23.5 2,8.5" fill="none" stroke="currentColor" stroke-opacity="0.35" stroke-width="1.5"/>' : '';
-  return `<svg width="${size}" height="${size}" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${backdrop}${shape}</svg>`;
-}
-
-// B√¥nus por estrela (permanente, ganho fundindo c√≥pias). Cada estrela acima da 1¬™
-// aplica esses percentuais ‚Äî o tipo de personagem define pra onde o b√¥nus pesa mais.
-const ROLE_STAR_PROFILE = {
-  'Tanque ¬∑ Lan√ßa': {hp:0.22, atk:0.12, speed:0,    defFlat:0.05},
-  'Guardi√£o':       {hp:0.22, atk:0.12, speed:0,    defFlat:0.05},
-  'Atiradora':      {hp:0.06, atk:0.22, speed:0.05, defFlat:0},
-  'Assassina':      {hp:0.06, atk:0.14, speed:0.18, defFlat:0},
-  'Arqueira veloz': {hp:0.06, atk:0.14, speed:0.18, defFlat:0},
-  'Berserker':      {hp:0.10, atk:0.22, speed:0.05, defFlat:0},
-  'Maga':           {hp:0.06, atk:0.22, speed:0.05, defFlat:0},
-  'Suporte':        {hp:0.16, atk:0.14, speed:0.05, defFlat:0.02},
-  'Controladora':   {hp:0.14, atk:0.16, speed:0.08, defFlat:0.03},
-  'Lutador Congelante': {hp:0.16, atk:0.18, speed:0.06, defFlat:0.02},
-  'Espectro Glacial':   {hp:0.18, atk:0.16, speed:0.04, defFlat:0.04},
-  'Combatente El√©trico': {hp:0.12, atk:0.20, speed:0.10, defFlat:0},
-  'Colosso Glacial': {hp:0.24, atk:0.14, speed:0, defFlat:0.04},
-  'Profetisa das Mar√©s': {hp:0.20, atk:0.08, speed:0.05, defFlat:0.03},
-  'Tecel√£ de Correntes': {hp:0.14, atk:0.18, speed:0.10, defFlat:0},
-  'Pilar da Perseveran√ßa': {hp:0.20, atk:0.10, speed:0.03, defFlat:0.04},
-  'Lutadora de Capoeira': {hp:0.12, atk:0.20, speed:0.10, defFlat:0},
-};
-const MAX_STARS = 4;
-const STAR_BORDER_COLORS = {1:'#b0743a', 2:'#c7cdd6', 3:'#e8c250', 4:'#d3e6f0'};
-function starIcons(stars){ return '‚òÖ'.repeat(stars) + '‚òÜ'.repeat(MAX_STARS-stars); }
-
-const ENEMY_CATALOG = {
-  grum:{name:'Grum',element:'terra',hp:140,atk:13,range:1,speed:0.9,special:'couraca'},
-  ashka:{name:'Ashka',element:'fogo',hp:100,atk:17,range:3,speed:1,special:'explosao'},
-  ktul:{name:'Ktul',element:'vento',hp:90,atk:12,range:1,speed:1.7,special:'rajada'},
-  aquin:{name:'Aquin',element:'agua',hp:110,atk:15,range:2,speed:1,special:'perfuro'},
-  ferrix:{name:'Ferrix',element:'metal',hp:160,atk:14,range:1,speed:0.85,taunt:1.5,special:'lanca'},
-  draka:{name:'Draka',element:'fogo',hp:95,atk:16,range:1,speed:1.6,special:'furia'},
-  boru:{name:'Boru',element:'terra',hp:150,atk:16,range:1,speed:0.9,special:'couraca'},
-  sylv:{name:'Sylv',element:'vento',hp:85,atk:14,range:2,speed:1.3,special:'chuva'},
-  kryo:{name:'Kryo',element:'gelo',hp:105,atk:14,range:1,speed:1.1,special:'congelamento'},
-  voltz:{name:'Voltz',element:'eletrico',hp:90,atk:15,range:1,speed:1.4,special:'rajada'},
-  eco_rachadura:{name:'Eco da Rachadura',element:'corrupted',hp:40000,atk:55,range:2,speed:0.85},
-};
-
-/* ============ STATE ============ */
-let coins = 120;
-let owned = {}; // champId -> {stars, copies, level, xp, itemIds: [at√© 3]}
-// (a seed do personagem inicial acontece no fluxo de verdade ‚Äî openStarterPick/hardResetProgress
-// pro PvE, startPvpSetup pro PvP, ou resumeSavedGame ‚Äî n√£o aqui, sen√£o a Ferrha aparecia em
-// "Meu Time" antes at√© da pessoa come√ßar a primeira partida.)
-let itemInventory = {}; // itemId -> quantity owned, unequipped
-
-let mode = null; // 'pve' | 'pvp'
-let testMode = false; // Teste Mode: moedas infinitas + time de at√© 5
-let TEAM_MAX = 3;
-let inMatch = false; // compras s√≥ liberadas enquanto isso for true
-window.addEventListener('beforeunload', (e)=>{
-  if(!inMatch) return;
-  e.preventDefault();
-  e.returnValue = ''; // exigido pelos navegadores pra mostrar o aviso nativo de confirma√ß√£o
-});
-let teamSelectStage = null; // for pvp: 'p1' or 'p2'
-let teamP1 = [], teamP2 = [];
-let wave = 1;
-let totalCoinsThisRun = 0;
-let editingMidRun = false;
-let editingMidRunSide = 'solo'; // 'solo' | 'p1' | 'p2' ‚Äî pra onde o "Ajustar equipe" grava a mudan√ßa
-let pvpP1 = null, pvpP2 = null; // {coins, owned, itemInventory} ‚Äî economia independente de cada jogador
-let activePvpPlayer = null; // 'p1' | 'p2' | null ‚Äî qual jogador est√° "carregado" nas vari√°veis globais agora
-let pvpRound = 1;
-let pvpDraftCallback = null; // usado na escolha inicial de time do PvP
-let newcomerChamps = new Set(); // champIds with the catch-up XP buff
-let activeXpDebuffs = []; // champIds earning reduced xp THIS wave (post-survivor debuff)
-let pendingXpDebuffChamp = null; // will become active next wave
-let roundXpGain = {}; // champId -> xp earned this wave
-let roundLevelUps = []; // champIds that leveled up this wave
-let roundDeaths = []; // names that died this wave
-let matchStats = {}; // champId -> {damageDealt, damageTaken, kills}
-
-// Recordes pessoais ‚Äî separados do save normal do jogo (que reseta ao recarregar a p√°gina).
-// Ficam guardados de verdade, pro Perfil mostrar o hist√≥rico da pessoa.
-const PERSONAL_RECORDS_KEY = 'ferroLancaPersonalRecords';
-let personalRecords = { maxWave: 0, maxDamageByChamp: {} };
-try{
-  const rawRecords = localStorage.getItem(PERSONAL_RECORDS_KEY);
-  if(rawRecords) personalRecords = Object.assign({maxWave:0, maxDamageByChamp:{}}, JSON.parse(rawRecords));
-}catch(e){}
-function savePersonalRecords(){
-  try{ localStorage.setItem(PERSONAL_RECORDS_KEY, JSON.stringify(personalRecords)); }catch(e){}
-}
-function checkWaveRecord(w){
-  if(w > personalRecords.maxWave){
-    personalRecords.maxWave = w;
-    savePersonalRecords();
-  }
-}
-function checkDamageRecord(champId, dmg){
-  if(dmg > (personalRecords.maxDamageByChamp[champId]||0)){
-    personalRecords.maxDamageByChamp[champId] = dmg;
-    savePersonalRecords();
-  }
-}
-function ensureMatchStats(champId){
-  if(!matchStats[champId]) matchStats[champId] = {damageDealt:0, damageTaken:0, kills:0, deaths:0};
-  return matchStats[champId];
-}
-let roundSurvivorChampId = null;
-
-/* ============ SCREEN NAV ============ */
-function showScreen(id){
-  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
-  document.getElementById('screen-'+id).classList.add('active');
-  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
-  const navBtn = document.querySelector(`.nav-btn[data-screen="${id}"]`);
-  if(navBtn) navBtn.classList.add('active');
-}
-function setMenuLocked(locked){
-  const btn = document.querySelector('.nav-btn[data-screen="menu"]');
-  if(btn){
-    btn.disabled = locked;
-    btn.style.opacity = locked ? '0.35' : '1';
-    btn.style.pointerEvents = locked ? 'none' : 'auto';
-  }
-  const guidedBtn = document.getElementById('guided-tutorial-btn');
-  if(guidedBtn){
-    guidedBtn.style.opacity = locked ? '0.35' : '1';
-    guidedBtn.style.pointerEvents = locked ? 'none' : 'auto';
-  }
-}
-
-document.querySelectorAll('.nav-btn').forEach(btn=>{
-  btn.addEventListener('click', ()=>{
-    const s = btn.dataset.screen;
-    if(s==='shop') renderShop();
-    if(s==='items') renderItems();
-    if(s==='roster') renderRoster();
-    if(s==='recommended') renderRecommended();
-    if(s==='achievements') renderAchievementsList();
-    if(s==='profile') renderProfile();
-    if(s==='leaderboard') renderLeaderboard();
-    showScreen(s);
-  });
-});
-function updateCoinBadge(){
-  document.getElementById('coin-count').textContent = testMode ? '‚àû' : coins;
-  if(!testMode && coins>=1000) unlockAchievement('rich');
-}
-
-/* ============ SOM (sintetizado via Web Audio API ‚Äî sem arquivo de √°udio) ============ */
-let soundEnabled = false; // desligado por padr√£o de prop√≥sito ‚Äî jogo feito pra tocar escondido
-let audioCtx = null;
-function getAudioCtx(){
-  if(!audioCtx){
-    try{ audioCtx = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ return null; }
-  }
-  if(audioCtx.state==='suspended') audioCtx.resume();
-  return audioCtx;
-}
-
-// Toca um tom simples com envelope (ataque r√°pido, decaimento) ‚Äî a pe√ßa b√°sica de todo efeito daqui.
-function playTone(freq, dur, type, vol, freqEnd){
-  if(!soundEnabled) return;
-  const ctx = getAudioCtx();
-  if(!ctx) return;
-  const osc = ctx.createOscillator();
-  const gain = ctx.createGain();
-  osc.type = type || 'sine';
-  osc.frequency.setValueAtTime(freq, ctx.currentTime);
-  if(freqEnd) osc.frequency.exponentialRampToValueAtTime(Math.max(1,freqEnd), ctx.currentTime+dur);
-  gain.gain.setValueAtTime(0, ctx.currentTime);
-  gain.gain.linearRampToValueAtTime(vol||0.15, ctx.currentTime+0.01);
-  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime+dur);
-  osc.connect(gain); gain.connect(ctx.destination);
-  osc.start(); osc.stop(ctx.currentTime+dur+0.02);
-}
-
-// Rajada de ru√≠do filtrado ‚Äî usada pra choques, whooshes, e o rangido da fratura.
-function playNoise(dur, filterFreq, filterType, vol){
-  if(!soundEnabled) return;
-  const ctx = getAudioCtx();
-  if(!ctx) return;
-  const bufferSize = Math.floor(ctx.sampleRate*dur);
-  const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
-  const data = buffer.getChannelData(0);
-  for(let i=0;i<bufferSize;i++) data[i] = (Math.random()*2-1) * (1 - i/bufferSize);
-  const noise = ctx.createBufferSource();
-  noise.buffer = buffer;
-  const filter = ctx.createBiquadFilter();
-  filter.type = filterType || 'bandpass';
-  filter.frequency.value = filterFreq || 1200;
-  const gain = ctx.createGain();
-  gain.gain.setValueAtTime(vol||0.12, ctx.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime+dur);
-  noise.connect(filter); filter.connect(gain); gain.connect(ctx.destination);
-  noise.start();
-}
-
-function sfxMeleeHit(){ playNoise(0.08, 2200, 'bandpass', 0.10); playTone(1800, 0.05, 'square', 0.05); }
-function sfxRangedHit(){ playTone(900, 0.08, 'triangle', 0.08, 500); }
-function sfxFogo(){ playNoise(0.25, 700, 'lowpass', 0.14); }
-function sfxAgua(){ playNoise(0.2, 1400, 'bandpass', 0.12); }
-function sfxTerra(){ playTone(90, 0.3, 'sine', 0.16, 55); }
-function sfxVento(){ playNoise(0.3, 2200, 'highpass', 0.09); }
-function sfxMetal(){ playTone(2400, 0.18, 'square', 0.08, 1200); }
-function sfxGelo(){ playTone(1600, 0.2, 'sine', 0.1, 2400); }
-function sfxEletrico(){ playTone(300, 0.12, 'sawtooth', 0.09, 2000); }
-function sfxFractureCrack(){ playNoise(0.4, 300, 'lowpass', 0.18); playTone(60, 0.4, 'sawtooth', 0.12, 30); }
-function sfxCoin(){ playTone(1100, 0.09, 'sine', 0.10, 1500); }
-function sfxLevelUp(){ playTone(700, 0.12, 'triangle', 0.12, 1400); setTimeout(()=>playTone(1100,0.16,'triangle',0.12,1800), 90); }
-function sfxVictory(){ [520,660,880].forEach((f,i)=>setTimeout(()=>playTone(f,0.22,'triangle',0.12), i*110)); }
-function sfxDefeat(){ playTone(220, 0.5, 'sawtooth', 0.12, 90); }
-function sfxUiClick(){ playTone(500, 0.04, 'sine', 0.06); }
-
-function elementSfx(element){
-  if(element==='fogo') sfxFogo();
-  else if(element==='agua') sfxAgua();
-  else if(element==='terra') sfxTerra();
-  else if(element==='vento') sfxVento();
-  else if(element==='metal') sfxMetal();
-  else if(element==='gelo') sfxGelo();
-  else if(element==='eletrico') sfxEletrico();
-}
-
-/* ============ CONQUISTAS ============ */
-const ACH_KEY = 'ferroLancaAchievements_v1';
-const ACHIEVEMENTS = {
-  wave10: {icon:'‚öîÔ∏è', name:'Sobrevivente', desc:'Alcance a onda 10'},
-  wave20: {icon:'üõ°Ô∏è', name:'Veterano', desc:'Alcance a onda 20'},
-  wave30: {icon:'üëë', name:'Lenda da Rachadura', desc:'Alcance a onda 30'},
-  wave40: {icon:'üåå', name:'Al√©m do Limite', desc:'Alcance a onda 40'},
-  wave50: {icon:'üï≥Ô∏è', name:'No Cora√ß√£o da Rachadura', desc:'Alcance a onda 50'},
-  wave15_expand: {icon:'üó∫Ô∏è', name:'Novo Horizonte', desc:'Veja a arena se expandir na onda 15'},
-  boss_slayer: {icon:'üíÄ', name:'Ca√ßador de Chefes', desc:'Derrote um chefe'},
-  double_boss_slayer: {icon:'‚ö†Ô∏è', name:'Chefe em Dobro', desc:'Derrote um chefe que veio com poder emprestado E passiva rara (onda 25+)'},
-  corrupted_hunter: {icon:'üåÄ', name:'Purificador', desc:'Derrote 10 criaturas corrompidas'},
-  perfect_wave: {icon:'‚ú®', name:'Sem Arranh√µes', desc:'Ven√ßa uma onda sem perder ningu√©m do time'},
-  no_deaths_20: {icon:'üïäÔ∏è', name:'Intoc√°vel', desc:'Chegue na onda 20 sem perder nenhum Stack User na partida'},
-  solo_survivor: {icon:'üî•', name:'√öltimo de P√©', desc:'Ven√ßa uma onda a partir da 10 sendo o √∫nico sobrevivente'},
-  four_star: {icon:'‚≠ê', name:'Estrela M√°xima', desc:'Evolua um Stack User at√© 4 estrelas'},
-  full_roster: {icon:'üë•', name:'Colecionador', desc:'Tenha 5 Stack Users no time na mesma partida'},
-  team_expansion_first: {icon:'üìà', name:'Mais Espa√ßo', desc:'Compre a primeira expans√£o de time (onda 40+)'},
-  team_expansion_full: {icon:'üè∞', name:'Ex√©rcito Completo', desc:'Leve o time at√© 8 Stack Users'},
-  voltra_wipe: {icon:'‚ö°', name:'Explos√£o Suprema', desc:'Ven√ßa uma onda com a explos√£o da Voltra eliminando o √∫ltimo inimigo'},
-  nerith_swarm: {icon:'üêô', name:'Enxame Completo', desc:'Tenha os 4 tent√°culos da Nerith vivos ao mesmo tempo'},
-  mono_element: {icon:'üîÆ', name:'Pureza Elemental', desc:'Ven√ßa uma onda com um time formado s√≥ por um elemento'},
-  rich: {icon:'üí∞', name:'Bolso Cheio', desc:'Tenha 1000 moedas guardadas ao mesmo tempo'},
-  segredo_onda60: {icon:'üëÅÔ∏è', name:'Ol√°? AI MEU DEUS', desc:'', secret:true},
-};
-let unlockedAchievements = new Set();
-try{
-  const raw = localStorage.getItem(ACH_KEY);
-  if(raw) unlockedAchievements = new Set(JSON.parse(raw));
-}catch(e){}
-// Conquistas da partida ATUAL (reinicia a cada nova partida) ‚Äî √© isso que vai pro Placar,
-// n√£o a cole√ß√£o vital√≠cia inteira. O Perfil continua usando unlockedAchievements (vital√≠cia).
-let matchAchievements = new Set();
-
-let corruptedKillCount = 0;
-try{ corruptedKillCount = parseInt(localStorage.getItem('ferroLancaCorruptedKills')||'0',10) || 0; }catch(e){}
-function trackCorruptedKill(){
-  corruptedKillCount++;
-  try{ localStorage.setItem('ferroLancaCorruptedKills', String(corruptedKillCount)); }catch(e){}
-  if(corruptedKillCount>=10) unlockAchievement('corrupted_hunter');
-}
-
-/* ============ PERFIL ============ */
-const PROFILE_NAME_KEY = 'ferroLancaPlayerName';
-/* ============ PLACAR (Firestore) ============ */
-const LIKED_ENTRIES_KEY = 'ferroLancaLikedEntries';
-function getLikedEntries(){
-  try{ return new Set(JSON.parse(localStorage.getItem(LIKED_ENTRIES_KEY) || '[]')); }catch(e){ return new Set(); }
-}
-function markEntryLiked(id){
-  const liked = getLikedEntries();
-  liked.add(id);
-  try{ localStorage.setItem(LIKED_ENTRIES_KEY, JSON.stringify([...liked])); }catch(e){}
-}
-function buildMyTeamSnapshot(){
-  return Object.entries(owned).map(([champId, prog])=>{
-    const def = CHAMPION_CATALOG[champId];
-    if(!def) return null;
-    const itemNames = (prog.itemIds||[]).filter(Boolean).map(iid=>ITEM_CATALOG[iid]?ITEM_CATALOG[iid].name:iid);
-    if(prog.relicId && ITEM_CATALOG[prog.relicId]) itemNames.push(ITEM_CATALOG[prog.relicId].name+' (rel√≠quia)');
-    return { champId, name:def.name, element:def.element, level:prog.level||1, stars:prog.stars||1, items:itemNames };
-  }).filter(Boolean);
-}
-async function postMyResult(){
-  const statusEl = document.getElementById('leaderboard-status');
-  if(!window.__lb || !window.__lb.ready){ statusEl.textContent = 'Placar indispon√≠vel no momento (sem conex√£o com o banco de dados).'; return; }
-  const team = buildMyTeamSnapshot();
-  if(team.length===0){ statusEl.textContent = 'Voc√™ ainda n√£o tem nenhum Stack User pra postar ‚Äî joga uma partida primeiro!'; return; }
-  let playerName = 'An√¥nimo';
-  try{ playerName = localStorage.getItem(PROFILE_NAME_KEY) || 'An√¥nimo'; }catch(e){}
-  if(!playerName.trim()) playerName = 'An√¥nimo';
-  statusEl.textContent = 'Postando...';
-  try{
-    const { db, collection, addDoc, serverTimestamp } = window.__lb;
-    const badges = [...matchAchievements].filter(id=>ACHIEVEMENTS[id]).map(id=>ACHIEVEMENTS[id].icon);
-    await addDoc(collection(db, 'leaderboard'), {
-      playerName: playerName.slice(0,24),
-      maxWave: personalRecords.maxWave || 0,
-      team,
-      badges,
-      likes: 0,
-      createdAt: serverTimestamp()
-    });
-    statusEl.textContent = 'Postado! J√° aparece na lista abaixo.';
-    renderLeaderboard();
-  }catch(e){
-    statusEl.textContent = 'N√£o deu pra postar agora ‚Äî tenta de novo daqui a pouco.';
-    console.error(e);
-  }
-}
-async function likeEntry(entryId, btnEl){
-  if(!window.__lb || !window.__lb.ready) return;
-  const liked = getLikedEntries();
-  if(liked.has(entryId)) return; // j√° curtiu antes nesse navegador
-  btnEl.disabled = true;
-  try{
-    const { db, doc, updateDoc, increment } = window.__lb;
-    await updateDoc(doc(db, 'leaderboard', entryId), { likes: increment(1) });
-    markEntryLiked(entryId);
-    const countEl = btnEl.querySelector('.like-count');
-    if(countEl) countEl.textContent = (parseInt(countEl.textContent,10)||0) + 1;
-    btnEl.classList.add('liked');
-  }catch(e){
-    btnEl.disabled = false;
-    console.error(e);
-  }
-}
-
-async function renderLeaderboard(){
-  const listEl = document.getElementById('leaderboard-list');
-  const statusEl = document.getElementById('leaderboard-status');
-  if(!window.__lb || !window.__lb.ready){
-    statusEl.textContent = 'Placar indispon√≠vel no momento (sem conex√£o com o banco de dados).';
-    listEl.innerHTML = '';
-    return;
-  }
-  statusEl.textContent = 'Carregando...';
-  listEl.innerHTML = '';
-  try{
-    const { db, collection, getDocs, query, orderBy, limit } = window.__lb;
-    const q = query(collection(db, 'leaderboard'), orderBy('maxWave', 'desc'), limit(30));
-    const snap = await getDocs(q);
-    statusEl.textContent = snap.empty ? 'Ningu√©m postou ainda ‚Äî seja o primeiro!' : '';
-    const liked = getLikedEntries();
-    listEl.innerHTML = snap.docs.map(d=>{
-      const data = d.data();
-      const id = d.id;
-      const alreadyLiked = liked.has(id);
-      const teamHtml = (data.team||[]).map(u=>`
-        <div style="padding:6px 8px; background:rgba(0,0,0,0.2); border:1px solid #3a3f47; border-radius:4px; font-size:11px;">
-          <span class="champ-tag elem-${u.element}" style="margin-right:6px;">${u.element.toUpperCase()}</span>
-          <strong>${u.name}</strong> ‚Äî ${starIcons(u.stars)} Nv.${u.level}
-          ${u.items.length ? `<div style="color:var(--gold); margin-top:2px;">üéí ${u.items.join(', ')}</div>` : '<div style="color:var(--steel); margin-top:2px;">Sem itens</div>'}
-        </div>
-      `).join('');
-      return `
-        <div style="padding:14px; background:rgba(0,0,0,0.15); border:1px solid #3a3f47; border-radius:6px;">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-            <div style="font-family:'Oswald',sans-serif; font-size:15px; color:#eae4d8;">${data.playerName||'An√¥nimo'}</div>
-            <div style="color:var(--gold); font-family:'JetBrains Mono',monospace; font-size:13px;">üåä Onda ${data.maxWave||0}</div>
-          </div>
-          ${(data.badges&&data.badges.length) ? `<div style="margin-bottom:8px; font-size:14px; letter-spacing:2px;" title="${data.badges.length} emblema${data.badges.length>1?'s':''} de conquista">${data.badges.join(' ')}</div>` : ''}
-          <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:6px; margin-bottom:10px;">${teamHtml}</div>
-          <button class="ghost-btn like-btn${alreadyLiked?' liked':''}" data-entry-id="${id}" ${alreadyLiked?'disabled':''}>
-            ${alreadyLiked?'‚ù§Ô∏è':'ü§ç'} <span class="like-count">${data.likes||0}</span>
-          </button>
-        </div>
-      `;
-    }).join('');
-    listEl.querySelectorAll('.like-btn').forEach(btn=>{
-      btn.addEventListener('click', ()=> likeEntry(btn.dataset.entryId, btn));
-    });
-  }catch(e){
-    statusEl.textContent = 'N√£o deu pra carregar o placar agora ‚Äî tenta de novo daqui a pouco.';
-    console.error(e);
-  }
-}
-
-function renderProfile(){
-  const nameInput = document.getElementById('profile-name-input');
-  try{
-    const savedName = localStorage.getItem(PROFILE_NAME_KEY);
-    if(savedName!==null) nameInput.value = savedName;
-  }catch(e){}
-  const ids = Object.keys(ACHIEVEMENTS);
-  const unlockedCount = ids.filter(id=>unlockedAchievements.has(id)).length;
-  document.getElementById('profile-badges-progress').textContent = `${unlockedCount} de ${ids.length} emblemas desbloqueados`;
-  const gridEl = document.getElementById('profile-badges-grid');
-  gridEl.innerHTML = ids.map(id=>{
-    const def = ACHIEVEMENTS[id];
-    const unlocked = unlockedAchievements.has(id);
-    const icon = (def.secret && !unlocked) ? '‚ùì' : def.icon;
-    const label = (def.secret && !unlocked) ? '???' : def.name;
-    return `
-      <div title="${label}" style="display:flex; flex-direction:column; align-items:center; gap:4px; padding:8px 4px; background:${unlocked?'rgba(232,194,80,0.08)':'rgba(0,0,0,0.15)'}; border:1px solid ${unlocked?'var(--gold)':'#3a3f47'}; border-radius:6px;">
-        <div style="font-size:22px; opacity:${unlocked?1:0.25};">${icon}</div>
-        <div style="font-family:'JetBrains Mono',monospace; font-size:9px; text-align:center; color:${unlocked?'var(--gold)':'#8b95a3'}; line-height:1.2;">${label}</div>
-      </div>
-    `;
-  }).join('');
-
-  document.getElementById('profile-max-wave').textContent = personalRecords.maxWave>0 ? `üåä Maior onda alcan√ßada: ${personalRecords.maxWave}` : 'üåä Ainda n√£o alcan√ßou nenhuma onda.';
-  const dmgListEl = document.getElementById('profile-damage-list');
-  const dmgEntries = Object.entries(personalRecords.maxDamageByChamp)
-    .filter(([cid])=>CHAMPION_CATALOG[cid])
-    .sort((a,b)=>b[1]-a[1]);
-  if(dmgEntries.length===0){
-    dmgListEl.innerHTML = '<div class="subtitle">Nenhum dano registrado ainda ‚Äî entra numa partida!</div>';
-  } else {
-    dmgListEl.innerHTML = dmgEntries.map(([cid,dmg])=>`
-      <div style="display:flex; justify-content:space-between; padding:6px 10px; background:rgba(0,0,0,0.15); border:1px solid #3a3f47; border-radius:4px; font-family:'JetBrains Mono',monospace; font-size:12px;">
-        <span>${CHAMPION_CATALOG[cid].name}</span>
-        <span style="color:var(--gold);">${dmg}</span>
-      </div>
-    `).join('');
-  }
-}
-document.getElementById('profile-name-input').addEventListener('input', (e)=>{
-  try{ localStorage.setItem(PROFILE_NAME_KEY, e.target.value); }catch(err){}
-});
-
-function renderAchievementsList(){
-  const ids = Object.keys(ACHIEVEMENTS);
-  const unlockedCount = ids.filter(id=>unlockedAchievements.has(id)).length;
-  document.getElementById('achievements-progress').textContent = `${unlockedCount} de ${ids.length} desbloqueadas`;
-  const listEl = document.getElementById('achievements-list');
-  listEl.innerHTML = ids.map(id=>{
-    const def = ACHIEVEMENTS[id];
-    const unlocked = unlockedAchievements.has(id);
-    if(def.secret && !unlocked){
-      return `
-        <div style="display:flex; align-items:center; gap:12px; padding:10px 12px; background:rgba(0,0,0,0.15); border:1px solid #3a3f47; border-radius:6px;">
-          <div style="font-size:24px; opacity:0.25;">‚ùì</div>
-          <div>
-            <div style="font-family:'Oswald',sans-serif; font-size:14px; color:#8b95a3;">??? üîí</div>
-            <div style="font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--steel);">Conquista secreta.</div>
-          </div>
-        </div>
-      `;
-    }
-    const descLine = def.secret ? '' : `<div style="font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--steel);">${def.desc}</div>`;
-    return `
-      <div style="display:flex; align-items:center; gap:12px; padding:10px 12px; background:${unlocked?'rgba(232,194,80,0.08)':'rgba(0,0,0,0.15)'}; border:1px solid ${unlocked?'var(--gold)':'#3a3f47'}; border-radius:6px;">
-        <div style="font-size:24px; opacity:${unlocked?1:0.25};">${def.icon}</div>
-        <div>
-          <div style="font-family:'Oswald',sans-serif; font-size:14px; color:${unlocked?'var(--gold)':'#8b95a3'};">${def.name}${unlocked?'':' üîí'}</div>
-          ${descLine}
-        </div>
-      </div>
-    `;
-  }).join('');
-}
-
-function unlockAchievement(id){
-  if(mode==='pve' && wave < 7) return; // conquistas s√≥ liberam a partir da onda 7 ‚Äî muito f√°cil pegar 2 de uma vez na primeira rodada
-  matchAchievements.add(id); // conta pra essa partida mesmo que j√° fosse vital√≠cia
-  if(unlockedAchievements.has(id)) return;
-  unlockedAchievements.add(id);
-  try{ localStorage.setItem(ACH_KEY, JSON.stringify([...unlockedAchievements])); }catch(e){}
-  showAchievementToast(id);
-}
-
-function showAchievementToast(id){
-  const def = ACHIEVEMENTS[id];
-  if(!def) return;
-  const container = document.getElementById('achievement-toast-container');
-  const toast = document.createElement('div');
-  toast.className = 'achievement-toast';
-  toast.innerHTML = `
-    <div class="achievement-toast-icon">${def.icon}</div>
-    <div>
-      <div class="achievement-toast-label">Conquista desbloqueada</div>
-      <div class="achievement-toast-name">${def.name}</div>
-      ${def.secret ? '' : `<div class="achievement-toast-desc">${def.desc}</div>`}
-    </div>
-  `;
-  container.appendChild(toast);
-  requestAnimationFrame(()=> requestAnimationFrame(()=> toast.classList.add('show')));
-  sfxLevelUp();
-  setTimeout(()=>{
-    toast.classList.remove('show');
-    setTimeout(()=> toast.remove(), 450);
-  }, 4500);
-}
-
-/* ============ SUGEST√ÉO DE TIME ============ */
-const ROLE_CATEGORY = {
-  ferrha:'tank', terrus:'tank', shecry:'tank',
-  glacia:'suporte',
-  ima:'controle',
-  voss:'longa dist√¢ncia', pyra:'longa dist√¢ncia', zeph:'longa dist√¢ncia', voltra:'longa dist√¢ncia',
-  nyx:'corpo a corpo', kael:'corpo a corpo', frosk:'corpo a corpo',
-  gelida:'especial', raio:'especial', nerith:'especial',
-};
-const ROLE_LABELS = {
-  tank:'tanque', suporte:'suporte', controle:'controlador',
-  'longa dist√¢ncia':'atirador', 'corpo a corpo':'lutador corpo a corpo', especial:'especialista',
-};
-function computeTeamSuggestion(teamIds){
-  const priorityOrder = ['tank','suporte','longa dist√¢ncia','controle'];
-  const teamCategories = new Set(teamIds.map(id=>ROLE_CATEGORY[id]));
-  for(const cat of priorityOrder){
-    if(!teamCategories.has(cat)){
-      const candidates = Object.entries(CHAMPION_CATALOG)
-        .filter(([id])=>ROLE_CATEGORY[id]===cat && !teamIds.includes(id))
-        .sort((a,b)=>a[1].cost-b[1].cost);
-      if(candidates.length) return {category:cat, champId:candidates[0][0]};
-    }
-  }
-  return null;
-}
-let suggestionsEnabled = true;
-try{
-  const savedPref = localStorage.getItem('ferroLancaSuggestionsEnabled');
-  if(savedPref!==null) suggestionsEnabled = savedPref==='1';
-}catch(e){}
-function setSuggestionsEnabled(on){
-  suggestionsEnabled = on;
-  const btn = document.getElementById('suggestions-toggle-btn');
-  btn.classList.toggle('on', on);
-  btn.textContent = on ? 'Ligado' : 'Desligado';
-  btn.title = on ? 'Sugest√µes de time (ligadas)' : 'Sugest√µes de time (desligadas)';
-  try{ localStorage.setItem('ferroLancaSuggestionsEnabled', on?'1':'0'); }catch(e){}
-  if(!on) document.getElementById('suggestion-popup').classList.remove('show');
-}
-document.getElementById('suggestions-toggle-btn').addEventListener('click', ()=> setSuggestionsEnabled(!suggestionsEnabled));
-
-function setMobileEquipMode(on){
-  mobileEquipMode = on;
-  const btn = document.getElementById('mobile-mode-toggle-btn');
-  btn.textContent = mobileEquipMode ? 'Ligado' : 'Desligado';
-  btn.classList.toggle('on', mobileEquipMode);
-  selectedInventoryItem = null;
-  document.querySelectorAll('.inv-tile.selected-for-equip').forEach(t=>t.classList.remove('selected-for-equip'));
-}
-document.getElementById('mobile-mode-toggle-btn').addEventListener('click', ()=> setMobileEquipMode(!mobileEquipMode));
-
-let appToastTimer = null;
-function showAppToast(message, durationMs){
-  const toast = document.getElementById('app-toast');
-  toast.textContent = message;
-  toast.classList.add('show');
-  clearTimeout(appToastTimer);
-  appToastTimer = setTimeout(()=> toast.classList.remove('show'), durationMs || 4000);
-}
-
-// Aviso de atualiza√ß√£o ‚Äî s√≥ dispara pra quem J√Å tinha jogado numa vers√£o anterior
-// (n√£o incomoda quem t√° abrindo o jogo pela primeira vez). N√£o √© obrigat√≥rio recarregar.
-const GAME_VERSION = 'v2026-pillar-destructible-2';
-try{
-  const seenVersion = localStorage.getItem('ferroLancaSeenVersion');
-  if(seenVersion && seenVersion !== GAME_VERSION){
-    setTimeout(()=>{
-      showAppToast('üîÑ Tem uma atualiza√ß√£o nova dispon√≠vel! Quando terminar sua partida, recarregue a p√°gina pra receber as novidades (n√£o √© obrigat√≥rio).', 10000);
-    }, 2500);
-  }
-  localStorage.setItem('ferroLancaSeenVersion', GAME_VERSION);
-}catch(e){}
-
-// Bolinha de "n√£o lido" nas Notas ‚Äî diferente do aviso acima, essa mostra at√© pra quem
-// t√° jogando pela primeira vez (o importante aqui √© "voc√™ j√° leu ISSO", n√£o "mudou algo").
-try{
-  const notesReadVersion = localStorage.getItem('ferroLancaNotesReadVersion');
-  if(notesReadVersion !== GAME_VERSION){
-    document.getElementById('patchnotes-dot').classList.add('show');
-  }
-}catch(e){}
-
-document.getElementById('mobile-mode-ask-yes').addEventListener('click', ()=>{
-  document.getElementById('mobile-mode-ask-overlay').classList.remove('show');
-  setMobileEquipMode(true);
-  showAppToast('üì± O modo de celular foi ativado ‚Äî voc√™ pode trocar isso nas Configura√ß√µes.');
-});
-document.getElementById('mobile-mode-ask-no').addEventListener('click', ()=>{
-  document.getElementById('mobile-mode-ask-overlay').classList.remove('show');
-});
-
-document.querySelectorAll('.item-filter-btn').forEach(btn=>{
-  btn.addEventListener('click', ()=>{
-    currentItemFilter = btn.dataset.itemfilter;
-    document.querySelectorAll('.item-filter-btn').forEach(b=>b.classList.remove('active'));
-    btn.classList.add('active');
-    renderItems();
-  });
-});
-setSuggestionsEnabled(suggestionsEnabled);
-
-/* ============ FEEDBACK ============ */
-(function(){
-  const overlay = document.getElementById('feedback-overlay');
-  const openBtn = document.getElementById('feedback-btn');
-  const closeBtn = document.getElementById('feedback-close-btn');
-  const sendBtn = document.getElementById('feedback-send-btn');
-  const subjectEl = document.getElementById('feedback-subject');
-  const bodyEl = document.getElementById('feedback-body');
-  const FB_TARGET_B64 = 'RW56b2RlamVzdXNwZW5pY2hlQGdtYWlsLmNvbQ==';
-  if(openBtn) openBtn.addEventListener('click', ()=> overlay.classList.add('show'));
-  if(closeBtn) closeBtn.addEventListener('click', ()=> overlay.classList.remove('show'));
-  if(sendBtn) sendBtn.addEventListener('click', ()=>{
-    const subject = (subjectEl.value || 'Sugest√£o para Ferro & Lan√ßa').trim();
-    const body = (bodyEl.value || '').trim();
-    if(!body){ bodyEl.focus(); return; }
-    const target = atob(FB_TARGET_B64);
-    const mailUrl = `mailto:${target}?subject=${encodeURIComponent('[Ferro & Lan√ßa] '+subject)}&body=${encodeURIComponent(body)}`;
-    window.location.href = mailUrl;
-    overlay.classList.remove('show');
-    subjectEl.value = '';
-    bodyEl.value = '';
-  });
-})();
-
-function showTeamSuggestion(teamIds){
-  document.getElementById('suggestion-popup').classList.remove('show');
-  if(!suggestionsEnabled) return;
-  if(!teamIds || teamIds.length===0) return;
-  const suggestion = computeTeamSuggestion(teamIds);
-  if(!suggestion) return;
-  const def = CHAMPION_CATALOG[suggestion.champId];
-  document.getElementById('suggestion-text').innerHTML =
-    `Seu time precisa de um <strong style="color:var(--frost);">${ROLE_LABELS[suggestion.category]}</strong> ‚Üí <strong style="color:var(--molten);">${def.name}</strong>`;
-  document.getElementById('suggestion-popup').classList.add('show');
-}
-document.getElementById('suggestion-close-btn').addEventListener('click', ()=>{
-  document.getElementById('suggestion-popup').classList.remove('show');
-});
-
-function setSoundEnabled(on){
-  soundEnabled = on;
-  const btn = document.getElementById('sound-toggle-btn');
-  btn.textContent = on ? 'üîä Som' : 'üîá Som';
-  btn.title = on ? 'Som (ligado)' : 'Som (desligado)';
-  btn.classList.toggle('on', on);
-  if(on) getAudioCtx();
-}
-document.getElementById('sound-toggle-btn').addEventListener('click', ()=> setSoundEnabled(!soundEnabled));
-
-function updateBestWaveDisplay(){ const el = document.getElementById('best-wave-label'); if(el) el.textContent = bestWaveEver; }
-updateCoinBadge();
-refreshContinueCard();
-
-/* ============ SHOP ============ */
-// Adiciona um Stack User rec√©m-comprado direto no time ativo (sem precisar de "ajustar equipe" separado).
-function addToActiveTeam(champId){
-  if(mode==='pve'){
-    if(!teamP1.includes(champId)){
-      const hadTeammates = teamP1.length>0;
-      teamP1.push(champId);
-      if(hadTeammates) grantCatchUpJoin(champId);
-    }
-  } else if(mode==='pvp'){
-    if(activePvpPlayer==='p2'){
-      if(!teamP2.includes(champId)) teamP2.push(champId);
-    } else {
-      if(!teamP1.includes(champId)) teamP1.push(champId);
-    }
-  }
-}
-// Quando um Stack User entra num time que j√° t√° em andamento, ele pula pra perto do n√≠vel
-// do resto do grupo (em vez de sempre nascer no 1) e ganha XP turbinado at√© alcan√ßar de vez.
-function grantCatchUpJoin(champId){
-  const prog = owned[champId];
-  if(!prog) return;
-  const veteranLevels = teamP1.filter(id=>id!==champId && owned[id]).map(id=>owned[id].level);
-  if(veteranLevels.length===0) return;
-  const minVeteranLevel = Math.min(...veteranLevels);
-  let startLevel = Math.max(1, minVeteranLevel-1);
-  if(hasBlessing('reforco_tardio')) startLevel += 8;
-  if(startLevel > prog.level){
-    prog.level = startLevel;
-    prog.xp = 0;
-    log(`${CHAMPION_CATALOG[champId].name} entra no time j√° no n√≠vel ${startLevel}, pra n√£o ficar t√£o atr√°s do resto do grupo!`, 'hl');
-  }
-  if(minVeteranLevel - prog.level > 0) newcomerChamps.add(champId);
-}
-
-/* ============ B√äN√á√ÉOS ============ */
-// A cada 2 chefes derrotados (chefe duplo conta como 1), o jogador escolhe 1 de 3 b√™n√ß√£os ‚Äî
-// cada uma tem um lado bom e um lado ruim, sem exce√ß√£o.
-const BLESSINGS = {
-  furia_coletiva: {name:'F√∫ria Coletiva', icon:'‚öîÔ∏è', pro:'+15% de dano em todo o time', con:'-10% de vida m√°xima em todo o time'},
-  passo_leve: {name:'Passo Leve', icon:'üí®', pro:'+20% de velocidade de movimento e ataque em todo o time', con:'-15% de redu√ß√£o de dano em todo o time'},
-  forja_barata: {name:'B√™n√ß√£o do Ferreiro', icon:'üî®', pro:'Itens combin√°veis custam 30% menos moedas pra montar', con:'+10% de dano recebido em todo o time'},
-  vinculo_duplo: {name:'V√≠nculo Duplo', icon:'üîó', pro:'2 Stack Users aleat√≥rios passam a poder equipar at√© 5 itens', con:'Esses 2 mesmos Stack Users ganham 25% menos XP'},
-  reforco_tardio: {name:'Refor√ßo Tardio', icon:'üìØ', pro:'Todo Stack User comprado a partir de agora entra 8 n√≠veis mais alto', con:'Personagens custam 15% mais moedas na loja'},
-  folego_extra: {name:'F√¥lego Extra', icon:'‚ù§Ô∏è', pro:'+18% de vida m√°xima em todo o time', con:'-10% de velocidade de ataque em todo o time'},
-};
-let activeBlessings = []; // ids das b√™n√ß√£os escolhidas nessa partida
-let bossDefeatCount = 0;
-let bossCountedThisWave = false;
-let pendingBlessingChoice = false;
-let extraSlotChampIds = []; // preenchido pela b√™n√ß√£o V√≠nculo Duplo
-
-function getItemSlotCount(champId){
-  return extraSlotChampIds.includes(champId) ? 5 : 3;
-}
-function hasBlessing(id){ return activeBlessings.includes(id); }
-// Limitador de economia: quando o time j√° t√° muito completo (estrelas m√°ximas / itens cheios),
-// o ganho de moeda cai ‚Äî for√ßa escolher entre comprar item OU a expans√£o de time l√° pela onda 40.
-function computeCompletionPenalty(){
-  if(teamP1.length===0) return 1;
-  let maxedCount = 0, itemizedCount = 0, counted = 0;
-  teamP1.forEach(id=>{
-    const p = owned[id];
-    if(!p) return;
-    counted++;
-    if(p.stars>=MAX_STARS) maxedCount++;
-    const slots = getItemSlotCount(id);
-    const filled = (p.itemIds||[]).filter(Boolean).length;
-    if(filled>=slots) itemizedCount++;
-  });
-  if(counted===0) return 1;
-  const completion = (maxedCount/counted + itemizedCount/counted) / 2;
-  return 1 - completion*0.45; // at√© 45% de redu√ß√£o quando o time t√° 100% maxado
-}
-
-function championFirstCost(id){
-  let cost = SPECIAL_PASSIVE_CHAMPS.includes(id) ? Math.round(CHAMPION_CATALOG[id].cost*1.2) : CHAMPION_CATALOG[id].cost;
-  if(hasBlessing('reforco_tardio')) cost = Math.round(cost*1.15);
-  return cost;
-}
-
-function showBlessingChoice(onResolved){
-  const pool = Object.keys(BLESSINGS).filter(id=>!activeBlessings.includes(id));
-  if(pool.length===0){
-    const taxCost = 500;
-    const paid = Math.min(taxCost, coins);
-    coins -= paid;
-    updateCoinBadge();
-    const el = document.getElementById('blessing-cards');
-    el.innerHTML = `<div class="champ-card" style="border-color:var(--ember);">
-      <div class="champ-name" style="color:var(--ember);">üèõÔ∏è Notifica√ß√£o da Rachadura</div>
-      <div class="champ-desc">Voc√™ n√£o tem mais b√™n√ß√£os novas pra receber ‚Äî mas ainda precisa pagar imposto sobre as anteriores. Sem direito a recurso.</div>
-      <div class="champ-stats" style="color:var(--ember);">Cobrado: ${paid} moedas${paid<taxCost?' (tudo que voc√™ tinha)':''}.</div>
-      <button class="main-btn" style="margin-top:8px;width:100%;">Pagar e seguir em frente</button>
-    </div>`;
-    const okBtn = el.querySelector('button');
-    okBtn.addEventListener('click', ()=>{
-      document.getElementById('blessing-overlay').classList.remove('show');
-      pendingBlessingChoice = false;
-      if(onResolved) onResolved();
-    });
-    log(`üèõÔ∏è Imposto sobre b√™n√ß√£os cobrado: ${paid} moedas.`, 'hl');
-    document.getElementById('blessing-overlay').classList.add('show');
-    return;
-  }
-  const shuffled = pool.sort(()=>Math.random()-0.5).slice(0,3);
-  const el = document.getElementById('blessing-cards');
-  const skipCost = 500;
-  el.innerHTML = shuffled.map(id=>{
-    const b = BLESSINGS[id];
-    return `<div class="champ-card" style="cursor:pointer;" data-blessing="${id}">
-      <div class="champ-name">${b.icon} ${b.name}</div>
-      <div class="champ-stats" style="color:#7bbf6a;">‚úì ${b.pro}</div>
-      <div class="champ-stats" style="color:#c94d3d;">‚úó ${b.con}</div>
-    </div>`;
-  }).join('') + `<div class="champ-card" style="cursor:pointer;border-color:var(--steel);" data-blessing-skip="1">
-      <div class="champ-name" style="color:var(--steel);">üö´ N√£o quero b√™n√ß√£o</div>
-      <div class="champ-stats">Paga ${skipCost} moedas pra dispensar todas as tr√™s ‚Äî sem pr√≥, sem contra.</div>
-    </div>`;
-  el.querySelectorAll('[data-blessing]').forEach(card=>{
-    card.addEventListener('click', ()=>{
-      applyBlessing(card.dataset.blessing);
-      document.getElementById('blessing-overlay').classList.remove('show');
-      pendingBlessingChoice = false;
-      if(onResolved) onResolved();
-    });
-  });
-  const skipBtn = el.querySelector('[data-blessing-skip]');
-  if(skipBtn){
-    skipBtn.addEventListener('click', ()=>{
-      if(coins < skipCost){
-        skipBtn.querySelector('.champ-stats').textContent = `Moeda insuficiente (precisa de ${skipCost}).`;
-        skipBtn.querySelector('.champ-stats').style.color = '#c94d3d';
-        return;
-      }
-      coins -= skipCost;
-      updateCoinBadge();
-      log(`üö´ B√™n√ß√£o dispensada por ${skipCost} moedas.`, 'hl');
-      document.getElementById('blessing-overlay').classList.remove('show');
-      pendingBlessingChoice = false;
-      if(onResolved) onResolved();
-    });
-  }
-  document.getElementById('blessing-overlay').classList.add('show');
-}
-
-function applyBlessing(id){
-  activeBlessings.push(id);
-  const b = BLESSINGS[id];
-  log(`‚ú® B√™n√ß√£o escolhida: ${b.name} ‚Äî ${b.pro} / ${b.con}`, 'hl');
-  if(id==='vinculo_duplo'){
-    const pool = teamP1.slice();
-    for(let i=0;i<2 && pool.length>0;i++){
-      const idx = Math.floor(Math.random()*pool.length);
-      extraSlotChampIds.push(pool.splice(idx,1)[0]);
-    }
-    log(`üîó ${extraSlotChampIds.map(id=>CHAMPION_CATALOG[id].name).join(' e ')} agora podem equipar at√© 5 itens!`, 'hl');
-  }
-}
-
-const MAX_OWNED_CHAMPS_BASE = 5;
-const TEAM_EXPANSION_COSTS = [1500, 2200, 3000]; // custo de cada tier: 5‚Üí6, 6‚Üí7, 7‚Üí8
-const TEAM_EXPANSION_UNLOCK_WAVE = 40;
-let teamExpansionTier = 0; // 0 a 3 ‚Äî cada tier soma +1 no limite de personagens
-function getMaxOwnedChamps(){ return MAX_OWNED_CHAMPS_BASE + teamExpansionTier; }
-const SPECIAL_PASSIVE_CHAMPS = ['ferrha','kael','terrus','gelida','raio','ima','shecry'];
-
-function renderShop(){
-  const el = document.getElementById('shop-cards');
-  el.innerHTML = '';
-  if(mode==='pve' && wave>=TEAM_EXPANSION_UNLOCK_WAVE && teamExpansionTier<TEAM_EXPANSION_COSTS.length){
-    const expCost = TEAM_EXPANSION_COSTS[teamExpansionTier];
-    const nextCap = getMaxOwnedChamps()+1;
-    const card = document.createElement('div');
-    card.className = 'champ-card';
-    card.style.cssText = 'border-color:var(--gold);background:linear-gradient(135deg,rgba(232,194,80,0.12),rgba(0,0,0,0.1));';
-    card.innerHTML = `
-      <div class="champ-name" style="color:var(--gold);">‚≠ê Expandir o Time</div>
-      <div class="champ-desc">Libera espa√ßo pra mais 1 Stack User no time ‚Äî limite atual: ${getMaxOwnedChamps()}, vira ${nextCap}.</div>
-      <div class="champ-stats" style="color:var(--gold);">${expCost} moedas</div>
-      <button class="main-btn" style="margin-top:8px;width:100%;" ${coins<expCost?'disabled':''}>Comprar expans√£o</button>
-    `;
-    card.querySelector('button').addEventListener('click', ()=>{
-      if(coins < expCost) return;
-      coins -= expCost;
-      teamExpansionTier++;
-      sfxCoin();
-      log(`Time expandido! Agora d√° pra ter at√© ${getMaxOwnedChamps()} Stack Users.`, 'hl');
-      unlockAchievement('team_expansion_first');
-      if(teamExpansionTier>=TEAM_EXPANSION_COSTS.length) unlockAchievement('team_expansion_full');
-      updateCoinBadge();
-      renderShop();
-    });
-    el.appendChild(card);
-  }
-  const distinctOwned = Object.keys(owned).length;
-  const atCap = distinctOwned >= getMaxOwnedChamps();
-  const sortedChampEntries = Object.entries(CHAMPION_CATALOG).sort((a,b)=>a[1].cost-b[1].cost);
-  sortedChampEntries.forEach(([id,def])=>{
-    const isOwned = !!owned[id];
-    const prog = owned[id];
-    const copyCost = Math.round(def.cost*0.5);
-    const firstCost = championFirstCost(id);
-    const card = document.createElement('div');
-    card.className = 'champ-card ' + (isOwned?'':'locked') + ' bg-'+def.element;
-    let ownedBlock = '';
-    if(isOwned){
-      ownedBlock = `<div class="champ-stats" style="color:var(--gold);margin-top:4px;">${starIcons(prog.stars)} ¬∑ Nv. ${prog.level} (${formatXp(prog.xp)}/${xpToNextLevel(prog.level)} xp)</div>`;
-      if(prog.stars < MAX_STARS){
-        ownedBlock += `<div class="champ-stats">C√≥pias pra evoluir: ${prog.copies}/2</div>`;
-        ownedBlock += inMatch
-          ? `<button class="main-btn buy-btn" data-buy="${id}" ${coins<copyCost?'disabled':''}>Comprar c√≥pia ‚Äî ${copyCost} ü™ô</button>`
-          : `<div class="champ-stats" style="color:var(--steel);">S√≥ d√° pra comprar durante uma partida</div>`;
-      } else {
-        ownedBlock += `<div class="champ-stats" style="color:var(--gold);">Estrela m√°xima</div>`;
-      }
-    } else if(atCap && inMatch){
-      const options = Object.keys(owned).map(oid=>`<option value="${oid}">${CHAMPION_CATALOG[oid].name}</option>`).join('');
-      ownedBlock = `
-        <div class="champ-stats" style="color:var(--ember);">Time no limite de ${getMaxOwnedChamps()} ‚Äî troque algu√©m por ${def.name}</div>
-        <select class="swap-select" data-swaptarget="${id}" style="width:100%;margin:4px 0;padding:4px;background:#1a1c20;color:#eae4d8;border:1px solid #3a3f47;border-radius:4px;">${options}</select>
-        <button class="main-btn buy-btn" data-swapbuy="${id}" ${coins<firstCost?'disabled':''}>Trocar ‚Äî ${firstCost} ü™ô</button>
-      `;
-    } else {
-      ownedBlock = inMatch
-        ? `<button class="main-btn buy-btn" data-buy="${id}" ${coins<firstCost?'disabled':''}>Comprar ‚Äî ${firstCost} ü™ô</button>`
-        : `<div class="champ-stats" style="color:var(--steel);">S√≥ d√° pra comprar durante uma partida</div>`;
-    }
-    card.innerHTML = `
-      <div class="champ-card-head">
-        ${championPortraitHtml(id, def)}
-        <div class="champ-card-head-copy">
-          <div class="champ-name">${def.name}</div>
-          <span class="champ-tag elem-${def.element}">${def.element.toUpperCase()}</span>
-          <span class="champ-tag" style="background:#333;color:#ccc;">${def.role}</span>
-        </div>
-      </div>
-      <div class="champ-desc">${def.desc}</div>
-      <div class="champ-stats">HP ${def.hp} ¬∑ ATK ${def.atk} ¬∑ ALC ${def.range} ¬∑ VEL ${def.speed}</div>
-      ${ownedBlock}
-    `;
-    el.appendChild(card);
-  });
-  if(!inMatch) return;
-  el.querySelectorAll('[data-swapbuy]').forEach(btn=>{
-    btn.addEventListener('click', ()=>{
-      const newId = btn.dataset.swapbuy;
-      const firstCost = championFirstCost(newId);
-      const select = el.querySelector(`[data-swaptarget="${newId}"]`);
-      const oldId = select.value;
-      if(coins < firstCost || !oldId) return;
-      coins -= firstCost;
-      delete owned[oldId];
-      teamP1 = teamP1.filter(cid=>cid!==oldId);
-      delete teamP1Positions[oldId];
-      owned[newId] = {stars:1, copies:0, level:1, xp:0, itemIds:[]};
-      addToActiveTeam(newId);
-      log(`${CHAMPION_CATALOG[oldId].name} foi trocado por ${CHAMPION_CATALOG[newId].name}.`, 'sys');
-      updateCoinBadge();
-      renderShop();
-    });
-  });
-  el.querySelectorAll('[data-buy]').forEach(btn=>{
-    btn.addEventListener('click', ()=>{
-      const id = btn.dataset.buy;
-      const isNew = !owned[id];
-      const cost = isNew ? championFirstCost(id) : Math.round(CHAMPION_CATALOG[id].cost*0.5);
-      if(coins < cost) return;
-      coins -= cost;
-      sfxCoin();
-      if(!owned[id]){
-        owned[id] = {stars:1, copies:0, level:1, xp:0, itemIds:[]};
-        if(Object.keys(owned).length>=5) unlockAchievement('full_roster');
-      } else {
-        const prog = owned[id];
-        prog.copies++;
-        if(prog.copies >= 2 && prog.stars < MAX_STARS){
-          prog.stars++;
-          prog.copies = 0;
-          sfxLevelUp();
-          log(`${CHAMPION_CATALOG[id].name} fundiu e virou ${starIcons(prog.stars)}!`, 'sys');
-          if(prog.stars>=MAX_STARS) unlockAchievement('four_star');
-        }
-      }
-      if(isNew) addToActiveTeam(id);
-      updateCoinBadge();
-      renderShop();
-    });
-  });
-}
-
-/* ============ ITEMS ============ */
-// Classes recomendadas por item, pra filtrar na loja (separado do ITEM_CATALOG
-// pra n√£o precisar editar cada item existente ‚Äî √© s√≥ uma camada de "curadoria").
-const ITEM_CLASS_TAGS = {
-  luneta:['longa_distancia'], mira:['longa_distancia'], olho_falcao:['longa_distancia'], precisao_mortal:['longa_distancia'],
-  manopla:['corpo_a_corpo'], punho_serra:['corpo_a_corpo'], presas_sangrentas:['corpo_a_corpo'], furia_crescente:['corpo_a_corpo'],
-  furia_blindada:['corpo_a_corpo'], carniceiro:['corpo_a_corpo'], fio_mortal:['corpo_a_corpo'],
-  botas_lutador:['corpo_a_corpo'], investida_feroz:['corpo_a_corpo'],
-  placa:['tanque'], coracao_ferro:['tanque'], muralha_viva:['tanque'],
-  nucleo_eterno:['tanque','suporte'], amplificador:['tanque','suporte'],
-  botas:['longa_distancia','corpo_a_corpo'], amuleto:['corpo_a_corpo'],
-  brasa:['tanque','corpo_a_corpo'], brasa_eterna:['tanque','corpo_a_corpo'],
-  coracao_vital:['tanque','suporte'], manto_robusto:['tanque','suporte'], vigor_absoluto:['tanque','suporte'],
-  // rel√≠quias de chefe n√£o entram em nenhum filtro de classe ‚Äî s√≥ aparecem em "Todos"
-};
-let currentItemFilter = 'todos';
-
-function renderItems(){
-  const el = document.getElementById('item-cards');
-  el.innerHTML = '';
-  const sortedItemEntries = Object.entries(ITEM_CATALOG).filter(([id])=>{
-    if(currentItemFilter==='todos') return true;
-    return (ITEM_CLASS_TAGS[id]||[]).includes(currentItemFilter);
-  }).sort((a,b)=>{
-    const rank = (d)=> d.isRelic ? 2 : (d.recipe ? 1 : 0);
-    const rankDiff = rank(a[1]) - rank(b[1]);
-    if(rankDiff !== 0) return rankDiff;
-    return (a[1].cost||0) - (b[1].cost||0);
-  });
-  sortedItemEntries.forEach(([id,def])=>{
-    const owned_count = itemInventory[id]||0;
-    const card = document.createElement('div');
-    card.className = 'champ-card';
-    let actionBlock;
-    if(def.isRelic){
-      actionBlock = `<div class="champ-stats" style="color:var(--gold);">‚ú® S√≥ dropa de chefe ‚Äî n√£o d√° pra comprar</div>`;
-    } else if(def.recipe){
-      const compNames = def.recipe.map(cid=>ITEM_CATALOG[cid].name).join(' + ');
-      const canCombine = def.recipe.every(cid => (itemInventory[cid]||0) > 0);
-      actionBlock = `<div class="champ-stats" style="color:var(--gold);">Receita: ${compNames}</div>` + (inMatch
-        ? `<button class="main-btn buy-btn" data-combine="${id}" ${canCombine?'':'disabled'}>Combinar</button>`
-        : `<div class="champ-stats" style="color:var(--steel);">S√≥ d√° pra combinar durante uma partida</div>`);
-    } else {
-      const itemCost = hasBlessing('forja_barata') ? Math.round(def.cost*0.7) : def.cost;
-      actionBlock = inMatch
-        ? `<button class="main-btn buy-btn" data-buyitem="${id}" ${coins<itemCost?'disabled':''}>Comprar ‚Äî ${itemCost} ü™ô</button>`
-        : `<div class="champ-stats" style="color:var(--steel);">S√≥ d√° pra comprar durante uma partida</div>`;
-    }
-    card.innerHTML = `
-      <div style="display:flex;align-items:center;gap:8px;">
-        <div style="color:var(--molten);flex-shrink:0;">${itemIconSVG(id,28)}</div>
-        <div class="champ-name" style="margin:0;">${def.name}</div>
-      </div>
-      <span class="champ-tag" style="background:#333;color:#ccc;">${def.kind.toUpperCase()}</span>
-      <div class="champ-desc">${def.desc}</div>
-      <div class="champ-stats">Em estoque: ${owned_count}</div>
-      ${actionBlock}
-    `;
-    el.appendChild(card);
-  });
-  if(!inMatch) return;
-  el.querySelectorAll('[data-buyitem]').forEach(btn=>{
-    btn.addEventListener('click', ()=>{
-      const id = btn.dataset.buyitem;
-      const cost = hasBlessing('forja_barata') ? Math.round(ITEM_CATALOG[id].cost*0.7) : ITEM_CATALOG[id].cost;
-      if(coins >= cost){
-        coins -= cost;
-        sfxCoin();
-        itemInventory[id] = (itemInventory[id]||0) + 1;
-        updateCoinBadge();
-        renderItems();
-      }
-    });
-  });
-  el.querySelectorAll('[data-combine]').forEach(btn=>{
-    btn.addEventListener('click', ()=>{
-      const id = btn.dataset.combine;
-      const def = ITEM_CATALOG[id];
-      const canCombine = def.recipe.every(cid => (itemInventory[cid]||0) > 0);
-      if(canCombine){
-        def.recipe.forEach(cid=>{ itemInventory[cid] -= 1; });
-        itemInventory[id] = (itemInventory[id]||0) + 1;
-        renderItems();
-      }
-    });
-  });
-}
-
-/* ============ RECOMMENDED ITEMS ============ */
-const RECOMMENDED_ITEMS = {
-  ferrha: {items:['placa','muralha_viva','nucleo_eterno'], note:'Ela j√° nasce tanque ‚Äî reforce a defesa e amplifique a barreira/puxada com item de passiva.'},
-  voss: {items:['luneta','olho_falcao'], note:'Alcance e dano pra ela atirar de mais longe com seguran√ßa.'},
-  nyx: {items:['furia_crescente','botas_lutador'], note:'Cr√≠tico e velocidade de ataque ‚Äî ela j√° esquiva bastante sozinha, ent√£o √© ir no ataque r√°pido.'},
-  kael: {items:['amplificador','nucleo_eterno','presas_sangrentas'], note:'Amplifique o frenesi: mais dura√ß√£o, mais vampirismo, mais dano ‚Äî as Presas Sangrentas d√£o ainda mais sustenta√ß√£o corpo a corpo.'},
-  terrus: {items:['placa','nucleo_eterno','coracao_vital'], note:'Quanto mais vida e defesa, mais forte fica a Pele de Pedra.'},
-  pyra: {items:['luneta','mira'], note:'Longa dist√¢ncia pra explodir os inimigos de longe com mais seguran√ßa.'},
-  glacia: {items:['botas','amplificador'], note:'Cura mais r√°pido e mais forte pros aliados.'},
-  zeph: {items:['mira','olho_falcao'], note:'Velocidade de ataque pra disparar a chuva de flechas com mais frequ√™ncia.'},
-  ima: {items:['amplificador','placa'], note:'Fortalece a aura de defesa pros aliados de metal e aguenta mais no corpo a corpo ‚Äî ela √© 100% corpo a corpo agora.'},
-  frosk: {items:['punho_serra','coracao_vital'], note:'Perfura√ß√£o de armadura pra furar tanque inimigo, e mais vida pra aguentar o combate corpo a corpo.'},
-  gelida: {items:['amplificador','nucleo_eterno'], note:'Aumenta a dura√ß√£o do espectro e a cura ao renascer.'},
-  raio: {items:['botas_lutador','carniceiro'], note:'Velocidade de ataque pra ativar o combo mais r√°pido, e o Carniceiro d√° perfura√ß√£o + vampirismo pra sustentar a briga.'},
-  shecry: {items:['coracao_vital','manto_robusto','muralha_viva'], note:'Mais vida bruta vira mais defesa (a passiva dela escala com a vida atual) e escudo maior na ultimate.'},
-  nerith: {items:['coracao_vital','manto_robusto'], note:'Ela mesma √© fr√°gil e n√£o briga direto ‚Äî o importante √© sobreviver enquanto os tent√°culos fazem o trabalho.'},
-  voltra: {items:['mira','olho_falcao'], note:'A onda de choque dela escala com velocidade de ataque ‚Äî quanto mais r√°pida, mais forte a explos√£o.'},
-  jedegar: {items:['coracao_vital','manto_robusto','placa'], note:'Ela vive de sobreviver ‚Äî vida e defesa extra deixam os pilares e a passiva de morte mais f√°ceis de aproveitar.'},
-  shava: {items:['presas_sangrentas','botas_lutador'], note:'Vampirismo pra sustentar o combo de golpes, e velocidade pra chegar nos 3/6 golpes mais r√°pido.'},
-};
-
-function renderRecommended(){
-  const el = document.getElementById('recommended-cards');
-  el.innerHTML = '';
-  Object.entries(RECOMMENDED_ITEMS).forEach(([champId,rec])=>{
-    const def = CHAMPION_CATALOG[champId];
-    const card = document.createElement('div');
-    card.className = 'champ-card bg-'+def.element;
-    const iconsRow = rec.items.map(itemId=>{
-      const itemDef = ITEM_CATALOG[itemId];
-      return `<div style="display:flex;flex-direction:column;align-items:center;gap:2px;width:64px;">
-        <div style="color:var(--molten);">${itemIconSVG(itemId,30)}</div>
-        <div style="font-size:10px;text-align:center;color:var(--steel);line-height:1.2;">${itemDef.name}</div>
-      </div>`;
-    }).join('');
-    card.innerHTML = `
-      <div class="champ-card-head">
-        ${championPortraitHtml(id, def)}
-        <div class="champ-card-head-copy">
-          <div class="champ-name">${def.name}</div>
-          <span class="champ-tag elem-${def.element}">${def.element.toUpperCase()}</span>
-        </div>
-      </div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;margin:8px 0;">${iconsRow}</div>
-      <div class="champ-desc">${rec.note}</div>
-    `;
-    el.appendChild(card);
-  });
-}
-
-/* ============ ROSTER VIEW ============ */
-function renderRoster(){
-  const el = document.getElementById('roster-cards');
-  el.innerHTML = '';
-  Object.entries(owned).forEach(([id,prog])=>{
-    const def = CHAMPION_CATALOG[id];
-    const card = document.createElement('div');
-    card.className = 'champ-card bg-'+def.element;
-    if(!prog.itemIds) prog.itemIds = [];
-    const slotCount = getItemSlotCount(id);
-    while(prog.itemIds.length<slotCount) prog.itemIds.push(null);
-
-    let slotsHtml = '<div style="display:flex;gap:6px;margin-top:6px;">';
-    for(let slot=0; slot<slotCount; slot++){
-      const current = prog.itemIds[slot];
-      const icon = current ? itemIconSVG(current, 20) : '';
-      const title = current ? ITEM_CATALOG[current].name : 'Slot vazio ‚Äî arraste um item aqui';
-      slotsHtml += `<div class="equip-slot${current?' filled':''}" data-equip-slot="${id}" data-slot-index="${slot}" title="${title}">${icon}</div>`;
-    }
-    slotsHtml += '</div>';
-
-    const equippedNames = prog.itemIds.filter(Boolean).map(iid=>ITEM_CATALOG[iid].name);
-    const relicIcon = prog.relicId ? itemIconSVG(prog.relicId, 18) : '‚ñ¢';
-    const relicSlotHtml = `
-      <div class="equip-slot${prog.relicId?' filled':''}" data-equip-relic="${id}" title="${prog.relicId?ITEM_CATALOG[prog.relicId].name:'Slot de rel√≠quia ‚Äî funciona mesmo com os 3 itens normais cheios'}">${relicIcon}</div>
-    `;
-    card.innerHTML = `
-      <div class="champ-card-head champ-card-head-roster">
-        ${championPortraitHtml(id, def)}
-        <div class="champ-card-head-copy">
-          <div class="champ-name" style="margin:0;">${def.name}</div>
-          <span class="champ-tag elem-${def.element}">${def.element.toUpperCase()}</span>
-          <span class="champ-tag" style="background:#333;color:#ccc;">${def.role}</span>
-        </div>
-        <div class="champ-card-head-relic">${relicSlotHtml}</div>
-      </div>
-      <div class="champ-desc">${def.desc}</div>
-      <div class="champ-stats" style="color:var(--gold);">${starIcons(prog.stars)} ¬∑ N√≠vel ${prog.level} ¬∑ XP ${formatXp(prog.xp)}/${xpToNextLevel(prog.level)}</div>
-      <div class="champ-stats">HP ${computeUnitStats(def,prog).hp} ¬∑ ATK ${computeUnitStats(def,prog).atk}</div>
-      <div class="champ-stats" style="margin-top:6px;">Itens (at√© 3): <strong style="color:var(--gold);">${equippedNames.length?equippedNames.join(', '):'Nenhum'}</strong>${prog.relicId?` ¬∑ Rel√≠quia: <strong style="color:var(--gold);">${ITEM_CATALOG[prog.relicId].name}</strong>`:''}</div>
-      ${slotsHtml}
-    `;
-    el.appendChild(card);
-  });
-  el.querySelectorAll('[data-equip-slot]').forEach(slotEl=>{
-    slotEl.addEventListener('click', ()=>{
-      if(tryEquipSelectedItem(slotEl)) return;
-      const champId = slotEl.dataset.equipSlot;
-      const slot = parseInt(slotEl.dataset.slotIndex,10);
-      const prog = owned[champId];
-      const oldItemId = prog.itemIds[slot];
-      if(!oldItemId) return; // slot vazio ‚Äî clique n√£o faz nada, √© s√≥ pra arrastar
-      itemInventory[oldItemId] = (itemInventory[oldItemId]||0) + 1;
-      prog.itemIds[slot] = null;
-      renderRoster();
-    });
-  });
-  el.querySelectorAll('[data-equip-relic]').forEach(slotEl=>{
-    slotEl.addEventListener('click', ()=>{
-      if(tryEquipSelectedItem(slotEl)) return;
-      const champId = slotEl.dataset.equipRelic;
-      const prog = owned[champId];
-      if(!prog.relicId) return;
-      itemInventory[prog.relicId] = (itemInventory[prog.relicId]||0) + 1;
-      prog.relicId = null;
-      renderRoster();
-    });
-  });
-  renderInventoryPanel();
-}
-
-function equipItemFromDrag(itemId, champId, targetSlotEl){
-  const prog = owned[champId];
-  if(!prog) return false;
-  const isRelic = !!ITEM_CATALOG[itemId].isRelic;
-  if(targetSlotEl.dataset.equipRelic){
-    if(!isRelic) return false; // s√≥ rel√≠quia entra no slot de rel√≠quia
-    if((itemInventory[itemId]||0)<=0) return false;
-    if(prog.relicId) itemInventory[prog.relicId] = (itemInventory[prog.relicId]||0) + 1;
-    itemInventory[itemId] -= 1;
-    prog.relicId = itemId;
-    return true;
-  }
-  if(targetSlotEl.dataset.equipSlot){
-    if(isRelic) return false; // rel√≠quia n√£o entra em slot normal
-    if((itemInventory[itemId]||0)<=0) return false;
-    const slot = parseInt(targetSlotEl.dataset.slotIndex,10);
-    const oldItemId = prog.itemIds[slot];
-    if(oldItemId) itemInventory[oldItemId] = (itemInventory[oldItemId]||0) + 1;
-    itemInventory[itemId] -= 1;
-    prog.itemIds[slot] = itemId;
-    return true;
-  }
-  return false;
-}
-
-// gera o HTML dos slots de equipamento (itens + rel√≠quia) de um personagem ‚Äî
-// usado tanto em "Meu Time" quanto na tela de posicionamento, pro visual bater.
-function buildEquipSlotsHtml(champId){
-  const prog = owned[champId];
-  const slotCount = getItemSlotCount(champId);
-  while(prog.itemIds.length<slotCount) prog.itemIds.push(null);
-  let html = '<div style="display:flex;gap:5px;margin-top:6px;flex-wrap:wrap;align-items:center;">';
-  for(let slot=0; slot<slotCount; slot++){
-    const current = prog.itemIds[slot];
-    const icon = current ? itemIconSVG(current, 18) : '';
-    const title = current ? ITEM_CATALOG[current].name : 'Slot vazio ‚Äî arraste um item aqui';
-    html += `<div class="equip-slot${current?' filled':''}" data-equip-slot="${champId}" data-slot-index="${slot}" title="${title}">${icon}</div>`;
-  }
-  const relicIcon = prog.relicId ? itemIconSVG(prog.relicId, 16) : '‚ñ¢';
-  html += `<div class="equip-slot${prog.relicId?' filled':''}" data-equip-relic="${champId}" title="${prog.relicId?ITEM_CATALOG[prog.relicId].name:'Slot de rel√≠quia'}">${relicIcon}</div>`;
-  html += '</div>';
-  return html;
-}
-
-function renderInventoryPanel(gridId){
-  gridId = gridId || 'inventory-grid';
-  const grid = document.getElementById(gridId);
-  if(!grid) return;
-  grid.dataset.renderTarget = gridId==='position-inventory-grid' ? 'position' : 'roster';
-  grid.innerHTML = '';
-  const entries = Object.entries(itemInventory).filter(([iid,count])=>count>0 && ITEM_CATALOG[iid]);
-  if(entries.length===0){
-    grid.innerHTML = '<div class="inv-empty-msg">Nenhum item livre no momento ‚Äî compre na Loja.</div>';
-    return;
-  }
-  entries.forEach(([iid,count])=>{
-    const tile = document.createElement('div');
-    tile.className = 'inv-tile';
-    tile.dataset.itemId = iid;
-    tile.title = ITEM_CATALOG[iid].name + ' ‚Äî clique pra vender, ou arraste pra equipar';
-    tile.innerHTML = itemIconSVG(iid, 24) + `<span class="inv-count">${count}</span>`;
-    tile.addEventListener('pointerdown', (e)=> onInvTilePointerDown(e, iid, grid.dataset.renderTarget));
-    grid.appendChild(tile);
-  });
-}
-
-/* ============ ARRASTAR ITEM (ponteiro ‚Äî funciona no mouse e no toque) ============ */
-/* Distingue clique (abre venda) de arraste (equipar ou soltar na lixeira pra vender)
-   por um limiar de movimento ‚Äî s√≥ vira "arraste de verdade" depois de mexer uns pixels. */
-let dragState = null;
-const DRAG_RENDER_TARGETS = { roster: renderRoster, position: renderPositionScreen };
-const RELIC_SELL_XP = 30; // XP total dado ao vender uma rel√≠quia de chefe, dividido entre quem for escolhido
-
-let mobileEquipMode = false;
-let selectedInventoryItem = null; // { itemId, renderTargetKey } ‚Äî usado s√≥ no modo celular
-function onInvTileClickSelect(itemId, tileEl, renderTargetKey){
-  if(selectedInventoryItem && selectedInventoryItem.itemId===itemId && selectedInventoryItem.tileEl===tileEl){
-    // tocou de novo no mesmo item j√° selecionado ‚Äî cancela a sele√ß√£o e abre a venda
-    selectedInventoryItem = null;
-    document.querySelectorAll('.inv-tile.selected-for-equip').forEach(t=>t.classList.remove('selected-for-equip'));
-    openSellFlow(itemId);
-    return;
-  }
-  document.querySelectorAll('.inv-tile.selected-for-equip').forEach(t=>t.classList.remove('selected-for-equip'));
-  tileEl.classList.add('selected-for-equip');
-  selectedInventoryItem = { itemId, renderTargetKey, tileEl };
-}
-function tryEquipSelectedItem(slotEl){
-  if(!selectedInventoryItem) return false;
-  const champId = slotEl.dataset.equipSlot || slotEl.dataset.equipRelic;
-  const equipped = equipItemFromDrag(selectedInventoryItem.itemId, champId, slotEl);
-  if(equipped){
-    const renderFn = DRAG_RENDER_TARGETS[selectedInventoryItem.renderTargetKey] || renderRoster;
-    selectedInventoryItem = null;
-    renderFn();
-  }
-  return equipped;
-}
-function onInvTilePointerDown(e, itemId, renderTargetKey){
-  e.preventDefault();
-  const tileEl = e.target.closest('.inv-tile');
-  if(mobileEquipMode){
-    onInvTileClickSelect(itemId, tileEl, renderTargetKey);
-    return;
-  }
-  const startX = e.clientX, startY = e.clientY;
-  let started = false;
-  function moveCheck(ev){
-    if(started) return;
-    if(Math.abs(ev.clientX-startX)>6 || Math.abs(ev.clientY-startY)>6){
-      started = true;
-      window.removeEventListener('pointermove', moveCheck);
-      window.removeEventListener('pointerup', upCheck);
-      beginItemDrag(ev, itemId, tileEl, renderTargetKey);
-    }
-  }
-  function upCheck(){
-    window.removeEventListener('pointermove', moveCheck);
-    window.removeEventListener('pointerup', upCheck);
-    if(!started) openSellFlow(itemId); // foi s√≥ um toque/clique ‚Äî abre a op√ß√£o de vender
-  }
-  window.addEventListener('pointermove', moveCheck);
-  window.addEventListener('pointerup', upCheck, { once:true });
-}
-function beginItemDrag(e, itemId, tileEl, renderTargetKey){
-  const ghost = document.getElementById('drag-ghost');
-  ghost.innerHTML = itemIconSVG(itemId, 26);
-  ghost.style.display = 'flex';
-  ghost.style.left = e.clientX+'px';
-  ghost.style.top = e.clientY+'px';
-  dragState = { itemId, hoverEl: null, renderTargetKey: renderTargetKey || 'roster' };
-  tileEl.classList.add('dragging');
-  document.getElementById('item-trash-zone').style.display = 'flex';
-  window.addEventListener('pointermove', onItemDragMove);
-  window.addEventListener('pointerup', onItemDragEnd, { once:true });
-}
-function onItemDragMove(e){
-  if(!dragState) return;
-  const ghost = document.getElementById('drag-ghost');
-  ghost.style.left = e.clientX+'px';
-  ghost.style.top = e.clientY+'px';
-  const under = document.elementFromPoint(e.clientX, e.clientY);
-  const trashEl = under ? under.closest('#item-trash-zone') : null;
-  const slotEl = !trashEl && under ? under.closest('.equip-slot') : null;
-  const hoverEl = trashEl || slotEl;
-  if(dragState.hoverEl && dragState.hoverEl !== hoverEl){
-    dragState.hoverEl.classList.remove('drop-hover');
-    document.getElementById('item-trash-zone').classList.remove('trash-hover');
-  }
-  if(trashEl){ trashEl.classList.add('trash-hover'); }
-  else if(slotEl){ slotEl.classList.add('drop-hover'); }
-  dragState.hoverEl = hoverEl;
-}
-function onItemDragEnd(e){
-  window.removeEventListener('pointermove', onItemDragMove);
-  if(!dragState){
-    document.getElementById('drag-ghost').style.display = 'none';
-    document.getElementById('item-trash-zone').style.display = 'none';
-    return;
-  }
-  // checa o que est√° embaixo do ponteiro ANTES de esconder a lixeira/fantasma,
-  // sen√£o o hit-test n√£o encontra mais nada ali (era a causa do item "voltar sozinho")
-  const under = document.elementFromPoint(e.clientX, e.clientY);
-  const trashEl = under ? under.closest('#item-trash-zone') : null;
-  const slotEl = (!trashEl && under) ? under.closest('.equip-slot') : null;
-
-  document.getElementById('drag-ghost').style.display = 'none';
-  document.getElementById('item-trash-zone').style.display = 'none';
-  document.getElementById('item-trash-zone').classList.remove('trash-hover');
-  document.querySelectorAll('.inv-tile.dragging').forEach(t=>t.classList.remove('dragging'));
-
-  if(trashEl){
-    openSellFlow(dragState.itemId);
-    dragState = null;
-    return;
-  }
-  if(slotEl){
-    slotEl.classList.remove('drop-hover');
-    const champId = slotEl.dataset.equipSlot || slotEl.dataset.equipRelic;
-    const equipped = equipItemFromDrag(dragState.itemId, champId, slotEl);
-    if(equipped){
-      const renderFn = DRAG_RENDER_TARGETS[dragState.renderTargetKey] || renderRoster;
-      renderFn();
-    }
-  }
-  dragState = null;
-}
-
-/* ============ VENDER ITEM ============ */
-function refreshAllInventoryPanels(){
-  if(document.getElementById('inventory-grid')) renderInventoryPanel('inventory-grid');
-  if(document.getElementById('position-inventory-grid')) renderInventoryPanel('position-inventory-grid');
-}
-function openSellFlow(itemId){
-  if((itemInventory[itemId]||0)<=0) return;
-  const idef = ITEM_CATALOG[itemId];
-  if(idef.isRelic) openRelicSellPicker(itemId);
-  else openNormalSellConfirm(itemId);
-}
-function openNormalSellConfirm(itemId){
-  const idef = ITEM_CATALOG[itemId];
-  const sellValue = Math.round((idef.cost||0) * 0.2);
-  document.getElementById('sell-confirm-icon').innerHTML = itemIconSVG(itemId, 44);
-  document.getElementById('sell-confirm-name').textContent = idef.name;
-  document.getElementById('sell-confirm-detail').textContent = `Vender por ${sellValue} ü™ô (20% do valor original)`;
-  const overlay = document.getElementById('sell-confirm-overlay');
-  overlay.classList.add('show');
-  const okBtn = document.getElementById('sell-confirm-ok');
-  okBtn.onclick = ()=>{
-    itemInventory[itemId] -= 1;
-    coins += sellValue;
-    updateCoinBadge();
-    refreshAllInventoryPanels();
-    overlay.classList.remove('show');
-  };
-  document.getElementById('sell-confirm-cancel').onclick = ()=> overlay.classList.remove('show');
-}
-function openRelicSellPicker(itemId){
-  const idef = ITEM_CATALOG[itemId];
-  document.getElementById('sell-relic-name').textContent = `Vender ${idef.name}`;
-  const listEl = document.getElementById('sell-relic-champs');
-  listEl.innerHTML = '';
-  const okBtn = document.getElementById('sell-relic-ok');
-  const previewEl = document.getElementById('sell-relic-preview');
-  function updatePreview(){
-    const checked = Array.from(listEl.querySelectorAll('input:checked'));
-    okBtn.disabled = checked.length===0;
-    previewEl.textContent = checked.length ? `${(RELIC_SELL_XP/checked.length).toFixed(1)} XP pra cada um (${checked.length} escolhido${checked.length>1?'s':''})` : 'Escolha pelo menos um Stack User.';
-  }
-  Object.keys(owned).forEach(cid=>{
-    const def = CHAMPION_CATALOG[cid];
-    const row = document.createElement('label');
-    row.className = 'sell-relic-champ-row';
-    row.innerHTML = `<input type="checkbox" value="${cid}"> ${def.name} <span style="color:var(--steel);margin-left:auto;">Nv.${owned[cid].level}</span>`;
-    row.querySelector('input').addEventListener('change', updatePreview);
-    listEl.appendChild(row);
-  });
-  updatePreview();
-  const overlay = document.getElementById('sell-relic-overlay');
-  overlay.classList.add('show');
-  okBtn.onclick = ()=>{
-    const checked = Array.from(listEl.querySelectorAll('input:checked')).map(i=>i.value);
-    if(checked.length===0) return;
-    itemInventory[itemId] -= 1;
-    const xpEach = RELIC_SELL_XP/checked.length;
-    checked.forEach(cid=> awardXp(cid, xpEach));
-    refreshAllInventoryPanels();
-    if(document.getElementById('screen-roster').classList.contains('active')) renderRoster();
-    if(document.getElementById('screen-position').classList.contains('active')) renderPositionScreen();
-    overlay.classList.remove('show');
-  };
-  document.getElementById('sell-relic-cancel').onclick = ()=> overlay.classList.remove('show');
-}
-function scaledStat(base, level){ return Math.round(base * (1 + 0.08*(level-1))); }
-// Vida escala separado do ataque, e mais forte ‚Äî os inimigos aceleram (quase quadr√°tico) depois
-// da onda 10, ent√£o a vida dos Stack Users tamb√©m precisa acelerar, sen√£o eles ficam pra tr√°s.
-function scaledHp(base, level){
-  const n = level-1;
-  return Math.round(base * (1 + 0.12*n + 0.006*n*n));
-}
-
-function starMultiplier(role, stars){
-  const profile = ROLE_STAR_PROFILE[role] || {hp:0.15, atk:0.15, speed:0.05, defFlat:0.02};
-  const n = Math.max(0, (stars||1) - 1);
-  return {
-    hpMult: 1 + profile.hp*n,
-    atkMult: 1 + profile.atk*n,
-    speedMult: 1 + profile.speed*n,
-    defAdd: profile.defFlat*n
-  };
-}
-
-function effectiveItemIds(prog){
-  return [...(prog.itemIds||[]), prog.relicId].filter(Boolean);
-}
-function computeUnitStats(def, prog){
-  let hp = scaledHp(def.hp, prog.level);
-  let atk = scaledStat(def.atk, prog.level);
-  let range = def.range;
-  let speed = def.speed;
-  let dmgReduction = 0;
-
-  const starM = starMultiplier(def.role, prog.stars||1);
-  hp = Math.round(hp*starM.hpMult);
-  atk = Math.round(atk*starM.atkMult);
-  speed = Math.round(speed*starM.speedMult*100)/100;
-  dmgReduction += starM.defAdd;
-
-  effectiveItemIds(prog).forEach(iid=>{
-    const item = iid ? ITEM_CATALOG[iid] : null;
-    if(!item) return;
-    const isRanged = def.range > 1;
-    const applies = item.effect.appliesTo==='all' || (item.effect.appliesTo==='ranged' && isRanged) || (item.effect.appliesTo==='melee' && !isRanged);
-    if(applies){
-      if(item.effect.hpFlat) hp += item.effect.hpFlat;
-      if(item.effect.hpPct) hp = Math.round(hp*(1+item.effect.hpPct));
-      if(item.effect.atkFlat) atk += item.effect.atkFlat;
-      if(item.effect.atkPct) atk = Math.round(atk * (1+item.effect.atkPct));
-      if(item.effect.range) range += item.effect.range;
-      if(item.effect.dmgReductionPct) dmgReduction += item.effect.dmgReductionPct;
-      if(item.effect.speedPct) speed = Math.round(speed*(1+item.effect.speedPct)*100)/100;
-    }
-  });
-  dmgReduction = Math.min(dmgReduction, 0.6);
-
-  if(hasBlessing('furia_coletiva')){ atk = Math.round(atk*1.15); hp = Math.round(hp*0.90); }
-  if(hasBlessing('passo_leve')){ speed = Math.round(speed*1.20*100)/100; dmgReduction = Math.max(0, dmgReduction-0.15); }
-  if(hasBlessing('folego_extra')){ hp = Math.round(hp*1.18); speed = Math.round(speed*0.90*100)/100; }
-  if(hasBlessing('forja_barata')) dmgReduction = Math.max(0, dmgReduction-0.10);
-
-  if(currentWeather==='chuva' && def.element==='agua') atk = Math.round(atk*1.10);
-  if(currentWeather==='tempestade_areia' && range>1) range = Math.max(1, range-1);
-  if(currentWeather==='nevasca' && def.element!=='vento') speed = Math.round(speed*0.85*100)/100;
-
-  return {hp, atk, range, speed, dmgReduction};
-}
-
-function xpToNextLevel(level){
-  if(level===1) return 3;
-  if(level===2) return 7;
-  return 7 + 5*(level-2);
-}
-function awardXp(champId, amount){
-  if(!owned[champId]) return;
-  if(extraSlotChampIds.includes(champId)) amount = amount*0.75; // contra do V√≠nculo Duplo
-  const prog = owned[champId];
-  prog.xp += amount;
-  roundXpGain[champId] = (roundXpGain[champId]||0) + amount;
-  let needed = xpToNextLevel(prog.level);
-  let leveledUp = false;
-  while(prog.xp >= needed){
-    prog.xp -= needed;
-    prog.level++;
-    leveledUp = true;
-    if(!roundLevelUps.includes(champId)) roundLevelUps.push(champId);
-    log(`${CHAMPION_CATALOG[champId].name} subiu para o n√≠vel ${prog.level}!`, 'sys');
-    needed = xpToNextLevel(prog.level);
-  }
-  if(leveledUp) trySoloLine(champId, 'levelup');
-}
-function formatXp(n){ return Number.isInteger(n) ? n : n.toFixed(1); }
-function catchUpMultiplier(champId){
-  if(!newcomerChamps.has(champId)) return 1;
-  const veteranLevels = teamP1.filter(id=>id!==champId && owned[id]).map(id=>owned[id].level);
-  if(veteranLevels.length===0) return 1;
-  const lvl = owned[champId] ? owned[champId].level : 1;
-  const gap = Math.max(0, Math.min(...veteranLevels) - lvl);
-  return Math.min(10, 1 + gap*0.7); // quanto maior o atraso, mais forte o b√¥nus, at√© 10x
-}
-function killXpAmount(champId){
-  if(activeXpDebuffs.includes(champId)) return 1;
-  return Math.round(2*catchUpMultiplier(champId)*10)/10;
-}
-function survivorXpAmount(champId){
-  if(activeXpDebuffs.includes(champId)) return 3.5;
-  return Math.round(7*catchUpMultiplier(champId)*10)/10;
-}
-function recomputeNewcomerBuffs(){
-  if(newcomerChamps.size===0) return;
-  const veteranLevels = teamP1.filter(id=>!newcomerChamps.has(id)).map(id=>owned[id].level);
-  [...newcomerChamps].forEach(id=>{
-    if(!teamP1.includes(id)){ newcomerChamps.delete(id); return; }
-    if(veteranLevels.length===0) return;
-    const minVeteranLevel = Math.min(...veteranLevels);
-    const lvl = owned[id] ? owned[id].level : 1;
-    if(minVeteranLevel - lvl <= 2) newcomerChamps.delete(id);
-  });
-}
-let waveXpPool = 0; // XP de abate da rodada, somada e dividida igualmente entre o time no fim da onda
-function resetRoundTracking(){
-  roundXpGain = {}; roundLevelUps = []; roundDeaths = []; roundSurvivorChampId = null;
-  waveXpPool = 0;
-}
-
-/* ============ MODE SELECT -> TEAM SELECT ============ */
-function resetMatchProgression(){
-  Object.values(owned).forEach(prog=>{
-    prog.level = 1;
-    prog.xp = 0;
-    prog.itemIds = [];
-    // stars e copies s√£o permanentes ‚Äî n√£o resetam aqui
-  });
-  itemInventory = {};
-}
-
-const STARTER_CHOICES = ['voss','zeph','pyra','frosk'];
-let currentStarterChamp = 'ferrha';
-
-function openStarterPick(){
-  const cardsEl = document.getElementById('starter-cards');
-  cardsEl.innerHTML = '';
-  STARTER_CHOICES.forEach(id=>{
-    const def = CHAMPION_CATALOG[id];
-    const card = document.createElement('div');
-    card.className = 'champ-card bg-'+def.element;
-    card.innerHTML = `
-      <div class="champ-card-head">
-        ${championPortraitHtml(id, def)}
-        <div class="champ-card-head-copy">
-          <div class="champ-name">${def.name}</div>
-          <span class="champ-tag elem-${def.element}">${def.element.toUpperCase()}</span>
-          <span class="champ-tag" style="background:#333;color:#ccc;">${def.role}</span>
-        </div>
-      </div>
-      <div class="champ-desc">${def.desc}</div>
-      <div class="champ-stats">HP ${def.hp} ¬∑ ATK ${def.atk} ¬∑ ALC ${def.range} ¬∑ VEL ${def.speed}</div>
-      <button class="main-btn" style="margin-top:8px;width:100%;">Escolher</button>
-    `;
-    card.querySelector('button').addEventListener('click', ()=>{
-      currentStarterChamp = id;
-      hardResetProgress();
-      clearGameSnapshot();
-      resetRoundTracking();
-      resetMatchProgression();
-      if(arenaExpanded){ arenaExpanded = false; RADIUS = 4; regenerateAllHexes(); }
-      document.getElementById('confirm-team-btn').textContent = 'Confirmar';
-      openTeamSelect('Monte seu time inicial (1 a 3 ‚Äî pode crescer at√© 5 comprando na Loja)');
-    });
-    cardsEl.appendChild(card);
-  });
-  showScreen('starter');
-}
-
-document.getElementById('mode-pve').addEventListener('click', ()=>{
-  if(typeof window.stopIntroMusic === 'function') window.stopIntroMusic();
-  mode = 'pve'; teamSelectStage='solo'; teamP1=[]; wave=1; totalCoinsThisRun=0;
-  editingMidRun=false; editingMidRunSide='solo'; newcomerChamps=new Set(); activeXpDebuffs=[]; pendingXpDebuffChamp=null;
-  testMode=false; TEAM_MAX=3;
-  openStarterPick();
-});
-document.getElementById('cancel-starter-btn').addEventListener('click', ()=>{
-  mode = null;
-  showScreen('menu');
-});
-
-// ---- PvP: economia independente por jogador ----
-const PVP_DRAFT_POOL = Object.keys(CHAMPION_CATALOG).filter(id=>id!=='ferrha');
-
-function savePvpCoins(){
-  if(activePvpPlayer==='p1') pvpP1.coins = coins;
-  else if(activePvpPlayer==='p2') pvpP2.coins = coins;
-}
-function loadPvpPlayer(who){
-  savePvpCoins();
-  const snap = who==='p1' ? pvpP1 : pvpP2;
-  coins = snap.coins;
-  owned = snap.owned;
-  itemInventory = snap.itemInventory;
-  activePvpPlayer = who;
-  updateCoinBadge();
-  // re-renderiza a tela atual (se for loja/itens/time) pra n√£o ficar com bot√µes travados do outro jogador
-  const activeScreen = document.querySelector('.screen.active');
-  if(activeScreen){
-    if(activeScreen.id==='screen-shop') renderShop();
-    else if(activeScreen.id==='screen-items') renderItems();
-    else if(activeScreen.id==='screen-roster') renderRoster();
-  }
-}
-
-function openPvpDraft(label, onConfirm){
-  teamDraft = [];
-  document.getElementById('teamselect-title').textContent = `${label} ‚Äî escolha at√© ${TEAM_MAX} (um de cada, sem Ferrha)`;
-  const cardsEl = document.getElementById('teamselect-cards');
-  cardsEl.innerHTML = '';
-  PVP_DRAFT_POOL.forEach(id=>{
-    const def = CHAMPION_CATALOG[id];
-    const card = document.createElement('div');
-    card.className = 'champ-card bg-'+def.element;
-    card.dataset.id = id;
-    card.innerHTML = `
-      <div class="champ-card-head">
-        ${championPortraitHtml(id, def)}
-        <div class="champ-card-head-copy">
-          <div class="champ-name">${def.name}</div>
-          <span class="champ-tag elem-${def.element}">${def.element.toUpperCase()}</span>
-        </div>
-      </div>
-      <div class="champ-desc">${def.desc}</div>
-      <div class="champ-stats">HP ${def.hp} ¬∑ ATK ${def.atk} ¬∑ ALC ${def.range} ¬∑ VEL ${def.speed}</div>
-    `;
-    card.addEventListener('click', ()=>{
-      if(card.classList.contains('selected')){
-        card.classList.remove('selected');
-        teamDraft = teamDraft.filter(x=>x!==id);
-      } else if(teamDraft.length < TEAM_MAX){
-        card.classList.add('selected');
-        teamDraft.push(id);
-      }
-      renderTeamSlots();
-      document.getElementById('confirm-team-btn').disabled = teamDraft.length < 1;
-    });
-    cardsEl.appendChild(card);
-  });
-  renderTeamSlots();
-  document.getElementById('confirm-team-btn').disabled = true;
-  document.getElementById('confirm-team-btn').textContent = 'Confirmar';
-  pvpDraftCallback = onConfirm;
-  showScreen('teamselect');
-}
-
-function startPvpSetup(isTest){
-  mode = 'pvp';
-  testMode = isTest;
-  TEAM_MAX = isTest ? 5 : 3;
-  pvpRound = 1;
-  jedegarProgress = {};
-  matchAchievements = new Set();
-  logHistory = [];
-  banterNextRoundP1 = {};
-  banterNextRoundP2 = {};
-  if(arenaExpanded){ arenaExpanded = false; RADIUS = 4; regenerateAllHexes(); }
-  setupArenaForRound(1);
-  const startCoins = isTest ? 999999 : 120;
-  pvpP1 = {coins:startCoins, owned:{}, itemInventory:{}};
-  pvpP2 = {coins:startCoins, owned:{}, itemInventory:{}};
-  loadPvpPlayer('p1');
-  const label1 = isTest ? 'Jogador 1 (Teste Mode)' : 'Jogador 1';
-  const label2 = isTest ? 'Jogador 2 (Teste Mode)' : 'Jogador 2';
-  openPvpDraft(label1, (team1)=>{
-    team1.forEach(id=>{ owned[id] = {stars:1, copies:0, level:1, xp:0, itemIds:[]}; });
-    teamP1 = [...team1];
-    savePvpCoins();
-    const defaultSlotsP1 = getPlayerZoneSlots();
-    openPositionSelect(teamP1, 'left', defaultSlotsP1, 'Jogador 1 ‚Äî posicione seu time', (positions)=>{
-      teamP1Positions = positions;
-      showHandoff('Jogador 2', ()=>{
-        loadPvpPlayer('p2');
-        openPvpDraft(label2, (team2)=>{
-          team2.forEach(id=>{ owned[id] = {stars:1, copies:0, level:1, xp:0, itemIds:[]}; });
-          teamP2 = [...team2];
-          savePvpCoins();
-          const defaultSlotsP2 = getEnemyZoneSlots();
-          openPositionSelect(teamP2, 'right', defaultSlotsP2, 'Jogador 2 ‚Äî posicione seu time', (positions2)=>{
-            teamP2Positions = positions2;
-            startPvpRound();
-          });
-        });
-      });
-    });
-  });
-}
-document.getElementById('mode-pvp').addEventListener('click', ()=>{ if(typeof window.stopIntroMusic === 'function') window.stopIntroMusic(); startPvpSetup(false); });
-
-let teamDraft = [];
-function openTeamSelect(title){
-  const prefillSource = editingMidRunSide==='p2' ? teamP2 : teamP1;
-  teamDraft = editingMidRun ? [...prefillSource] : [];
-  document.getElementById('teamselect-title').textContent = title;
-  const cardsEl = document.getElementById('teamselect-cards');
-  cardsEl.innerHTML = '';
-  Object.keys(owned).forEach(id=>{
-    const def = CHAMPION_CATALOG[id];
-    const prog = owned[id];
-    const card = document.createElement('div');
-    card.className = 'champ-card bg-'+def.element + (teamDraft.includes(id) ? ' selected' : '');
-    card.dataset.id = id;
-    card.innerHTML = `
-      <div class="champ-card-head">
-        ${championPortraitHtml(id, def)}
-        <div class="champ-card-head-copy">
-          <div class="champ-name">${def.name}</div>
-          <span class="champ-tag elem-${def.element}">${def.element.toUpperCase()}</span>
-          <span class="champ-tag" style="background:#333;color:#ccc;">${def.role}</span>
-        </div>
-      </div>
-      <div class="champ-desc">${def.desc}</div>
-      <div class="champ-stats">${starIcons(prog.stars)} ¬∑ Nv.${prog.level} ¬∑ HP ${computeUnitStats(def,prog).hp} ¬∑ ATK ${computeUnitStats(def,prog).atk}</div>
-    `;
-    card.addEventListener('click', ()=>{
-      if(card.classList.contains('selected')){
-        card.classList.remove('selected');
-        teamDraft = teamDraft.filter(x=>x!==id);
-      } else if(teamDraft.length < TEAM_MAX){
-        card.classList.add('selected');
-        teamDraft.push(id);
-      }
-      renderTeamSlots();
-      document.getElementById('confirm-team-btn').disabled = teamDraft.length < 1;
-    });
-    cardsEl.appendChild(card);
-  });
-  renderTeamSlots();
-  document.getElementById('confirm-team-btn').disabled = teamDraft.length < 1;
-  showScreen('teamselect');
-}
-function renderTeamSlots(){
-  const wrap = document.getElementById('team-slots');
-  wrap.innerHTML = '';
-  for(let i=0;i<TEAM_MAX;i++){
-    const id = teamDraft[i];
-    const slot = document.createElement('div');
-    slot.className = 'team-slot' + (id ? ' filled' : '');
-    slot.textContent = id ? CHAMPION_CATALOG[id].name : 'vazio';
-    wrap.appendChild(slot);
-  }
-}
-document.getElementById('cancel-team-btn').addEventListener('click', ()=>{
-  if(pvpDraftCallback){
-    pvpDraftCallback = null;
-    mode = null;
-    setMenuLocked(false);
-    showScreen('menu');
-    return;
-  }
-  if(editingMidRun){
-    editingMidRun = false;
-    document.getElementById('confirm-team-btn').textContent = 'Confirmar';
-    showScreen('battle');
-  } else {
-    mode = null;
-    setMenuLocked(false);
-    showScreen('menu');
-  }
-});
-document.getElementById('confirm-team-btn').addEventListener('click', ()=>{
-  if(pvpDraftCallback){
-    const cb = pvpDraftCallback;
-    pvpDraftCallback = null;
-    cb([...teamDraft]);
-    return;
-  }
-  if(editingMidRun){
-    if(editingMidRunSide==='p2'){
-      teamP2 = [...teamDraft];
-    } else if(editingMidRunSide==='p1'){
-      teamP1 = [...teamDraft];
-    } else {
-      const newIds = teamDraft.filter(id=>!teamP1.includes(id));
-      newIds.forEach(id=>{
-        const keptMembers = teamDraft.filter(x=>x!==id);
-        if(keptMembers.length>0) newcomerChamps.add(id);
-      });
-      teamP1 = [...teamDraft];
-      recomputeNewcomerBuffs();
-    }
-    editingMidRun = false;
-    document.getElementById('confirm-team-btn').textContent = 'Confirmar';
-    log('Equipe ajustada ‚Äî mudan√ßas valem a partir da pr√≥xima rodada.', 'sys');
-    showScreen('battle');
-    return;
-  }
-  if(mode==='pve'){
-    teamP1 = [...teamDraft];
-    const defaultSlots = getPlayerZoneSlots();
-    openPositionSelect(teamP1, 'left', defaultSlots, 'Posicione seu time', (positions)=>{
-      teamP1Positions = positions;
-      startPveRun();
-    });
-  }
-});
-
-/* ============ HEX ENGINE ============ */
-const SIZE = 30;
-let RADIUS = 4;
-let arenaExpanded = false;
-const svg = document.getElementById('arena');
-function hexToPixel(q,r){ return {x: SIZE*1.5*q+250, y: SIZE*Math.sqrt(3)*(r+q/2)+230}; }
-function hexDistance(a,b){ return (Math.abs(a.q-b.q)+Math.abs(a.q+a.r-b.q-b.r)+Math.abs(a.r-b.r))/2; }
-function neighbors(h){ return [[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]].map(([dq,dr])=>({q:h.q+dq,r:h.r+dr})); }
-function inGrid(h){ return hexDistance(h,{q:0,r:0}) <= RADIUS; }
-function hexKey(h){ return h.q+','+h.r; }
-function hexPoints(cx,cy){ const pts=[]; for(let i=0;i<6;i++){ const a=Math.PI/180*(60*i); pts.push((cx+SIZE*0.92*Math.cos(a))+','+(cy+SIZE*0.92*Math.sin(a))); } return pts.join(' '); }
-let allHexes = [];
-let fullViewBox = {x:0, y:0, w:500, h:460};
-function regenerateAllHexes(){
-  allHexes = [];
-  for(let q=-RADIUS;q<=RADIUS;q++) for(let r=-RADIUS;r<=RADIUS;r++){ const h={q,r}; if(inGrid(h)) allHexes.push(h); }
-  recomputeFullViewBox();
-  computeHexLabels();
-}
-// Coordenadas tipo tabuleiro de xadrez (coluna=letra, linha=n√∫mero), pra combinar posi√ß√£o por voz/chat
-// com quem n√£o consegue ver a tela ‚Äî "coloca a Ferrha na casa D9".
-let hexLabelMap = {}; // hexKey -> "D9"
-function computeHexLabels(){
-  hexLabelMap = {};
-  for(let q=-RADIUS; q<=RADIUS; q++){
-    const rsForQ = allHexes.filter(h=>h.q===q).map(h=>h.r).sort((a,b)=>a-b);
-    if(!rsForQ.length) continue;
-    const colLetter = String.fromCharCode(65 + (q+RADIUS));
-    rsForQ.forEach((r,i)=>{ hexLabelMap[q+','+r] = colLetter+(i+1); });
-  }
-}
-function hexLabel(h){ return hexLabelMap[hexKey(h)] || ''; }
-// Zona de nascimento/posicionamento perto de cada borda ‚Äî cresce junto com o raio da arena,
-// pra ocupar mais espa√ßo quando a arena expande em vez de ficar presa numa coluna fininha.
-function getEdgeZoneSlots(side){
-  const margin = Math.max(2, Math.round(RADIUS*0.45));
-  const cols = [];
-  for(let i=0;i<margin;i++) cols.push(side==='left' ? -RADIUS+i : RADIUS-i);
-  let slots = [];
-  cols.forEach(q=>{ allHexes.filter(h=>h.q===q).forEach(h=>slots.push(h)); });
-  slots.sort((a,b)=>Math.abs(a.r)-Math.abs(b.r));
-  return slots;
-}
-function getPlayerZoneSlots(){ return getEdgeZoneSlots('left'); }
-function getEnemyZoneSlots(){ return getEdgeZoneSlots('right'); }
-function recomputeFullViewBox(){
-  let minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity;
-  allHexes.forEach(h=>{
-    const p = hexToPixel(h.q,h.r);
-    if(p.x<minX) minX=p.x; if(p.x>maxX) maxX=p.x;
-    if(p.y<minY) minY=p.y; if(p.y>maxY) maxY=p.y;
-  });
-  const pad = SIZE*1.6;
-  fullViewBox = {x:minX-pad, y:minY-pad, w:(maxX-minX)+pad*2, h:(maxY-minY)+pad*2};
-}
-regenerateAllHexes();
-
-/* ============ ARENA FEATURES: clima, obst√°culos, lava, portais, zona, chefe, tremor ============ */
-let obstacleHexes = new Set();
-let hazardHexes = new Set();
-let voidHexes = new Set();
-let currentBiome = 'grama'; // 'grama' | 'rachadura' ‚Äî tema visual do ch√£o, escala com a onda/rodada
-const BIOME_LABELS = { grama:'Campo verde', rachadura:'Terreno corrompido' };
-function hexNoise(q,r,salt){
-  // hash determin√≠stico simples ‚Äî o mesmo hex sempre d√° o mesmo valor pro mesmo salt, sem precisar guardar estado
-  let h = (q*374761393 + r*668265263 + salt*2246822519) | 0;
-  h = (h ^ (h>>>13)) * 1274126177;
-  h = h ^ (h>>>16);
-  return ((h>>>0) % 1000) / 1000;
-}
-let portalPairs = [];
-let supplyCrate = null; // {q,r,claimed}
-const WEATHERS = ['limpo','chuva','tempestade_areia','nevasca','vento_forte'];
-const WEATHER_LABELS = {limpo:'‚òÄÔ∏è Limpo', chuva:'üåßÔ∏è Chuva', tempestade_areia:'üèúÔ∏è Tempestade de areia', nevasca:'‚ùÑÔ∏è Nevasca', vento_forte:'üí® Vento forte'};
-let currentWeather = 'limpo';
-let isBossWave = false;
-let bestWaveEver = 0;
-let shakeUntil = 0, shakeIntensity = 0, shakeTotalDuration = 1;
-
-// ---- Arena Fraturada: a arena parte ao meio periodicamente, com um portal de cada lado pra atravessar ----
-let fractureState = 'idle'; // 'idle' | 'active'
-let fractureNextAt = 0;
-let fractureEndAt = 0;
-let fractureHexes = new Set();
-let fracturePortalPairs = [];
-const FRACTURE_INTERVAL = 9000;
-const FRACTURE_DURATION = 4000;
-const FRACTURE_AXES = ['q','r','s'];
-let fractureAxisIndex = 0;
-
-// Pris√£o de gelo da G√©lida ‚Äî puramente visual, mostra pilares/muralha de gelo ao redor de quem ela prendeu.
-let icePrisonHexes = []; // {q, r, until}
-function spawnIcePrison(centerHex, durationMs){
-  const now = performance.now();
-  const ring = [centerHex, ...neighbors(centerHex)].filter(h=>inGrid(h));
-  ring.forEach(h=>icePrisonHexes.push({q:h.q, r:h.r, until: now+durationMs}));
-}
-
-function scheduleNextFracture(now){
-  fractureState = 'idle';
-  fractureHexes = new Set();
-  fracturePortalPairs = [];
-  fractureNextAt = now + FRACTURE_INTERVAL;
-}
-
-// Garante que nenhum bloco livre da arena fique isolado (cercado por obst√°culo/fratura/zona) sem caminho pro resto do mapa.
-function ensureMapConnectivity(){
-  const start = allHexes.find(h=>!isBlockedTile(h));
-  if(!start) return;
-  const allPortalPairs = [...portalPairs, ...fracturePortalPairs];
-  function flood(from){
-    const visited = new Set([hexKey(from)]);
-    const queue = [from];
-    let qi = 0;
-    while(qi < queue.length){
-      const h = queue[qi++];
-      const hk = hexKey(h);
-      neighbors(h).forEach(n=>{
-        if(!inGrid(n)) return;
-        const k = hexKey(n);
-        if(visited.has(k)) return;
-        if(isBlockedTile(n)) return;
-        visited.add(k);
-        queue.push(n);
-      });
-      allPortalPairs.forEach(([a,b])=>{
-        const ak = hexKey(a), bk = hexKey(b);
-        if(hk===ak && !visited.has(bk) && !isBlockedTile(b)){ visited.add(bk); queue.push(b); }
-        if(hk===bk && !visited.has(ak) && !isBlockedTile(a)){ visited.add(ak); queue.push(a); }
-      });
-    }
-    return visited;
-  }
-  let reached = flood(start);
-  let safety = 0;
-  while(safety < 300){
-    const unreached = allHexes.filter(h=>!isBlockedTile(h) && !reached.has(hexKey(h)));
-    if(unreached.length===0) break;
-    let reconnected = false;
-    for(const h of unreached){
-      const blockedNeighbor = neighbors(h).find(n=>inGrid(n) && isBlockedTile(n));
-      if(blockedNeighbor){
-        const k = hexKey(blockedNeighbor);
-        obstacleHexes.delete(k);
-        voidHexes.delete(k);
-        fractureHexes.delete(k);
-        reconnected = true;
-        break;
-      }
-    }
-    if(!reconnected) break;
-    reached = flood(start);
-    safety++;
-  }
-}
-
-function triggerFracture(now){
-  fractureState = 'active';
-  fractureEndAt = now + FRACTURE_DURATION;
-  fractureHexes = new Set();
-  fracturePortalPairs = [];
-
-  const axis = FRACTURE_AXES[fractureAxisIndex % FRACTURE_AXES.length];
-  fractureAxisIndex++;
-
-  function axisValue(h){ return axis==='q' ? h.q : axis==='r' ? h.r : (-h.q-h.r); }
-
-  allHexes.forEach(h=>{
-    if(axisValue(h)===0){
-      const hk = hexKey(h);
-      const occupant = units.find(u=>u.alive && u.q===h.q && u.r===h.r);
-      if(occupant){
-        knockbackFromFractureLine(occupant, axis);
-        applyCC(occupant, 500, 'terra');
-        spawnFloatText(occupant.rx, occupant.ry-40, 'EMPURRADO!', '#e8e0ff');
-        spawnCastEffect(occupant.rx, occupant.ry, '#e8e0ff');
-      }
-      if(jedegarStructures[hk]){
-        const pp = hexToPixel(h.q, h.r);
-        spawnFloatText(pp.x, pp.y-30, 'PILAR DESTRU√çDO!', '#e8e0ff');
-        spawnCastEffect(pp.x, pp.y, '#e8e0ff');
-        delete jedegarStructures[hk];
-      }
-      fractureHexes.add(hk);
-    }
-  });
-
-  const occupiedNow = new Set();
-  units.filter(u=>u.alive).forEach(u=>occupiedNow.add(hexKey(u)));
-
-  const sideA = allHexes.filter(h=>!fractureHexes.has(hexKey(h)) && !occupiedNow.has(hexKey(h)) && axisValue(h)<0);
-  const sideB = allHexes.filter(h=>!fractureHexes.has(hexKey(h)) && !occupiedNow.has(hexKey(h)) && axisValue(h)>0);
-  if(sideA.length && sideB.length){
-    const a = sideA[Math.floor(Math.random()*sideA.length)];
-    const b = sideB[Math.floor(Math.random()*sideB.length)];
-    fracturePortalPairs.push([a,b]);
-  }
-
-  log('‚ö° A arena racha ao meio, empurrando quem estava no caminho! Um portal se abre de cada lado pra atravessar.', 'hl');
-  triggerScreenShake(9, 300);
-  sfxFractureCrack();
-  ensureMapConnectivity();
-}
-
-// Empurra quem estiver em cima da linha de fratura 3 blocos pra longe dela (pro lado do pr√≥prio time), com leve atordoamento.
-function knockbackFromFractureLine(unit, axis){
-  const dir = unit.team==='player' ? -1 : 1;
-  let dq=0, dr=0;
-  if(axis==='q'){ dq = dir; dr = 0; }
-  else if(axis==='r'){ dq = 0; dr = dir; }
-  else { dq = dir; dr = -dir; }
-  let dest = clampHexToGrid({q: unit.q + dq*3, r: unit.r + dr*3});
-  const occ = occupiedMap();
-  if((occ[hexKey(dest)] !== undefined && occ[hexKey(dest)] !== unit.id) || isBlockedTile(dest)){
-    dest = clampHexToGrid({q: unit.q + dq, r: unit.r + dr});
-    if((occ[hexKey(dest)] !== undefined && occ[hexKey(dest)] !== unit.id) || isBlockedTile(dest)) dest = {q:unit.q, r:unit.r};
-  }
-  unit.q = dest.q; unit.r = dest.r;
-  const p = hexToPixel(unit.q, unit.r);
-  unit.targetRx = p.x; unit.targetRy = p.y;
-  checkPortalTeleport(unit);
-}
-
-function healFracture(now){
-  fractureHexes = new Set();
-  fracturePortalPairs = [];
-  fractureState = 'idle';
-  log('A arena se recomp√µe.', 'sys');
-  scheduleNextFracture(now);
-}
-
-// Pilares da Jedegar: hexKey -> {q, r, ownerId, hitsTaken, hitsNeeded, boostUntil, createdAt}
-let jedegarStructures = {};
-function isBlockedTile(h){
-  const k = hexKey(h);
-  return obstacleHexes.has(k) || voidHexes.has(k) || fractureHexes.has(k) || jedegarStructures[k] !== undefined;
-}
-function triggerScreenShake(intensity, durationMs){
-  shakeUntil = performance.now() + durationMs;
-  shakeIntensity = intensity;
-  shakeTotalDuration = durationMs;
-}
-
-function setupArenaForRound(roundNum){
-  if(roundNum>15 && !arenaExpanded){
-    arenaExpanded = true;
-    RADIUS += 4;
-    regenerateAllHexes();
-    log('üó∫Ô∏è A arena se expande ‚Äî mais espa√ßo pra batalha!', 'hl');
-    unlockAchievement('wave15_expand');
-  }
-  obstacleHexes = new Set();
-  hazardHexes = new Set();
-  voidHexes = new Set();
-  jedegarStructures = {};
-  icePrisonHexes = [];
-  portalPairs = [];
-  supplyCrate = null;
-
-  const used = new Set();
-  const playerSlotsFixed = getPlayerZoneSlots();
-  const enemySlotsFixed = getEnemyZoneSlots();
-  [...playerSlotsFixed, ...enemySlotsFixed, {q:0,r:0}].forEach(h=>used.add(hexKey(h)));
-
-  function pickFreeHex(){
-    const candidates = allHexes.filter(h=>!used.has(hexKey(h)));
-    if(candidates.length===0) return null;
-    const h = candidates[Math.floor(Math.random()*candidates.length)];
-    used.add(hexKey(h));
-    return h;
-  }
-
-  currentWeather = WEATHERS[Math.floor(Math.random()*WEATHERS.length)];
-  currentBiome = roundNum>=10 ? 'rachadura' : 'grama';
-  isBossWave = roundNum>15 ? (roundNum % 3 === 0) : (roundNum % 5 === 0);
-
-  if(roundNum>=2){
-    for(let i=0;i<2;i++){ const h=pickFreeHex(); if(h) obstacleHexes.add(hexKey(h)); }
-  }
-  if(roundNum>=3){
-    const lavaCount = Math.random()<0.6 ? 1 : 2;
-    for(let i=0;i<lavaCount;i++){ const h=pickFreeHex(); if(h) hazardHexes.add(hexKey(h)); }
-  }
-  if(roundNum>=4 && Math.random()<0.5){
-    const a=pickFreeHex(), b=pickFreeHex();
-    if(a && b) portalPairs.push([a,b]);
-  }
-  // depois que a arena expande (onda 15+), o encolhimento reinicia a contagem e para numa borda bem maior ‚Äî
-  // sen√£o, na onda 35+ a zona inst√°vel j√° tinha esmagado a arena grande de volta pra quase nada.
-  const shrinkBase = RADIUS>4 ? Math.max(0, roundNum-15) : roundNum;
-  const shrinkLevel = Math.floor(shrinkBase/6);
-  const minEffRadius = RADIUS>4 ? 5 : 2;
-  if(shrinkLevel>0){
-    const effRadius = Math.max(minEffRadius, RADIUS-shrinkLevel);
-    allHexes.forEach(h=>{
-      const k = hexKey(h);
-      if(hexDistance(h,{q:0,r:0}) > effRadius && !used.has(k)){ voidHexes.add(k); used.add(k); }
-    });
-  }
-  if(roundNum>=2 && Math.random()<0.7){
-    const h = pickFreeHex();
-    if(h) supplyCrate = {q:h.q, r:h.r, claimed:false};
-  }
-  ensureMapConnectivity();
-}
-
-/* ============ BATTLE STATE ============ */
-let units = [];
-let floatingTexts = [];
-let castEffects = [];
-let lightningBolts = []; // {x1,y1,x2,y2,age,life} ‚Äî o raio visual passando entre os inimigos na corrente da Voltra
-function spawnLightningBolt(x1,y1,x2,y2){
-  lightningBolts.push({x1,y1,x2,y2,age:0,life:400});
-}
-let shockwaveRings = []; // {x,y,age,life,maxRadius,color} ‚Äî anel se expandindo, tipo escudo, mas crescendo at√© cobrir o mapa
-function spawnShockwaveRing(x,y,maxRadius,color,delay){
-  shockwaveRings.push({x,y,age:-(delay||0),life:750,maxRadius:maxRadius||520,color:color||'#f5e663'});
-}
-let shrinkingRings = []; // {x,y,age,life,startRadius,color} ‚Äî o oposto: anel encolhendo em dire√ß√£o √† Voltra, durante a carga
-function spawnShrinkingRing(x,y,startRadius,color){
-  shrinkingRings.push({x,y,age:0,life:650,startRadius:startRadius||300,color:color||'#f5e663'});
-}
-let battleActive = false;
-let battlePaused = false;
-let lastTs = null;
-let frameCount = 0, fpsTimer = 0;
-let prepTimerHandle = null;
-
-let logHistory = []; // [{wave, lines:[{text,cls}]}], mais recente por √∫ltimo
-let viewingWaveIndex = -1; // -1 = seguir sempre a onda mais recente
-
-function log(msg, cls){
-  if(logHistory.length===0) logHistory.push({wave:1, lines:[]});
-  logHistory[logHistory.length-1].lines.push({text:msg, cls});
-  const wasFollowingLatest = (viewingWaveIndex===-1 || viewingWaveIndex===logHistory.length-1);
-  while(logHistory.length>6) logHistory.shift();
-  if(wasFollowingLatest) viewingWaveIndex = logHistory.length-1;
-  renderLog();
-}
-
-function startNewWaveLog(waveNum){
-  logHistory.push({wave:waveNum, lines:[]});
-  while(logHistory.length>6) logHistory.shift();
-  viewingWaveIndex = logHistory.length-1;
-  renderLog();
-}
-
-function renderLog(){
-  if(logHistory.length===0) return;
-  const idx = Math.max(0, Math.min(viewingWaveIndex===-1?logHistory.length-1:viewingWaveIndex, logHistory.length-1));
-  const entry = logHistory[idx];
-  const logEl = document.getElementById('log');
-  logEl.innerHTML = '';
-  entry.lines.forEach(l=>{
-    const d = document.createElement('div');
-    if(l.cls) d.className = l.cls;
-    d.textContent = l.text;
-    logEl.appendChild(d);
-  });
-  logEl.scrollTop = logEl.scrollHeight;
-  document.getElementById('log-wave-label').textContent = 'Onda '+entry.wave;
-  document.getElementById('log-prev-btn').disabled = idx<=0;
-  document.getElementById('log-next-btn').disabled = idx>=logHistory.length-1;
-}
-document.getElementById('log-prev-btn').addEventListener('click', ()=>{
-  const idx = viewingWaveIndex===-1 ? logHistory.length-1 : viewingWaveIndex;
-  if(idx>0){ viewingWaveIndex = idx-1; renderLog(); }
-});
-document.getElementById('log-next-btn').addEventListener('click', ()=>{
-  const idx = viewingWaveIndex===-1 ? logHistory.length-1 : viewingWaveIndex;
-  if(idx<logHistory.length-1){ viewingWaveIndex = idx+1; renderLog(); }
-});
-
-function makeUnit(id, team, champId, def, level, q, r, statOverride, stars, itemIds){
-  const p = hexToPixel(q,r);
-  const lvl = level||1;
-  const hp = statOverride ? statOverride.hp : scaledStat(def.hp, lvl);
-  const atk = statOverride ? statOverride.atk : scaledStat(def.atk, lvl);
-  const range = statOverride ? statOverride.range : def.range;
-  const dmgReduction = statOverride ? statOverride.dmgReduction : 0;
-  const speed = statOverride ? statOverride.speed : def.speed;
-  return {
-    id, team, champId, name:def.name, element:def.element, color:ELEMENT_COLORS[def.element],
-    q,r, rx:p.x, ry:p.y, targetRx:p.x, targetRy:p.y,
-    hp, maxhp: hp, atk,
-    range, speed, taunt:def.taunt||0, special:def.special||null, dmgReduction,
-    hitCount:0, alive:true, actionTimer: 600/(speed||1),
-    attackAnim:null, flashUntil:0, level:lvl, stars: stars||1,
-    frenzyUsed:false, frenzyUntil:0, barrierUsed:false, barrierUntil:0,
-    itemIds: itemIds||[], emberCooldown: 0, vulnerableUntil: 0,
-    hazardTimer: 0, crateShieldUntil: 0, isBoss: false,
-    frostburnActive: false, frostburnTimer: 0, shockedUntil: 0,
-    iceUsed: false, ghostUntil: 0, ghostTargetId: null, stoneSkinUsed: false, barrierFollowupDone: false,
-    gelidaRevivesUsed: 0, gelidaDmgBuffUntil: 0,
-    imaUsesLeft: 3,
-    comboUsed: false, comboActive: false, comboHitsDone: 0, comboTargetId: null, comboNextAt: 0, comboBaseDmg: 0, comboHpArmed: true,
-    comboPhase: null, overloadUntil: 0,
-    shecryUltUsed: false, shecryUltStartAt: 0, shecryUltUntil: 0, shecryShield: 0,
-    tentacleCooldown: 2500, isTentacle: false, cantMove: false, tentacleParentId: null, tentacleFrenzy: false,
-    electroSlowUntil: 0, electroSlowPct: 0, chainCharge: 0, overchargeUntil: 0, overchargeTickAt: 0,
-    voltraDetonating: false, voltraDetonateUntil: 0,
-    borrowedChampPower: null, vigorRegenAt: 0, imaProcAt: 0,
-    lastPortalOrigin: null, portalCooldownUntil: 0,
-    isWave60Boss: false, ecoSummonAt: 0, ecoBlastAt: 0,
-    jedegarPillarTimer: 3100, jedegarShieldUntil: 0, jedegarDeathBuffUntil: 0, jedegarSecretBonus: false,
-    shavaSecretBonus: false,
-    shavaKickCooldown: 0, shavaHitCount: 0, shavaComboTargetId: null, shavaComboTargetHits: 0,
-    shavaWeakenUntil: 0, shavaArmorDebuffUntil: 0,
-    shavaDashStartAt: 0, shavaDashFromRx: 0, shavaDashFromRy: 0, shavaDashToRx: 0, shavaDashToRy: 0, shavaDashDuration: 0, shavaLastTrailAt: 0
-  };
-}
-
-// Progresso da Jedegar que precisa sobreviver entre rodadas (as unidades s√£o recriadas
-// do zero a cada rodada, mas "5 pilares no total" e o gatilho de 30% de vida s√£o
-// marcos de PARTIDA inteira, n√£o de uma rodada s√≥).
-let jedegarProgress = {}; // "time_jedegar" -> {pillarsBuilt, milestoneReached, lowHpUsed, firstPillarAnnounced}
-function getJedegarProgress(u){
-  const key = u.team+'_jedegar';
-  if(!jedegarProgress[key]) jedegarProgress[key] = {pillarsBuilt:0, milestoneReached:false, lowHpUsed:false, firstPillarAnnounced:false};
-  return jedegarProgress[key];
-}
-
-/* ============ POSITION SELECT ============ */
-let teamP1Positions = {}; // champId -> {q,r}
-let teamP2Positions = {};
-let posDraft = {};
-let posSelectedChamp = null;
-let posConfirmCallback = null;
-let posTeamIds = [];
-let posSide = 'left';
-let posDefaultSlots = [];
-
-function isZoneHex(h, side){ return side==='left' ? h.q<0 : h.q>0; }
-
-let posTimerHandle = null;
-
-let handoffCallback = null;
-function showHandoff(label, onContinue){
-  document.getElementById('handoff-title').textContent = `Vez do ${label}!`;
-  handoffCallback = onContinue;
-  setNavLocked(true);
-  showScreen('handoff');
-}
-document.getElementById('handoff-continue-btn').addEventListener('click', ()=>{
-  const cb = handoffCallback;
-  handoffCallback = null;
-  setNavLocked(false);
-  if(cb) cb();
-});
-
-function setNavLocked(locked){
-  document.querySelectorAll('.nav-btn').forEach(btn=>{
-    if(btn.dataset.screen==='menu') return;
-    btn.disabled = locked;
-    btn.style.opacity = locked ? '0.35' : '1';
-    btn.style.pointerEvents = locked ? 'none' : 'auto';
-  });
-}
-
-function openPositionSelect(teamIds, side, defaultSlots, title, onConfirm, timerSeconds, presetMap){
-  posTeamIds = [...teamIds];
-  posSide = side;
-  posDefaultSlots = defaultSlots;
-  posConfirmCallback = onConfirm;
-  posSelectedChamp = null;
-  posDraft = {};
-  posTeamIds.forEach((cid,i)=>{
-    posDraft[cid] = (presetMap && presetMap[cid]) || defaultSlots[i] || defaultSlots[defaultSlots.length-1];
-  });
-  document.getElementById('position-title').textContent = title;
-  clearTimeout(posTimerHandle);
-  const timerLabel = document.getElementById('position-timer-label');
-  if(timerSeconds){
-    let t = timerSeconds;
-    timerLabel.style.display = 'block';
-    timerLabel.textContent = `Tempo pra reorganizar: ${t}s`;
-    const tick = ()=>{
-      t--;
-      timerLabel.textContent = `Tempo pra reorganizar: ${t}s`;
-      if(t<=0){ confirmPosition(); return; }
-      posTimerHandle = setTimeout(tick, 1000);
-    };
-    posTimerHandle = setTimeout(tick, 1000);
-  } else {
-    timerLabel.style.display = 'none';
-  }
-  setNavLocked(true);
-  renderPositionScreen();
-  showScreen('position');
-}
-
-function confirmPosition(){
-  clearTimeout(posTimerHandle);
-  setNavLocked(false);
-  const cb = posConfirmCallback;
-  const result = {...posDraft};
-  posConfirmCallback = null;
-  if(cb) cb(result);
-}
-
-function applyDefaultPositions(){
-  posTeamIds.forEach((cid,i)=>{ posDraft[cid] = posDefaultSlots[i] || posDefaultSlots[posDefaultSlots.length-1]; });
-  posSelectedChamp = null;
-  renderPositionScreen();
-}
-
-function renderPositionScreen(){
-  const svgEl = document.getElementById('position-arena');
-  svgEl.setAttribute('viewBox', `${fullViewBox.x} ${fullViewBox.y} ${fullViewBox.w} ${fullViewBox.h}`);
-  svgEl.innerHTML = '';
-  allHexes.forEach(h=>{
-    const p = hexToPixel(h.q,h.r);
-    const hk = hexKey(h);
-    const inZone = isZoneHex(h, posSide);
-    let fill = inZone ? 'rgba(242,165,65,0.08)' : 'rgba(255,255,255,0.02)';
-    let stroke = inZone ? '#8a6a3a' : '#3a3f47';
-    if(obstacleHexes.has(hk)){ fill = 'rgba(120,120,130,0.35)'; stroke = '#8a8f99'; }
-    else if(voidHexes.has(hk)){ fill = 'rgba(150,40,40,0.28)'; stroke = '#7a2a2a'; }
-    else if(hazardHexes.has(hk)){ fill = 'rgba(224,105,58,0.25)'; stroke = '#e0693a'; }
-    const poly = document.createElementNS('http://www.w3.org/2000/svg','polygon');
-    poly.setAttribute('points', hexPoints(p.x,p.y));
-    poly.setAttribute('fill', fill);
-    poly.setAttribute('stroke', stroke);
-    poly.setAttribute('stroke-width','1');
-    poly.dataset.q = h.q; poly.dataset.r = h.r;
-    poly.style.cursor = inZone ? 'pointer' : 'default';
-    if(inZone){
-      poly.addEventListener('click', ()=> onPositionHexClick(h.q, h.r));
-    }
-    svgEl.appendChild(poly);
-
-    const coordLabel = document.createElementNS('http://www.w3.org/2000/svg','text');
-    coordLabel.setAttribute('x', p.x); coordLabel.setAttribute('y', p.y+3);
-    coordLabel.setAttribute('text-anchor','middle');
-    coordLabel.setAttribute('font-family',"'JetBrains Mono',monospace");
-    coordLabel.setAttribute('font-size','8');
-    coordLabel.setAttribute('fill', inZone ? 'rgba(242,165,65,0.55)' : 'rgba(255,255,255,0.18)');
-    coordLabel.setAttribute('pointer-events','none');
-    coordLabel.textContent = hexLabel(h);
-    svgEl.appendChild(coordLabel);
-
-    if(obstacleHexes.has(hk)){
-      const tower = document.createElementNS('http://www.w3.org/2000/svg','rect');
-      tower.setAttribute('x', p.x-8); tower.setAttribute('y', p.y-10);
-      tower.setAttribute('width', 16); tower.setAttribute('height', 20);
-      tower.setAttribute('rx', 2); tower.setAttribute('fill', '#5a5f68'); tower.setAttribute('stroke', '#8a8f99');
-      svgEl.appendChild(tower);
-    }
-    if(hazardHexes.has(hk)){
-      const lava = document.createElementNS('http://www.w3.org/2000/svg','circle');
-      lava.setAttribute('cx', p.x); lava.setAttribute('cy', p.y); lava.setAttribute('r', 10);
-      lava.setAttribute('fill', '#e0693a'); lava.setAttribute('opacity','0.7');
-      svgEl.appendChild(lava);
-    }
-  });
-
-  portalPairs.forEach(([a,b])=>{
-    [a,b].forEach(h=>{
-      const p = hexToPixel(h.q,h.r);
-      const ring = document.createElementNS('http://www.w3.org/2000/svg','circle');
-      ring.setAttribute('cx', p.x); ring.setAttribute('cy', p.y); ring.setAttribute('r', 11);
-      ring.setAttribute('fill', 'none'); ring.setAttribute('stroke', '#9b6bd9'); ring.setAttribute('stroke-width', '2.5');
-      svgEl.appendChild(ring);
-    });
-  });
-
-  if(supplyCrate && !supplyCrate.claimed){
-    const p = hexToPixel(supplyCrate.q, supplyCrate.r);
-    const crate = document.createElementNS('http://www.w3.org/2000/svg','rect');
-    crate.setAttribute('x', p.x-8); crate.setAttribute('y', p.y-8);
-    crate.setAttribute('width', 16); crate.setAttribute('height', 16);
-    crate.setAttribute('rx', 2); crate.setAttribute('fill', '#e8c250'); crate.setAttribute('stroke', '#fff2e6');
-    svgEl.appendChild(crate);
-  }
-
-  posTeamIds.forEach(cid=>{
-    const def = CHAMPION_CATALOG[cid];
-    const pos = posDraft[cid];
-    if(!pos) return;
-    const p = hexToPixel(pos.q, pos.r);
-    const g = document.createElementNS('http://www.w3.org/2000/svg','g');
-    g.dataset.champId = cid;
-    g.style.cursor = 'pointer';
-    const circ = document.createElementNS('http://www.w3.org/2000/svg','circle');
-    circ.setAttribute('cx',p.x); circ.setAttribute('cy',p.y); circ.setAttribute('r',15);
-    circ.setAttribute('fill', ELEMENT_COLORS[def.element]);
-    circ.setAttribute('stroke', posSelectedChamp===cid ? '#e8c250' : '#191b1f');
-    circ.setAttribute('stroke-width', posSelectedChamp===cid ? 3.5 : 1.5);
-    g.appendChild(circ);
-    const label = document.createElementNS('http://www.w3.org/2000/svg','text');
-    label.setAttribute('x',p.x); label.setAttribute('y',p.y-20);
-    label.setAttribute('class','hex-label');
-    label.textContent = def.name;
-    g.appendChild(label);
-    g.addEventListener('pointerdown', (e)=> onUnitPointerDown(e, cid));
-    svgEl.appendChild(g);
-  });
-
-  const chipsEl = document.getElementById('position-chips');
-  chipsEl.innerHTML = '';
-  posTeamIds.forEach(cid=>{
-    const def = CHAMPION_CATALOG[cid];
-    const chip = document.createElement('div');
-    chip.className = 'champ-card bg-'+def.element + (posSelectedChamp===cid ? ' selected' : '');
-    chip.innerHTML = `<div class="champ-name">${def.name}</div><span class="champ-tag elem-${def.element}">${def.element.toUpperCase()}</span>${buildEquipSlotsHtml(cid)}`;
-    chip.addEventListener('click', (e)=>{
-      if(e.target.closest('.equip-slot')) return; // clique num slot n√£o seleciona pra posicionar
-      posSelectedChamp = (posSelectedChamp===cid ? null : cid);
-      renderPositionScreen();
-    });
-    chipsEl.appendChild(chip);
-  });
-  chipsEl.querySelectorAll('[data-equip-slot]').forEach(slotEl=>{
-    slotEl.addEventListener('click', (e)=>{
-      e.stopPropagation();
-      if(tryEquipSelectedItem(slotEl)) return;
-      const champId = slotEl.dataset.equipSlot;
-      const slot = parseInt(slotEl.dataset.slotIndex,10);
-      const prog = owned[champId];
-      const oldItemId = prog.itemIds[slot];
-      if(!oldItemId) return;
-      itemInventory[oldItemId] = (itemInventory[oldItemId]||0) + 1;
-      prog.itemIds[slot] = null;
-      renderPositionScreen();
-    });
-  });
-  chipsEl.querySelectorAll('[data-equip-relic]').forEach(slotEl=>{
-    slotEl.addEventListener('click', (e)=>{
-      e.stopPropagation();
-      if(tryEquipSelectedItem(slotEl)) return;
-      const champId = slotEl.dataset.equipRelic;
-      const prog = owned[champId];
-      if(!prog.relicId) return;
-      itemInventory[prog.relicId] = (itemInventory[prog.relicId]||0) + 1;
-      prog.relicId = null;
-      renderPositionScreen();
-    });
-  });
-  renderInventoryPanel('position-inventory-grid');
-}
-
-function onPositionHexClick(q, r){
-  if(!posSelectedChamp) return;
-  const occupantId = Object.keys(posDraft).find(cid => posDraft[cid].q===q && posDraft[cid].r===r);
-  const oldPos = posDraft[posSelectedChamp];
-  if(occupantId && occupantId!==posSelectedChamp){
-    posDraft[occupantId] = oldPos;
-  }
-  posDraft[posSelectedChamp] = {q, r};
-  posSelectedChamp = null;
-  renderPositionScreen();
-}
-
-/* ============ ARRASTAR STACK USER PELA ARENA (fase de posicionamento) ============ */
-function onUnitPointerDown(e, cid){
-  e.stopPropagation();
-  e.preventDefault();
-  const startX = e.clientX, startY = e.clientY;
-  let started = false;
-  function moveCheck(ev){
-    if(started) return;
-    if(Math.abs(ev.clientX-startX)>6 || Math.abs(ev.clientY-startY)>6){
-      started = true;
-      window.removeEventListener('pointermove', moveCheck);
-      window.removeEventListener('pointerup', upCheck);
-      beginUnitDrag(ev, cid);
-    }
-  }
-  function upCheck(){
-    window.removeEventListener('pointermove', moveCheck);
-    window.removeEventListener('pointerup', upCheck);
-    if(!started){
-      // foi s√≥ um clique ‚Äî mant√©m o comportamento original (seleciona, clica no hex depois)
-      posSelectedChamp = (posSelectedChamp===cid ? null : cid);
-      renderPositionScreen();
-    }
-  }
-  window.addEventListener('pointermove', moveCheck);
-  window.addEventListener('pointerup', upCheck, { once:true });
-}
-let unitDragState = null;
-function beginUnitDrag(e, cid){
-  const ghost = document.getElementById('unit-drag-ghost');
-  ghost.textContent = CHAMPION_CATALOG[cid].name;
-  ghost.style.display = 'block';
-  ghost.style.left = e.clientX+'px';
-  ghost.style.top = e.clientY+'px';
-  unitDragState = { cid, hoverHex: null };
-  window.addEventListener('pointermove', onUnitDragMove);
-  window.addEventListener('pointerup', onUnitDragEnd, { once:true });
-}
-function onUnitDragMove(e){
-  if(!unitDragState) return;
-  const ghost = document.getElementById('unit-drag-ghost');
-  ghost.style.left = e.clientX+'px';
-  ghost.style.top = e.clientY+'px';
-  const under = document.elementFromPoint(e.clientX, e.clientY);
-  const hexEl = under ? under.closest('polygon') : null;
-  const validHex = (hexEl && hexEl.dataset.q!==undefined) ? hexEl : null;
-  if(unitDragState.hoverHex && unitDragState.hoverHex !== validHex){
-    unitDragState.hoverHex.classList.remove('position-hex-hover');
-  }
-  if(validHex){ validHex.classList.add('position-hex-hover'); }
-  unitDragState.hoverHex = validHex;
-}
-function onUnitDragEnd(e){
-  window.removeEventListener('pointermove', onUnitDragMove);
-  if(!unitDragState) return;
-  const under = document.elementFromPoint(e.clientX, e.clientY);
-  const hexEl = under ? under.closest('polygon') : null;
-  document.getElementById('unit-drag-ghost').style.display = 'none';
-  if(hexEl) hexEl.classList.remove('position-hex-hover');
-  if(hexEl && hexEl.dataset.q!==undefined){
-    const q = parseInt(hexEl.dataset.q,10), r = parseInt(hexEl.dataset.r,10);
-    if(isZoneHex({q,r}, posSide)){
-      const cid = unitDragState.cid;
-      const occupantId = Object.keys(posDraft).find(oid => posDraft[oid].q===q && posDraft[oid].r===r);
-      const oldPos = posDraft[cid];
-      if(occupantId && occupantId!==cid){ posDraft[occupantId] = oldPos; }
-      posDraft[cid] = {q, r};
-    }
-  }
-  posSelectedChamp = null;
-  unitDragState = null;
-  renderPositionScreen();
-}
-
-document.getElementById('confirm-position-btn').addEventListener('click', confirmPosition);
-document.getElementById('reset-position-btn').addEventListener('click', applyDefaultPositions);
-
-function buildTeams(playerIds1, playerIds2OrEnemies, mode2p, ownedSrc1, ownedSrc2){
-  units = [];
-  let id = 0;
-  const src1 = ownedSrc1 || owned;
-  const src2 = ownedSrc2 || owned;
-  const playerSlots = getPlayerZoneSlots();
-  const enemySlots = getEnemyZoneSlots();
-
-  playerIds1.forEach((cid,i)=>{
-    const def = CHAMPION_CATALOG[cid];
-    const prog = src1[cid] || {level:1, stars:1, itemIds:[]};
-    const statOverride = computeUnitStats(def, prog);
-    const slot = teamP1Positions[cid] || playerSlots[i] || playerSlots[playerSlots.length-1];
-    units.push(makeUnit(id++, 'player', cid, def, prog.level, slot.q, slot.r, statOverride, prog.stars, effectiveItemIds(prog)));
-  });
-  applySecretPassives(units.filter(u=>u.team==='player'));
-
-  if(mode2p){
-    playerIds2OrEnemies.forEach((cid,i)=>{
-      const def = CHAMPION_CATALOG[cid];
-      const prog = src2[cid] || {level:1, stars:1, itemIds:[]};
-      const statOverride = computeUnitStats(def, prog);
-      const slot = teamP2Positions[cid] || enemySlots[i] || enemySlots[enemySlots.length-1];
-      units.push(makeUnit(id++, 'enemy', cid, def, prog.level, slot.q, slot.r, statOverride, prog.stars, effectiveItemIds(prog)));
-    });
-    applySecretPassives(units.filter(u=>u.team==='enemy'));
-  } else {
-    playerIds2OrEnemies.forEach((cid,i)=>{
-      const def = ENEMY_CATALOG[cid];
-      units.push(makeUnit(id++, 'enemy', cid, def, 1, enemySlots[i].q, enemySlots[i].r));
-    });
-  }
-}
-
-// Passivas secretas entre duplas espec√≠ficas ‚Äî como as unidades s√£o recriadas do zero a cada
-// rodada/forma√ß√£o de time, isso j√° "desativa sozinho" se o jogador tirar algu√©m do time (a
-// pr√≥xima vez que buildTeams rodar, a dupla simplesmente n√£o vai mais estar junta).
-function applySecretPassives(sideUnits){
-  const jedegar = sideUnits.find(u=>u.champId==='jedegar');
-  const terrus = sideUnits.find(u=>u.champId==='terrus');
-  if(jedegar && terrus){
-    jedegar.jedegarSecretBonus = true;
-    terrus.dmgReduction = Math.min(0.75, (terrus.dmgReduction||0) + 0.10);
-    log('‚ú® Jedegar e Terrus t√™m uma passiva secreta!', 'hl');
-  }
-  const shava = sideUnits.find(u=>u.champId==='shava');
-  const kael = sideUnits.find(u=>u.champId==='kael');
-  if(shava && kael){
-    shava.shavaSecretBonus = true;
-    shava.hp = Math.round(shava.hp*1.10); shava.maxhp = shava.hp;
-    kael.shavaSecretBonus = true;
-    kael.hp = Math.round(kael.hp*1.10); kael.maxhp = kael.hp;
-    log('‚ú® Shava e Kael t√™m uma passiva secreta!', 'hl');
-  }
-}
-
-let currentEnemyCount = 3; // cresce sem limite depois da onda 5, reseta a cada nova run
-let lastWaveEvent = 'none'; // 'boost' | 'grow' | 'none' ‚Äî setado por randomEnemyWave, lido por logReinforcements
-
-function waveAtkBonus(waveNum){
-  if(waveNum<=10) return 0.5*(waveNum-1);
-  const base = 0.5*9; // valor acumulado at√© a onda 10, sem salto na transi√ß√£o
-  const extra = waveNum-10;
-  return base + 0.5*extra + 0.05*extra*extra; // depois da onda 10 acelera aos poucos, sem pulo
-}
-function waveHpScale(waveNum){
-  if(waveNum<=4) return 0.5 + 0.1*(waveNum-1); // ondas 1-4: praticamente imposs√≠vel de perder, pra poder juntar moeda pro chefe
-  if(waveNum<=10) return 1 + 0.1*(waveNum-1);
-  const base = 1 + 0.1*9;
-  const extra = waveNum-10;
-  return base + 0.1*extra + 0.01*extra*extra;
-}
-
-function randomEnemyWave(waveNum){
-  const keys = Object.keys(ENEMY_CATALOG).filter(k=>k!=='eco_rachadura'); // exclusivo da onda 60, nunca sorteado √† toa
-  let count, boostThisWave;
-  lastWaveEvent = 'none';
-
-  if(waveNum===60){
-    lastWaveEvent = 'boss';
-    const expansionMultBoss = 1 + teamExpansionTier*0.12;
-    const hp = Math.round(40000*expansionMultBoss);
-    const atk = Math.round(55*expansionMultBoss);
-    return [{key:'eco_rachadura', boosted:false, isBoss:true, isWave60Boss:true, scaled:{hp, atk, range:2, speed:0.85, stars:1, special:null}}];
-  }
-
-  if(isBossWave){
-    const doubleBoss = waveNum>30 && Math.random()<0.5; // subiu de 30% pra 50%
-    const bossCount = doubleBoss ? 2 : 1;
-    lastWaveEvent = 'boss';
-    const results = [];
-    for(let bi=0; bi<bossCount; bi++){
-      const k = keys[Math.floor(Math.random()*keys.length)];
-      const base = ENEMY_CATALOG[k];
-      const scale = 1 + 0.12*waveNum;
-      let bossMult;
-      if(waveNum===5) bossMult = {hp:0.7, atk:0.4, stars:1}; // primeiro chefe: bem fraco de prop√≥sito, d√° pra passar com qualquer time
-      else if(waveNum<=15) bossMult = {hp:3.2, atk:1.5, stars:2};
-      else if(Math.random()<0.35) bossMult = {hp:5.5, atk:2.4, stars:4}; // chance de vir MUITO mais forte
-      else bossMult = {hp:4.2, atk:1.9, stars:3};
-      let bossSpecial = base.special || null;
-      let borrowedPower = null;
-      let borrowedChampPower = null;
-      if(waveNum>15){
-        // depois da onda 15, o chefe sempre vem com uma habilidade c√≠clica emprestada de algum Stack User
-        const SU_POWERS = ['lanca','ima','perfuro','rajada','furia','couraca','explosao','chuva','congelamento'];
-        borrowedPower = SU_POWERS[Math.floor(Math.random()*SU_POWERS.length)];
-        bossSpecial = borrowedPower;
-      }
-      if(waveNum>25){
-        // depois da onda 25, chance extra de vir TAMB√âM com uma passiva de personagem (menos a cura da Glacia, in√∫til pra um chefe sozinho)
-        const CHAMP_POWERS = ['kael','ferrha','terrus','raio'];
-        const champPowerChance = 0.5;
-        if(Math.random() < champPowerChance){
-          borrowedChampPower = CHAMP_POWERS[Math.floor(Math.random()*CHAMP_POWERS.length)];
-        }
-      }
-      const expansionMultBoss = 1 + teamExpansionTier*0.12;
-      // quando v√™m dois juntos, cada um fica um pouco mais fraco individualmente ‚Äî sen√£o dobra a dificuldade de vez
-      const dualPenalty = doubleBoss ? 0.75 : 1;
-      results.push({key:k, boosted:false, isBoss:true, isDualBoss:doubleBoss, borrowedPower, borrowedChampPower, scaled:{...base, hp:Math.round(base.hp*bossMult.hp*scale*expansionMultBoss*dualPenalty), atk:Math.round(base.atk*bossMult.atk*scale*expansionMultBoss*dualPenalty), stars:bossMult.stars, special:bossSpecial}});
-      // disc√≠pulos: o chefe pode nascer com 2-3 inimigos fracos protegendo ele, sen√£o o time foca e mata r√°pido demais
-      if(waveNum>15 && Math.random()<0.55){
-        const discipleCount = 2 + Math.floor(Math.random()*2);
-        for(let d=0; d<discipleCount; d++){
-          const dk = keys[Math.floor(Math.random()*keys.length)];
-          const dbase = ENEMY_CATALOG[dk];
-          results.push({key:dk, boosted:false, isBoss:false, isDisciple:true, scaled:{...dbase, hp:Math.round(dbase.hp*0.4*scale), atk:Math.round(dbase.atk*0.5*scale), stars:1, special:null}});
-        }
-      }
-    }
-    return results;
-  }
-
-  if(waveNum <= 5){
-    // ondas 1-4: sempre s√≥ 2 inimigos fracos, sem refor√ßo ‚Äî praticamente imposs√≠vel de perder at√© aqui
-    const addExtraEnemy = waveNum>4 && waveNum%4===0 && Math.random()<0.5;
-    count = waveNum<=4 ? 2 : (addExtraEnemy ? 4 : 3);
-    boostThisWave = (waveNum>4 && waveNum%4===0 && !addExtraEnemy);
-    currentEnemyCount = count;
-    if(addExtraEnemy) lastWaveEvent = 'grow';
-    else if(boostThisWave) lastWaveEvent = 'boost';
-  } else {
-    // depois da onda 5: sem limite de 3-4 ‚Äî toda rodada rola entre fortalecer OU somar mais um inimigo
-    if(Math.random() < 0.4){
-      boostThisWave = true; // 40%: fortalece um inimigo (mais dano), quantidade n√£o muda
-      count = currentEnemyCount;
-      lastWaveEvent = 'boost';
-    } else {
-      boostThisWave = false; // 60%: aparece mais um inimigo
-      currentEnemyCount = Math.min(currentEnemyCount + 1, 11 + teamExpansionTier*2);
-      count = currentEnemyCount;
-      lastWaveEvent = 'grow';
-    }
-  }
-
-  const picks = [];
-  for(let i=0;i<count;i++) picks.push(keys[Math.floor(Math.random()*keys.length)]);
-  const boostIndex = boostThisWave ? Math.floor(Math.random()*picks.length) : -1;
-  const starChance = waveNum<=4 ? 0 : (waveNum>30 ? 0.55 : (waveNum>15 ? 0.35 : 0.20));
-  const starRollIndex = Math.random()<starChance ? Math.floor(Math.random()*picks.length) : -1;
-  const threeStarChance = waveNum>30 ? 0.75 : (waveNum>15 ? 0.4 : 0); // depois da onda 30, MUITO mais chance de vir 3 estrelas
-  const starRollLevel = (waveNum>15 && Math.random()<threeStarChance) ? 3 : 2;
-  const SU_POWERS_POOL = ['lanca','ima','perfuro','rajada','furia','couraca','explosao','chuva','congelamento'];
-  const CHAMP_POWERS_POOL = ['kael','ferrha','terrus','raio'];
-  return picks.map((k,i)=>{
-    const base = ENEMY_CATALOG[k];
-    // Onda 1 √© bem mais fraca (20% do dano base e 65% da vida); depois disso o dano sobe aos poucos,
-    // e a partir da onda 10 acelera de leve e sem saltos pra n√£o ficar fraco demais no longo prazo.
-    const easyFactor = waveNum<=4 ? (0.12 + 0.03*(waveNum-1)) : 0.35;
-    const easyAtk = base.atk * easyFactor;
-    let scaledAtk = Math.round((easyAtk + waveAtkBonus(waveNum)) * 10) / 10;
-    let hpScale = waveHpScale(waveNum);
-    if(teamExpansionTier>0){
-      // time expandido enfrenta inimigos proporcionalmente mais fortes, n√£o s√≥ mais numerosos
-      const expansionMult = 1 + teamExpansionTier*0.12;
-      scaledAtk = Math.round(scaledAtk*expansionMult*10)/10;
-      hpScale *= expansionMult;
-    }
-    if(i===boostIndex){ scaledAtk = Math.round(scaledAtk*1.4*10)/10; hpScale *= 1.3; }
-    const hasStarRoll = i===starRollIndex;
-    const enemyStars = hasStarRoll ? starRollLevel : 1;
-    if(hasStarRoll){
-      const mult = enemyStars===3 ? {atk:1.5, hp:1.65} : {atk:1.25, hp:1.3};
-      scaledAtk = Math.round(scaledAtk*mult.atk*10)/10; hpScale *= mult.hp;
-    }
-    // inimigos com 2-3 estrelas tamb√©m podem vir com poder emprestado, igual os chefes ‚Äî chance maior a partir da onda 15
-    let enemySpecial = hasStarRoll ? (base.special || null) : null;
-    let enemyBorrowedChampPower = null;
-    if(hasStarRoll){
-      const borrowChance = waveNum>15 ? 0.6 : 0.25;
-      if(Math.random() < borrowChance){
-        enemySpecial = SU_POWERS_POOL[Math.floor(Math.random()*SU_POWERS_POOL.length)];
-      }
-      if(waveNum>30 && enemyStars===3 && Math.random()<0.35){
-        enemyBorrowedChampPower = CHAMP_POWERS_POOL[Math.floor(Math.random()*CHAMP_POWERS_POOL.length)];
-      }
-    }
-    return {
-      key:k, boosted:i===boostIndex, twoStar:hasStarRoll, borrowedChampPower:enemyBorrowedChampPower,
-      scaled:{...base, hp:Math.round(base.hp*hpScale), atk:scaledAtk, stars:enemyStars, special:enemySpecial}
-    };
-  });
-}
-
-function startPveRun(){
-  setMenuLocked(true);
-  document.getElementById('quit-battle-btn').style.display = 'none';
-  document.getElementById('view-summary-btn').style.display = 'none';
-  matchStats = {};
-  inMatch = true;
-  currentEnemyCount = 3;
-  activeBlessings = [];
-  jedegarProgress = {};
-  matchAchievements = new Set();
-  bossDefeatCount = 0;
-  bossCountedThisWave = false;
-  interactionFiredThisRound = false;
-  pendingBlessingChoice = false;
-  extraSlotChampIds = [];
-  document.getElementById('blessing-overlay').classList.remove('show');
-  banterNextRoundPve = {};
-  if(arenaExpanded){ arenaExpanded = false; RADIUS = 4; regenerateAllHexes(); }
-  setupArenaForRound(1);
-  scheduleNextFracture(performance.now());
-  document.getElementById('roundinfo').textContent = `Onda 1 ‚Äî ${BIOME_LABELS[currentBiome]} ‚Äî ${WEATHER_LABELS[currentWeather]}`;
-  resetRoundTracking();
-  const wavePicks = randomEnemyWave(1);
-  ENEMY_TEMP = {}; wavePicks.forEach(w=>ENEMY_TEMP[w.key]=w.scaled);
-  logHistory = [];
-  startNewWaveLog(1);
-  buildTeams(teamP1, wavePicks.map(w=>w.key), false);
-  applyTempEnemyStats(wavePicks);
-  log(`Onda 1 iniciada!`, 'sys');
-  logReinforcements(wavePicks, 1);
-  checkDuoBanter(teamP1, banterNextRoundPve, wave);
-  document.getElementById('nav-battle-btn').style.display = 'inline-block';
-  showScreen('battle');
-  startBattleLoopIfNeeded();
-  battleActive = true;
-  document.getElementById('banner').style.display='none';
-  document.getElementById('banner').className='';
-  if(!hasSeenBattleTutorial){
-    hasSeenBattleTutorial = true;
-    setTimeout(()=> startGuidedTutorial(TUTORIAL_STEPS_BATTLE), 400);
-  }
-  saveGameSnapshot();
-}
-const BORROWED_POWER_NAMES = {
-  lanca: 'lan√ßa da Ferrha', ima: 'magnetiza√ß√£o da √çm√£', perfuro: 'perfura√ß√£o da Voss', rajada: 'rajada da Nyx',
-  furia: 'f√∫ria c√≠clica da Pyra/Kael', couraca: 'coura√ßa do Terrus', explosao: 'explos√£o da Pyra', chuva: 'chuva de flechas da Zeph', congelamento: 'congelamento da G√©lida/Frosk',
-};
-const BORROWED_CHAMP_POWER_NAMES = {
-  kael: 'frenesi do Kael', ferrha: 'barreira de ferro da Ferrha', terrus: 'Pele de Pedra do Terrus', raio: 'combo rel√¢mpago do Raio',
-};
-function logReinforcements(wavePicks, waveNum){
-  if(lastWaveEvent==='boss'){
-    const bosses = wavePicks.filter(w=>w.isBoss);
-    const disciples = wavePicks.filter(w=>w.isDisciple);
-    if(bosses.length>=2){
-      log(`‚ö†Ô∏è‚ö†Ô∏è DOIS CHEFES na mesma onda! ${bosses.map(w=>ENEMY_CATALOG[w.key].name).join(' e ')} apareceram bem mais fortes.`, 'hl');
-    } else {
-      log(`‚ö† Onda de chefe! ${ENEMY_CATALOG[bosses[0].key].name} apareceu bem mais forte${bosses[0].scaled.stars>=4?' ‚Äî E COM 4 ESTRELAS!':''}.`, 'hl');
-    }
-    if(disciples.length>0){
-      log(`üó°Ô∏è O chefe n√£o veio sozinho ‚Äî ${disciples.length} inimigos vieram protegendo!`, 'hl');
-    }
-    bosses.forEach(w=>{
-      if(w.borrowedPower){
-        log(`üåÄ ${ENEMY_CATALOG[w.key].name} veio com uma habilidade emprestada: ${BORROWED_POWER_NAMES[w.borrowedPower] || w.borrowedPower}!`, 'hl');
-        if(w.borrowedChampPower){
-          log(`‚ö† E tamb√©m com uma passiva rara: ${BORROWED_CHAMP_POWER_NAMES[w.borrowedChampPower]}! Chefe em dobro.`, 'hl');
-        }
-      }
-    });
-  } else if(lastWaveEvent==='grow'){
-    log(`Refor√ßo da rodada ${waveNum}: um inimigo extra entrou na batalha! (total: ${wavePicks.length})`, 'sys');
-  } else if(lastWaveEvent==='boost'){
-    const boosted = wavePicks.find(w=>w.boosted);
-    if(boosted) log(`Refor√ßo da rodada ${waveNum}: ${ENEMY_CATALOG[boosted.key].name} ficou mais forte!`, 'sys');
-  }
-  const twoStar = wavePicks.find(w=>w.twoStar);
-  if(twoStar){
-    log(`${'‚òÖ'.repeat(twoStar.scaled.stars)} ${ENEMY_CATALOG[twoStar.key].name} apareceu com ${twoStar.scaled.stars} estrelas ‚Äî vai usar habilidade!`, 'hl');
-    if(twoStar.scaled.special) log(`üåÄ Poder emprestado: ${BORROWED_POWER_NAMES[twoStar.scaled.special] || twoStar.scaled.special}.`, 'hl');
-    if(twoStar.borrowedChampPower) log(`‚ö† E tamb√©m uma passiva rara: ${BORROWED_CHAMP_POWER_NAMES[twoStar.borrowedChampPower]}!`, 'hl');
-  }
-}
-let corruptedIdCounter = 90000;
-// Criaturas neutras que emergem da Rachadura depois da onda 15 ‚Äî atacam jogador E inimigos, sem lado nenhum.
-// Como team:'corrupted' √© diferente tanto de 'player' quanto de 'enemy', o sistema normal de alvo
-// (que j√° escolhe qualquer unidade de time diferente) j√° faz elas brigarem com todo mundo sozinho.
-function spawnCorruptedCreatures(waveNum){
-  if(waveNum<=15) return;
-  const count = Math.min(8, Math.floor((waveNum-14)/1.5));
-  if(count<=0) return;
-  const occ = occupiedMap();
-  let centerHexes = allHexes.filter(h=>Math.abs(h.q)<=2 && !isBlockedTile(h) && occ[hexKey(h)]===undefined);
-  const now = performance.now();
-  let spawned = 0;
-  for(let i=0;i<count;i++){
-    if(centerHexes.length===0) break;
-    const idx = Math.floor(Math.random()*centerHexes.length);
-    const h = centerHexes.splice(idx,1)[0];
-    const waveScale = 1 + (waveNum-15)*0.06;
-    // hordas: morrem r√°pido (menos vida), mas causam bastante dano ‚Äî e explodem ao morrer
-    const statOverride = { hp: Math.round(85*waveScale), atk: Math.round(23*waveScale), range: 1, speed: 1.1, dmgReduction: 0 };
-    const def = {name:'Devorador', element:'corrupted', hp:statOverride.hp, atk:statOverride.atk, range:1, speed:1.1};
-    const u = makeUnit(corruptedIdCounter++, 'corrupted', 'devorador', def, 1, h.q, h.r, statOverride, 1, []);
-    u.spawnPortalUntil = now + 900;
-    u.actionTimer = 900; // fica "emergindo" do portal antes de poder agir
-    units.push(u);
-    occ[hexKey(h)] = u.id;
-    spawned++;
-  }
-  if(spawned>0){
-    log(`üåÄ ${spawned} criatura${spawned>1?'s':''} corrompida${spawned>1?'s':''} emerge${spawned>1?'m':''} da Rachadura ‚Äî ataca todo mundo, sem lado nenhum!`, 'hl');
-    triggerScreenShake(6, 300);
-  }
-}
-
-let ENEMY_TEMP = {};
-function applyTempEnemyStats(wavePicks){
-  wavePicks.forEach((w,i)=>{
-    const u = units.filter(x=>x.team==='enemy')[i];
-    if(u){
-      u.hp = w.scaled.hp; u.maxhp = w.scaled.hp; u.atk = w.scaled.atk; u.isBoss = !!w.isBoss;
-      u.stars = w.scaled.stars || 1;
-      u.special = w.scaled.special || null;
-      u.borrowedChampPower = w.borrowedChampPower || null;
-      u.isWave60Boss = !!w.isWave60Boss;
-      if(u.isWave60Boss){
-        const now = performance.now();
-        u.ecoBlastAt = now + 3000;
-        u.ecoSummonAt = now + 5000;
-      }
-    }
-  });
-}
-
-function startPvpRound(){
-  setMenuLocked(true);
-  document.getElementById('quit-battle-btn').style.display = 'block';
-  inMatch = true;
-  savePvpCoins();
-  scheduleNextFracture(performance.now());
-  startNewWaveLog(pvpRound);
-  buildTeams(teamP1, teamP2, true, pvpP1.owned, pvpP2.owned);
-  document.getElementById('roundinfo').textContent = `Rodada ${pvpRound} ‚Äî Jogador 1 (esq.) vs Jogador 2 (dir.) ‚Äî ${BIOME_LABELS[currentBiome]} ‚Äî ${WEATHER_LABELS[currentWeather]}`;
-  log(`Rodada ${pvpRound} iniciada!`, 'sys');
-  checkDuoBanter(teamP1, banterNextRoundP1, pvpRound);
-  checkDuoBanter(teamP2, banterNextRoundP2, pvpRound);
-  document.getElementById('nav-battle-btn').style.display = 'inline-block';
-  showScreen('battle');
-  startBattleLoopIfNeeded();
-  battleActive = true;
-  document.getElementById('banner').style.display='none';
-  document.getElementById('banner').className='';
-}
-
-function startPvpPrep(who, thenFn){
-  loadPvpPlayer(who);
-  setNavLocked(false);
-  const gain = 15 + pvpRound*5;
-  coins += gain;
-  savePvpCoins();
-  updateCoinBadge();
-  const label = who==='p1' ? 'Jogador 1' : 'Jogador 2';
-  log(`${label} ganhou +${gain} moedas pra se preparar.`, 'sys');
-
-  const overlay = document.getElementById('prep-overlay');
-  const timerEl = document.getElementById('prep-timer');
-  document.querySelector('#prep-overlay h3').textContent = `Vez do ${label} se preparar`;
-  document.getElementById('prep-stats').innerHTML = '';
-  overlay.style.display = 'flex';
-  let t = 15;
-  timerEl.textContent = t;
-  let paused = false;
-  const readLogBtn = document.getElementById('read-log-btn');
-  readLogBtn.textContent = 'Ler registro';
-  function tick(){
-    if(paused) return;
-    t--;
-    timerEl.textContent = t;
-    if(t<=0){ overlay.style.display='none'; thenFn(); return; }
-    prepTimerHandle = setTimeout(tick, 1000);
-  }
-  prepTimerHandle = setTimeout(tick, 1000);
-  document.getElementById('skip-prep-btn').onclick = ()=>{ clearTimeout(prepTimerHandle); overlay.style.display='none'; thenFn(); };
-  readLogBtn.onclick = ()=>{
-    paused = !paused;
-    if(paused){
-      clearTimeout(prepTimerHandle);
-      readLogBtn.textContent = 'Continuar preparo';
-    } else {
-      readLogBtn.textContent = 'Ler registro';
-      prepTimerHandle = setTimeout(tick, 1000);
-    }
-  };
-}
-
-function endPvpRoundAndContinue(){
-  pvpRound++;
-  setupArenaForRound(pvpRound);
-  showHandoff('Jogador 1', ()=>{
-    startPvpPrep('p1', ()=>{
-      const defaultSlotsP1 = getPlayerZoneSlots();
-      openPositionSelect(teamP1, 'left', defaultSlotsP1, `Jogador 1 ‚Äî reorganize seu time (Rodada ${pvpRound})`, (positions)=>{
-        teamP1Positions = positions;
-        showHandoff('Jogador 2', ()=>{
-          startPvpPrep('p2', ()=>{
-            const defaultSlotsP2 = getEnemyZoneSlots();
-            openPositionSelect(teamP2, 'right', defaultSlotsP2, `Jogador 2 ‚Äî reorganize seu time (Rodada ${pvpRound})`, (positions2)=>{
-              teamP2Positions = positions2;
-              startPvpRound();
-            }, 10, teamP2Positions);
-          });
-        });
-      }, 10, teamP1Positions);
-    });
-  });
-}
-
-/* ============ SALVAR / CONTINUAR PARTIDA (Contra Bot) ============ */
-// Salva s√≥ em pontos seguros (in√≠cio de cada onda) ‚Äî n√£o tenta gravar o estado vivo de uma luta em andamento.
-const SAVE_KEY = 'ferroLancaSave_v1';
-
-function saveGameSnapshot(){
-  if(mode!=='pve') return;
-  const snapshot = {
-    wave, teamP1, owned, coins, itemInventory, teamP1Positions,
-    currentStarterChamp, totalCoinsThisRun, bestWaveEver, arenaExpanded, RADIUS, teamExpansionTier,
-    activeBlessings, bossDefeatCount, extraSlotChampIds,
-  };
-  try{ localStorage.setItem(SAVE_KEY, JSON.stringify(snapshot)); }catch(e){}
-}
-
-function loadGameSnapshot(){
-  try{
-    const raw = localStorage.getItem(SAVE_KEY);
-    return raw ? JSON.parse(raw) : null;
-  }catch(e){ return null; }
-}
-
-function clearGameSnapshot(){
-  try{ localStorage.removeItem(SAVE_KEY); }catch(e){}
-  refreshContinueCard();
-}
-
-function refreshContinueCard(){
-  const card = document.getElementById('mode-continue');
-  const snap = loadGameSnapshot();
-  if(snap){
-    card.style.display = 'block';
-    document.getElementById('continue-summary').textContent =
-      `Onda ${snap.wave} ¬∑ ${snap.teamP1.length} Stack User${snap.teamP1.length>1?'s':''} ¬∑ ${snap.coins} moedas`;
-  } else {
-    card.style.display = 'none';
-  }
-}
-
-function resumeSavedGame(){
-  const snap = loadGameSnapshot();
-  if(!snap) return;
-  if(typeof window.stopIntroMusic === 'function') window.stopIntroMusic();
-  mode = 'pve'; testMode = false; TEAM_MAX = 3;
-  wave = snap.wave;
-  teamP1 = snap.teamP1;
-  owned = snap.owned;
-  coins = snap.coins;
-  itemInventory = snap.itemInventory;
-  teamP1Positions = snap.teamP1Positions || {};
-  currentStarterChamp = snap.currentStarterChamp || 'ferrha';
-  totalCoinsThisRun = snap.totalCoinsThisRun || 0;
-  teamExpansionTier = snap.teamExpansionTier || 0;
-  activeBlessings = snap.activeBlessings || [];
-  bossDefeatCount = snap.bossDefeatCount || 0;
-  extraSlotChampIds = snap.extraSlotChampIds || [];
-  bossCountedThisWave = false;
-  interactionFiredThisRound = false;
-  pendingBlessingChoice = false;
-  if(snap.bestWaveEver > bestWaveEver) bestWaveEver = snap.bestWaveEver;
-  if(arenaExpanded !== !!snap.arenaExpanded || RADIUS !== (snap.RADIUS||4)){
-    arenaExpanded = !!snap.arenaExpanded;
-    RADIUS = snap.RADIUS || 4;
-    regenerateAllHexes();
-  }
-  inMatch = true;
-  document.getElementById('nav-battle-btn').style.display = 'inline-block';
-  updateCoinBadge();
-  updateBestWaveDisplay();
-  document.getElementById('quit-battle-btn').style.display = 'none';
-  document.getElementById('view-summary-btn').style.display = 'none';
-  matchStats = {};
-  setupArenaForRound(wave);
-  scheduleNextFracture(performance.now());
-  document.getElementById('roundinfo').textContent = `Onda ${wave} ‚Äî ${BIOME_LABELS[currentBiome]} ‚Äî ${WEATHER_LABELS[currentWeather]}`;
-  const defaultSlots = getPlayerZoneSlots();
-  openPositionSelect(teamP1, 'left', defaultSlots, `Continuando de onde parou (Onda ${wave})`, (positions)=>{
-    teamP1Positions = positions;
-    finishPrepContinue();
-  }, null, teamP1Positions);
-}
-
-document.getElementById('mode-continue').addEventListener('click', resumeSavedGame);
-
-function hardResetProgress(){
-  coins = 120;
-  owned = {};
-  owned[currentStarterChamp] = {stars:1, copies:0, level:1, xp:0, itemIds:[]};
-  itemInventory = {};
-  teamP1Positions = {};
-  teamP2Positions = {};
-  teamExpansionTier = 0;
-  updateCoinBadge();
-}
-
-function quitToMenu(){
-  if(mode!=='pve'){ actuallyQuitToMenu(); return; }
-  const overlay = document.getElementById('post-record-overlay');
-  const detailEl = document.getElementById('post-record-detail');
-  detailEl.textContent = `Onda ${wave} ‚Äî maior onda geral: ${Math.max(wave, bestWaveEver)}. Seu time e itens aparecem no Placar pra todo mundo ver.`;
-  overlay.classList.add('show');
-  document.getElementById('post-record-yes').onclick = async ()=>{
-    overlay.classList.remove('show');
-    if(typeof window.postMyResult === 'function') await postMyResult();
-    actuallyQuitToMenu();
-  };
-  document.getElementById('post-record-no').onclick = ()=>{
-    overlay.classList.remove('show');
-    actuallyQuitToMenu();
-  };
-}
-function actuallyQuitToMenu(){
-  if(mode==='pve' && wave > bestWaveEver){ bestWaveEver = wave; updateBestWaveDisplay(); }
-  if(mode==='pve') checkWaveRecord(wave);
-  battleActive = false;
-  inMatch = false;
-  mode = null;
-  setMenuLocked(false);
-  clearTimeout(prepTimerHandle);
-  document.getElementById('prep-overlay').style.display='none';
-  document.getElementById('nav-battle-btn').style.display = 'none';
-  hardResetProgress();
-  clearGameSnapshot();
-  pvpP1 = null; pvpP2 = null; activePvpPlayer = null; pvpRound = 1;
-  showScreen('menu');
-}
-document.getElementById('quit-battle-btn').addEventListener('click', quitToMenu);
-document.getElementById('summary-back-btn').addEventListener('click', quitToMenu);
-document.getElementById('view-summary-btn').addEventListener('click', ()=>{
-  renderMatchSummary();
-  showScreen('summary');
-});
-
-function renderMatchSummary(){
-  document.getElementById('summary-headline').textContent = `Voc√™ chegou at√© a onda ${wave} ‚Äî melhor onda geral: ${bestWaveEver}`;
-  const entries = Object.entries(matchStats).filter(([champId])=>CHAMPION_CATALOG[champId]);
-  entries.sort((a,b)=> b[1].damageDealt - a[1].damageDealt);
-  const mvpId = entries.length ? entries[0][0] : null;
-  const tableEl = document.getElementById('summary-table');
-  if(entries.length===0){
-    tableEl.innerHTML = `<div class="champ-stats">Nenhum combate registrado.</div>`;
-    return;
-  }
-  tableEl.innerHTML = `
-    <div style="display:grid;grid-template-columns:1.5fr 1fr 1fr 0.8fr 0.8fr;gap:6px;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--steel);padding:0 6px 6px;border-bottom:1px solid #3a3f47;">
-      <div>Stack User</div><div>Dano causado</div><div>Dano recebido</div><div>Abates</div><div>Mortes</div>
-    </div>
-    ${entries.map(([champId,s])=>{
-      const def = CHAMPION_CATALOG[champId];
-      const isMvp = champId===mvpId;
-      return `<div style="display:grid;grid-template-columns:1.5fr 1fr 1fr 0.8fr 0.8fr;gap:6px;align-items:center;padding:8px 6px;border-bottom:1px solid #2a2e35;${isMvp?'background:rgba(232,194,80,0.08);':''}">
-        <div style="font-family:'Oswald',sans-serif;color:${isMvp?'var(--gold)':'#eae4d8'};">${isMvp?'‚òÖ ':''}${def.name}</div>
-        <div style="color:var(--ember);">${s.damageDealt}</div>
-        <div style="color:var(--steel);">${s.damageTaken}</div>
-        <div style="color:#7fd49a;">${s.kills}</div>
-        <div style="color:${s.deaths>0?'#c94d3d':'var(--steel)'};">${s.deaths||0}</div>
-      </div>`;
-    }).join('')}
-  `;
-}
-
-/* ============ BATTLE LOGIC ============ */
-function occupiedMap(){ const m={}; units.filter(u=>u.alive).forEach(u=>m[hexKey(u)]=u.id); return m; }
-
-function nearestEnemy(u){
-  const enemies = units.filter(o=>o.alive && o.team!==u.team);
-  if(!enemies.length) return null;
-  const taunters = enemies.filter(e=>e.taunt && hexDistance(u,e)<=e.taunt);
-  const pool = taunters.length ? taunters : enemies;
-  if(!taunters.length && u.range>1 && hasItem(u,'olho_falcao')){
-    // Olho de Falc√£o: em vez de mirar no mais pr√≥ximo, foca sempre no inimigo com menos vida ao alcance
-    const inRange = pool.filter(e=>hexDistance(u,e)<=u.range);
-    if(inRange.length){
-      inRange.sort((a,b)=>a.hp-b.hp);
-      return inRange[0];
-    }
-  }
-  pool.sort((a,b)=>hexDistance(u,a)-hexDistance(u,b));
-  return pool[0];
-}
-
-function tryMoveToward(u, target){
-  const occ = occupiedMap();
-  let step = findPathStep({q:u.q,r:u.r}, {q:target.q,r:target.r}, u.range, occ);
-  if(!step){
-    // sem caminho direto at√© o alvo ‚Äî procura o portal mais pr√≥ximo como rota alternativa
-    const allPortals = [...portalPairs, ...fracturePortalPairs].flat();
-    if(allPortals.length){
-      let closest = null, closestDist = Infinity;
-      allPortals.forEach(p=>{
-        const d = hexDistance(u, p);
-        if(d < closestDist){ closestDist = d; closest = p; }
-      });
-      if(closest && closestDist>0){
-        step = findPathStep({q:u.q,r:u.r}, {q:closest.q,r:closest.r}, 0, occ);
-      }
-    }
-  }
-  if(step){
-    u.q=step.q; u.r=step.r;
-    checkPortalTeleport(u);
-    const p = hexToPixel(u.q,u.r);
-    u.targetRx=p.x; u.targetRy=p.y;
-    return true;
-  }
-  return false;
-}
-
-// Teletransporta a unidade se ela pisar em uma ponta de portal.
-function checkPortalTeleport(u){
-  const hk = hexKey(u);
-  const allPairs = [...portalPairs, ...fracturePortalPairs];
-  const now = performance.now();
-  for(const [a,b] of allPairs){
-    let dest = null;
-    if(hexKey(a)===hk) dest = b;
-    else if(hexKey(b)===hk) dest = a;
-    if(dest){
-      // evita ficar entrando e saindo do mesmo portal toda hora ‚Äî mas depois de 5s libera de novo,
-      // pra funcionar como sa√≠da de emerg√™ncia se a unidade ficar presa num canto.
-      if(u.lastPortalOrigin===hk && now < (u.portalCooldownUntil||0)) return false;
-      u.q = dest.q; u.r = dest.r;
-      const p = hexToPixel(u.q,u.r);
-      u.rx = p.x; u.ry = p.y; u.targetRx = p.x; u.targetRy = p.y;
-      spawnCastEffect(p.x, p.y, '#9b6bd9');
-      u.lastPortalOrigin = hexKey(dest);
-      u.portalCooldownUntil = now + 5000;
-      return true;
-    }
-  }
-  return false;
-}
-
-// BFS pathfinding: finds the first step from `start` toward a hex within `rangeNeeded`
-// of `goal`, routing around occupied tiles (so a hero won't just stand still behind an ally).
-function findPathStep(start, goal, rangeNeeded, occ){
-  const startKey = hexKey(start);
-  const visited = new Set([startKey]);
-  const queue = [{h:start, first:null}];
-  let qi = 0;
-  while(qi < queue.length){
-    const {h, first} = queue[qi++];
-    if(hexDistance(h, goal) <= rangeNeeded && first){
-      return first;
-    }
-    for(const n of neighbors(h)){
-      if(!inGrid(n)) continue;
-      const k = hexKey(n);
-      if(visited.has(k)) continue;
-      if(occ[k] !== undefined) continue; // can't path through occupied tiles
-      if(isBlockedTile(n)) continue; // torres/obst√°culos e a zona inst√°vel bloqueiam passagem
-      visited.add(k);
-      queue.push({h:n, first: first || n});
-    }
-  }
-  return null;
-}
-
-// Keeps a hex position inside the arena ‚Äî reserved for future knockback/wall mechanics
-// (enemies that shove heroes into the boundary). Not wired into gameplay yet.
-function clampHexToGrid(h){
-  if(inGrid(h)) return h;
-  let best = allHexes[0], bestDist = Infinity;
-  allHexes.forEach(hx=>{ const d = hexDistance(hx, h); if(d < bestDist){ bestDist = d; best = hx; } });
-  return {q:best.q, r:best.r};
-}
-
-// Empurra `unit` para longe de `source` por `distance` blocos, sem sair da arena e evitando ladrilhos ocupados.
-function knockbackUnit(source, unit, distance){
-  const dq = unit.q - source.q, dr = unit.r - source.r;
-  let dest = clampHexToGrid({q: unit.q + dq*distance, r: unit.r + dr*distance});
-  const occ = occupiedMap();
-  if((occ[hexKey(dest)] !== undefined && occ[hexKey(dest)] !== unit.id) || isBlockedTile(dest)){
-    dest = clampHexToGrid({q: unit.q + dq, r: unit.r + dr});
-    if((occ[hexKey(dest)] !== undefined && occ[hexKey(dest)] !== unit.id) || isBlockedTile(dest)) dest = {q:unit.q, r:unit.r};
-  }
-  unit.q = dest.q; unit.r = dest.r;
-  const p = hexToPixel(unit.q, unit.r);
-  unit.targetRx = p.x; unit.targetRy = p.y;
-  checkPortalTeleport(unit);
-}
-
-// Puxa `unit` pro hex livre mais pr√≥ximo adjacente a `source` (habilidade magn√©tica da √çm√£).
-function pullAdjacent(source, unit){
-  const occ = occupiedMap();
-  const candidates = neighbors(source).filter(n=>inGrid(n) && !isBlockedTile(n) && (occ[hexKey(n)]===undefined || occ[hexKey(n)]===unit.id));
-  if(candidates.length===0) return;
-  candidates.sort((a,b)=>hexDistance(a,unit)-hexDistance(b,unit));
-  const dest = candidates[0];
-  unit.q = dest.q; unit.r = dest.r;
-  const p = hexToPixel(unit.q, unit.r);
-  unit.targetRx = p.x; unit.targetRy = p.y;
-  checkPortalTeleport(unit);
-}
-
-function hasItem(u, itemId){ return (u.itemIds||[]).includes(itemId); }
-function countItem(u, itemId){ return (u.itemIds||[]).filter(x=>x===itemId).length; }
-// Multiplicador de for√ßa de passiva ‚Äî cresce com o N√∫cleo Amplificador equipado (at√© 3x, +20% cada).
-function passiveAmp(u){ return 1 + 0.20*countItem(u,'amplificador') + 0.30*countItem(u,'nucleo_eterno'); }
-
-// Pilares da Jedegar amplificam o dano de aliados no raio de 2 blocos (15%, 30% depois do
-// marco de 5 pilares), e o golpe que atinge um pilar libera +15% tempor√°rio por 3s.
-// N√£o empilha entre pilares diferentes ‚Äî pega sempre o melhor b√¥nus dispon√≠vel.
-function jedegarAuraMultiplier(u){
-  const now = performance.now();
-  let mult = 1;
-  Object.values(jedegarStructures).forEach(s=>{
-    if(s.ownerTeam !== u.team) return;
-    if(hexDistance(s, u) > 2) return;
-    const owner = units.find(o=>o.id===s.ownerId);
-    const milestoneUp = owner ? getJedegarProgress(owner).milestoneReached : false;
-    let bonus = milestoneUp ? 0.20 : 0.10;
-    if(s.boostUntil && now < s.boostUntil) bonus += 0.15;
-    mult = Math.max(mult, 1+bonus);
-  });
-  if(u.jedegarSecretBonus) mult += 0.10;
-  return mult;
-}
-// Depois do marco de 5 pilares, inimigos perto de QUALQUER pilar perdem 30% de defesa.
-function jedegarEnemyDefenseDebuff(u){
-  const now = performance.now();
-  let found = false;
-  Object.values(jedegarStructures).forEach(s=>{
-    if(s.ownerTeam === u.team) return; // s√≥ afeta quem N√ÉO √© do time da Jedegar
-    if(hexDistance(s, u) > 2) return;
-    const owner = units.find(o=>o.id===s.ownerId);
-    if(owner && getJedegarProgress(owner).milestoneReached) found = true;
-  });
-  return found;
-}
-
-// ---- Brasa Selvagem: item ativo independente do ciclo de ataque normal ----
-let emberEvents = []; // {time, targetId, type}
-function emberBaseDmg(u){
-  const base = currentWeather==='chuva' ? 2 : 4;
-  return (u && hasItem(u,'brasa_eterna')) ? Math.round(base*1.75) : base;
-}
-// ---- Raio: combo el√©trico de 8 golpes (empurra, teleporta do lado do alvo, bate, repete) ----
-function triggerComboUltimate(unit, attacker){
-  unit.comboActive = true;
-  unit.comboHitsDone = 0;
-  let target = (attacker && attacker.alive && attacker.team!==unit.team) ? attacker : null;
-  if(!target){
-    const enemies = units.filter(o=>o.alive && o.team!==unit.team);
-    enemies.sort((a,b)=>hexDistance(unit,a)-hexDistance(unit,b));
-    target = enemies[0] || null;
-  }
-  unit.comboTargetId = target ? target.id : null;
-  unit.comboBaseDmg = Math.max(1, Math.round(unit.atk*0.35));
-  unit.comboNextAt = performance.now();
-  spawnFloatText(unit.rx, unit.ry-34, 'COMBO EL√âTRICO!', '#f5e663');
-  const raioComboPhrase = randomPhrase('raio_combo');
-  spawnFloatText(unit.rx, unit.ry-58, raioComboPhrase, '#f5e663', 'dramatic');
-  log(`${unit.name}: "${raioComboPhrase}"`, 'hl');
-  log(`${unit.name} dispara um combo rel√¢mpago!`, 'hl');
-  if(!target) unit.comboActive = false;
-}
-
-function updateComboState(){
-  const now = performance.now();
-  units.forEach(u=>{
-    if(!u.comboActive) return;
-    if(now < u.comboNextAt) return;
-
-    if(u.comboPhase==='selfstun'){
-      u.hp = Math.min(u.maxhp, u.hp + Math.round(u.maxhp*0.10));
-      u.overloadUntil = now + 5000;
-      spawnFloatText(u.rx, u.ry-40, 'SOBRECARGA!', '#f5e663');
-      const raioOverloadPhrase = randomPhrase('raio_overload');
-      spawnFloatText(u.rx, u.ry-64, raioOverloadPhrase, '#f5e663', 'dramatic');
-      log(`${u.name}: "${raioOverloadPhrase}"`, 'hl');
-      spawnCastEffect(u.rx, u.ry, '#f5e663');
-      log(`${u.name} sofre uma sobrecarga, cura 10% da vida e fica mais r√°pido por 5s!`, 'hl');
-      u.comboActive = false;
-      u.comboPhase = null;
-      return;
-    }
-
-    const target = units.find(x=>x.id===u.comboTargetId);
-    if(!target || !target.alive){ u.comboActive = false; return; }
-
-    u.comboHitsDone++;
-    const isFinal = u.comboHitsDone >= 8;
-    const source = {element:'eletrico', team:u.team, champId:u.champId, name:u.name};
-    const hpFrac = Math.max(0.01, u.hp/u.maxhp);
-    const missingBonus = 1 + (1-hpFrac)*1.5; // quanto menos vida, mais dano (at√© +150%)
-    let dmg;
-    if(!isFinal){
-      dmg = Math.round(u.comboBaseDmg * missingBonus);
-    } else {
-      const hasDmgItem = (u.itemIds||[]).some(iid=>{
-        const it = ITEM_CATALOG[iid];
-        return it && it.effect && (it.effect.atkFlat || it.effect.atkPct);
-      });
-      dmg = Math.round(u.comboBaseDmg * 10 * missingBonus * (hasDmgItem ? 1.10 : 1));
-    }
-    applyDamage(source, target, dmg, isFinal ? '‚ö°FINAL' : '‚ö°', true);
-    spawnCastEffect(target.rx, target.ry, '#f5e663');
-
-    // o combo consome a pr√≥pria vida como combust√≠vel
-    u.hp = Math.max(Math.round(u.maxhp*0.01), u.hp - Math.round(u.maxhp*0.05));
-
-    if(!isFinal){
-      if(target.alive){
-        knockbackUnit(u, target, 10);
-        const occ = occupiedMap();
-        const candidates = neighbors(target).filter(n=>inGrid(n) && !isBlockedTile(n) && (occ[hexKey(n)]===undefined || occ[hexKey(n)]===u.id));
-        if(candidates.length){
-          const dest = candidates[Math.floor(Math.random()*candidates.length)];
-          u.q = dest.q; u.r = dest.r;
-          const p = hexToPixel(u.q,u.r);
-          u.rx=p.x; u.ry=p.y; u.targetRx=p.x; u.targetRy=p.y;
-        }
-        u.comboNextAt = now + 350;
-      } else {
-        finishRaioCombo(u, now);
-      }
-    } else {
-      if(target.alive){
-        applyCC(target, 1500, 'eletrico');
-        spawnFloatText(target.rx, target.ry-40, 'ATORDOADO', '#f5e663');
-      }
-      finishRaioCombo(u, now);
-    }
-  });
-}
-
-function finishRaioCombo(u, now){
-  if(u.hp/u.maxhp <= 0.03){
-    spawnFloatText(u.rx, u.ry-40, 'SOBRECARREGANDO', '#f5e663');
-    const raioLowPhrase = randomPhrase('raio_low');
-    spawnFloatText(u.rx, u.ry-64, raioLowPhrase, '#f5e663', 'dramatic');
-    log(`${u.name}: "${raioLowPhrase}"`, 'hl');
-    log(`${u.name} quase se sobrecarrega ‚Äî fica atordoado, mas ainda imune.`, 'hl');
-    u.comboPhase = 'selfstun';
-    u.comboNextAt = now + 3000;
-  } else {
-    u.comboActive = false;
-  }
-}
-
-function triggerEmberItem(u){
-  const now = performance.now();
-  const radius = u.element==='vento' ? 6 : 3;
-  const targets = units.filter(o=>o.alive && o.team!==u.team && hexDistance(u,o)<=radius);
-  if(targets.length===0) return;
-  elementSfx(u.element);
-  u.emberCooldown = hasItem(u,'brasa_eterna') ? 3500 : 5000;
-  spawnCastEffect(u.rx, u.ry, '#e0693a');
-  log(`${u.name} ativa a Brasa Selvagem!`, 'hl');
-
-  if(u.element==='fogo' || u.element==='vento'){
-    // onda de fogo se espalhando pelos blocos: 1 segundo de atraso por bloco de dist√¢ncia
-    log(`Uma onda de fogo come√ßa a se espalhar!`, 'sys');
-    targets.forEach(t=>{
-      const dist = hexDistance(u,t);
-      const delay = Math.max(0, dist-1) * 1000;
-      emberEvents.push({time: now+delay, targetId:t.id, type:'wave', sourceId:u.id});
-    });
-    return;
-  }
-
-  const fireSource = {element:'fogo', team:u.team, champId:u.champId, name:u.name};
-  const shockSource = {element:'eletrico', team:u.team, champId:u.champId, name:u.name};
-  targets.forEach(t=>{
-    applyDamage(fireSource, t, emberBaseDmg(u), 'üî•', true);
-    if(u.element==='terra' && t.alive){
-      applyCC(t, 500, 'terra');
-      spawnFloatText(t.rx, t.ry-40, 'ATORDOADO', '#b08a52');
-    }
-    if(u.element==='metal' && t.alive){
-      t.vulnerableUntil = now + 3000;
-      spawnFloatText(t.rx, t.ry-40, 'VULNER√ÅVEL', '#c7cfd9');
-    }
-    if(u.element==='gelo' && t.alive){
-      // queimadura congelante: dano cont√≠nuo que dura at√© o fim da rodada (n√£o expira sozinha)
-      t.frostburnActive = true;
-      if(!t.frostburnTimer || t.frostburnTimer<=0) t.frostburnTimer = 1000;
-      spawnFloatText(t.rx, t.ry-40, 'QUEIMADURA GELADA', '#8fd4e8');
-    }
-    if(u.element==='eletrico' && t.alive){
-      // sobrecarga: reduz a velocidade de ataque do alvo, e tem chance de saltar pra outro inimigo perto
-      t.shockedUntil = now + 4000;
-      spawnFloatText(t.rx, t.ry-40, 'SOBRECARGA', '#f5e663');
-      if(Math.random() < 0.4){
-        const chainCandidates = units.filter(o=>o.alive && o.team!==u.team && o.id!==t.id && hexDistance(u,o)<=radius+2);
-        if(chainCandidates.length){
-          const chainTarget = chainCandidates[Math.floor(Math.random()*chainCandidates.length)];
-          applyDamage(shockSource, chainTarget, emberBaseDmg(u), '‚ö°', true);
-          chainTarget.shockedUntil = now + 4000;
-          spawnCastEffect(chainTarget.rx, chainTarget.ry, '#f5e663');
-          spawnFloatText(chainTarget.rx, chainTarget.ry-24, 'CADEIA!', '#f5e663');
-        }
-      }
-    }
-    if(t.alive){
-      if(u.element==='agua'){
-        spawnFloatText(t.rx, t.ry-24, 'VAPORIZANDO', '#4f9fd4');
-        emberEvents.push({time: now+2000, targetId:t.id, type:'vaporize'});
-      } else {
-        emberEvents.push({time: now+1000, targetId:t.id, type:'tick', sourceId:u.id});
-      }
-    }
-  });
-}
-function updateEmberEvents(){
-  if(emberEvents.length===0) return;
-  const now = performance.now();
-  const pending = [];
-  emberEvents.forEach(ev=>{
-    if(now < ev.time){ pending.push(ev); return; }
-    const t = units.find(x=>x.id===ev.targetId);
-    if(t && t.alive){
-      if(ev.type==='tick'){
-        const src = units.find(x=>x.id===ev.sourceId);
-        applyDamage({element:'fogo', team: t.team==='player'?'enemy':'player', champId:'brasa', name:'Brasa Selvagem'}, t, emberBaseDmg(src), 'üî•', true);
-      } else if(ev.type==='wave'){
-        const src = units.find(x=>x.id===ev.sourceId);
-        applyDamage({element:'fogo', team: t.team==='player'?'enemy':'player', champId:'brasa', name:'Brasa Selvagem'}, t, emberBaseDmg(src), 'üî•', true);
-        spawnCastEffect(t.rx, t.ry, '#e0693a');
-      } else if(ev.type==='iceTick'){
-        applyDamage({element:'gelo', team: t.team==='player'?'enemy':'player', champId:'gelo_pilar', name:'Pilar de Gelo'}, t, ev.dmg||8, '‚ùÑ', true);
-      } else if(ev.type==='vaporize'){
-        const dmg = Math.max(1, Math.round(t.hp*0.20));
-        t.hp -= dmg;
-        t.flashUntil = now+150;
-        spawnFloatText(t.rx, t.ry-24, 'VAPORIZA '+dmg, '#4f9fd4');
-        if(t.hp<=0){
-          t.hp=0; t.alive=false;
-          log(`${t.name} vaporizou!`, 'sys');
-          if(t.team==='player'){ roundDeaths.push(t.name); ensureMatchStats(t.champId).deaths++; }
-        }
-      }
-    }
-  });
-  emberEvents = pending;
-}
-
-// Falas soltas individuais ‚Äî cada personagem tem a pr√≥pria, sem depender de estar em dupla com ningu√©m.
-const SOLO_LINES = {
-  ferrha: {levelup:'Fico mais firme a cada dia.', battlestart:'Ningu√©m passa enquanto eu estiver de p√©.'},
-  voss: {levelup:'Minha mira melhora. As perguntas continuam as mesmas.', battlestart:'Vamos ver o que esse lugar esconde.'},
-  nyx: {levelup:'Nem eu percebi.', battlestart:'Voc√™s nem v√£o me ver chegar.'},
-  kael: {levelup:'Mais fogo. Mais poder. Nunca √© suficiente.', battlestart:'Vamos ver at√© onde eu aguento dessa vez.'},
-  terrus: {levelup:'A vila que eu perdi teria orgulho disso.', battlestart:'Fico de guarda. Como sempre.'},
-  pyra: {levelup:'Cada n√≠vel √© mais um passo perto de entender a Rachadura.', battlestart:'Deixa eu estudar isso de perto.'},
-  glacia: {levelup:'Espero que isso seja o suficiente pra mant√™-los vivos.', battlestart:'Fico de olho em todo mundo.'},
-  zeph: {levelup:'Mais r√°pida. Sempre mais r√°pida.', battlestart:'√öltima a chegar, primeira a sair.'},
-  ima: {levelup:'Ainda n√£o sei o que significa "querer". Mas isso ajuda.', battlestart:'Tudo que reluz vem pra perto de mim.'},
-  frosk: {levelup:'Mais forte. Bom.', battlestart:'Chega perto que eu congelo.'},
-  gelida: {levelup:'Mais um n√≠vel. Mais um empr√©stimo contra a morte.', battlestart:'Dessa vez eu n√£o vou ficar pra tr√°s.'},
-  raio: {levelup:'Mais carga. Mais risco. Perfeito.', battlestart:'Vamos ver se eu aguento at√© o fim dessa vez.'},
-  shecry: {levelup:'Quanto mais eu aguento, mais forte eu fico.', battlestart:'Tentem me machucar. Vejam o que acontece.'},
-  nerith: {levelup:'ELE est√° satisfeito com esse progresso.', battlestart:'Eles j√° sabem que estamos aqui.'},
-  voltra: {levelup:'Mais carga na corrente. Vai doer mais.', battlestart:'Sintam a eletricidade no ar.'},
-};
-function fireSoloLine(champId, moment){
-  const lines = SOLO_LINES[champId];
-  if(!lines || !lines[moment]) return;
-  const name = CHAMPION_CATALOG[champId].name;
-  const text = lines[moment];
-  log(`${name}: "${text}"`, 'hl');
-  const u = units.find(o=>o.alive && o.champId===champId);
-  if(u) spawnFloatText(u.rx, u.ry-50, text, '#eae4d8', 'banter');
-}
-function trySoloLine(champId, moment){
-  if(interactionFiredThisRound) return; // j√° teve uma intera√ß√£o nessa rodada ‚Äî espera a pr√≥xima
-  const lines = SOLO_LINES[champId];
-  if(!lines || !lines[moment]) return;
-  const chance = moment==='levelup' ? 0.25 : 0.15;
-  if(Math.random() > chance) return;
-  interactionFiredThisRound = true;
-  fireSoloLine(champId, moment);
-}
-
-const CATCHPHRASES = {
-  kael: ['QUEIMA TUDO!'],
-  ferrha_barrier_2: ['ISSO NEM COME√áOU!'],
-  ferrha_barrier_many: ['NINGU√âM PASSA POR MIM!'],
-  ferrha_pull: ['VOLTA AQUI!'],
-  gelida_ult: ['VOU TE LEVAR COMIGO!'],
-  gelida_revive: ['ACHARAM QUE EU MORRI?'],
-  terrus: ['TENTA DE NOVO.'],
-  raio_combo: ['N√ÉO VOU PARAR!'],
-  raio_low: ['S√ì MAIS UM POUCO...'],
-  raio_overload: ['SE PREPARA.'],
-  nerith_frenzy: ['VOC√äS V√ÉO RESPONDER A ELE AGORA!'],
-  voltra_overcharge: ['SINTA A CORRENTE!'],
-  voltra_detonate: ['N√ÉO VOU CAIR SOZINHA.'],
-};
-function randomPhrase(key){
-  const arr = CATCHPHRASES[key];
-  return arr[Math.floor(Math.random()*arr.length)];
-}
-
-// ---- Intera√ß√µes entre personagens: cada Stack User aparece em pelo menos uma dupla ----
-const DUO_BANTER = [
-  {pair:['ferrha','kael'], lines:[
-    {speaker:'ferrha', text:'Kael, o que voc√™ era antes de ganhar um Stack?'},
-    {speaker:'kael', text:'Eu? H√°, eu n√£o era ningu√©m...'},
-  ]},
-  {pair:['ferrha','ima'], lines:[
-    {speaker:'ima', text:'Voc√™ √© feita do mesmo metal que eu?'},
-    {speaker:'ferrha', text:'Eu forjei o meu. Voc√™ nasceu com o seu.'},
-  ]},
-  {pair:['gelida','frosk'], lines:[
-    {speaker:'frosk', text:'Voc√™ morreu de novo?'},
-    {speaker:'gelida', text:'"De novo" √© forte. Eu s√≥... adio.'},
-  ]},
-  {pair:['kael','raio'], lines:[
-    {speaker:'raio', text:'Voc√™ e eu, a gente n√£o devia lutar do mesmo lado.'},
-    {speaker:'kael', text:'Relaxa. S√≥ um de n√≥s vai explodir por vez.'},
-  ]},
-  {pair:['raio','kael','voltra'], lines:[
-    {speaker:'raio', text:'S√≥ um de n√≥s vai explodir por vez, lembra?'},
-    {speaker:'kael', text:'Dessa vez talvez seja eu.'},
-    {speaker:'voltra', text:'Voc√™s chamam isso de explos√£o? Amadores.'},
-  ]},
-  {pair:['kael','terrus'], lines:[
-    {speaker:'terrus', text:'Nem tudo se resolve no soco. Precisa de medita√ß√£o.'},
-    {speaker:'kael', text:'Eu posso calar sua boca com um soco. Isso resolveria.'},
-    {speaker:'terrus', text:'Tenta a sorte.'},
-  ]},
-  {pair:['jedegar','terrus'], lines:[
-    {speaker:'jedegar', text:'Terrus... √© voc√™ mesmo? O guardi√£o que protegeu minha vila?'},
-    {speaker:'terrus', text:'...n√£o me lembro de voc√™.'},
-    {speaker:'jedegar', text:'N√£o precisa lembrar. Eu nunca esqueci.'},
-  ]},
-  {pair:['shava','kael'], lines:[
-    {speaker:'shava', text:'Sei de onde voc√™ vem. Minha vila nunca esqueceu o que a sua fez.'},
-    {speaker:'kael', text:'Eu nem tinha nascido. Mas se quer briga, eu aceito.'},
-    {speaker:'shava', text:'N√£o √© briga. √â quest√£o de honra.'},
-  ]},
-  {pair:['terrus','shecry'], lines:[
-    {speaker:'shecry', text:'Voc√™ nunca perde a paci√™ncia, Terrus.'},
-    {speaker:'terrus', text:'Pressa √© o que quebra pedra antes da hora.'},
-  ]},
-  {pair:['voss','zeph'], lines:[
-    {speaker:'zeph', text:'Aposto uma flecha que acerto o alvo antes de voc√™.'},
-    {speaker:'voss', text:'Aposta feita. S√≥ n√£o erra igual da √∫ltima vez.'},
-  ]},
-  {pair:['nyx','pyra'], lines:[
-    {speaker:'pyra', text:'Voc√™ nunca fica pra ver o resultado do que fez, sabia?'},
-    {speaker:'nyx', text:'Eu j√° sei o resultado antes de fazer.'},
-  ]},
-  {pair:['voss','glacia'], lines:[
-    {speaker:'voss', text:'Por que voc√™ se importa tanto com todo mundo, Glacia?'},
-    {speaker:'glacia', text:'Prefiro n√£o falar sobre isso.'},
-  ]},
-  {pair:['ima','raio'], lines:[
-    {speaker:'ima', text:'Voc√™ conduz eletricidade melhor do que eu conduzo metal?'},
-    {speaker:'raio', text:'Testamos um dia desses. S√≥ n√£o fica muito perto.'},
-  ]},
-  {pair:['terrus','ferrha'], lines:[
-    {speaker:'terrus', text:'Gastei v√°rias moedas na loja, Ferrha.'},
-    {speaker:'ferrha', text:'Voc√™ sabe que eu sou Ferreira, eu fa√ßo um desconto pra voc√™.'},
-  ]},
-  {pair:['shecry','kael'], lines:[
-    {speaker:'kael', text:'A gente j√° lutou antes, Shecry. Nenhum dos dois caiu.'},
-    {speaker:'shecry', text:'Porque quanto mais eu apanho, mais forte eu fico.'},
-    {speaker:'kael', text:'Mesma coisa comigo. S√≥ que em chamas.'},
-  ]},
-  {pair:['zeph','nyx'], lines:[
-    {speaker:'zeph', text:'Aposto que eu sou mais r√°pida que voc√™, Nyx.'},
-    {speaker:'nyx', text:'R√°pida eu j√° sou. R√°pida demais pra voc√™ notar.'},
-  ]},
-  {pair:['pyra','glacia'], lines:[
-    {speaker:'pyra', text:'Cura √© f√°cil quando n√£o √© voc√™ na linha de frente, Glacia.'},
-    {speaker:'glacia', text:'E fogo √© f√°cil quando n√£o √© voc√™ que apaga o inc√™ndio depois.'},
-  ]},
-  {pair:['voss','terrus'], lines:[
-    {speaker:'voss', text:'H√° quanto tempo voc√™ guarda essa vila que nem existe mais, Terrus?'},
-    {speaker:'terrus', text:'N√£o conto. Prefiro dormir tranquilo.'},
-  ]},
-  {pair:['nerith','raio'], lines:[
-    {speaker:'raio', text:'J√° pensou o que rola se eu acertar um combo em voc√™ na √°gua, Nerith?'},
-    {speaker:'nerith', text:'J√° pensei no que ELE faria com voc√™ depois.'},
-  ]},
-  {pair:['nerith','glacia'], lines:[
-    {speaker:'glacia', text:'Seus tent√°culos me d√£o medo, Nerith.'},
-    {speaker:'nerith', text:'Eles s√≥ atacam quando ELE manda.'},
-    {speaker:'glacia', text:'ELE? Como assim ELE? Quem √© ELE?'},
-  ]},
-  {pair:['voltra','ima'], lines:[
-    {speaker:'ima', text:'Sua corrente el√©trica n√£o me assusta mais, sabia?'},
-    {speaker:'voltra', text:'Ainda bem. N√£o seria justo mesmo.'},
-  ]},
-  {pair:['voltra','shecry'], lines:[
-    {speaker:'shecry', text:'Gelo conduz eletricidade pior que √°gua, Voltra.'},
-    {speaker:'voltra', text:'Ent√£o nunca teste isso comigo por perto.'},
-  ]},
-  {pair:['voltra','raio'], lines:[
-    {speaker:'raio', text:'Duas fontes de energia el√©trica no mesmo time, Voltra? Vai dar curto.'},
-    {speaker:'voltra', text:'S√≥ se voc√™ n√£o souber controlar a sua. *Risos*'},
-    {speaker:'raio', text:'*Risos*'},
-  ]},
-];
-let banterNextRoundPve = {};
-let banterNextRoundP1 = {};
-let banterNextRoundP2 = {};
-let interactionFiredThisRound = false; // garante s√≥ 1 intera√ß√£o (dupla, trio ou solo) por rodada
-
-function checkDuoBanter(teamIds, tracker, currentRound){
-  if(interactionFiredThisRound) return;
-  const eligibleDuos = DUO_BANTER.filter(duo=>{
-    const key = duo.pair.slice().sort().join('-');
-    const nextRound = tracker[key] || 1;
-    return currentRound >= nextRound && duo.pair.every(id=>teamIds.includes(id));
-  });
-  const eligibleSolos = teamIds.filter(id=>{
-    if(!SOLO_LINES[id] || !SOLO_LINES[id].battlestart) return false;
-    const key = 'solo_'+id;
-    const nextRound = tracker[key] || 1;
-    return currentRound >= nextRound;
-  });
-  const total = eligibleDuos.length + eligibleSolos.length;
-  if(total===0) return;
-  const roll = Math.floor(Math.random()*total);
-  interactionFiredThisRound = true;
-  if(roll < eligibleDuos.length){
-    const duo = eligibleDuos[roll];
-    const key = duo.pair.slice().sort().join('-');
-    tracker[key] = currentRound + 4;
-    duo.lines.forEach((line,idx)=>{
-      setTimeout(()=>{
-        const name = CHAMPION_CATALOG[line.speaker].name;
-        log(`${name}: "${line.text}"`, 'hl');
-        const speakerUnit = units.find(u=>u.alive && u.champId===line.speaker);
-        if(speakerUnit){
-          spawnFloatText(speakerUnit.rx, speakerUnit.ry-50, line.text, '#eae4d8', 'banter');
-        } else {
-          log(`(${name} n√£o foi encontrado em campo pra mostrar a fala)`, 'sys');
-        }
-      }, idx*2200);
-    });
-  } else {
-    const champId = eligibleSolos[roll-eligibleDuos.length];
-    tracker['solo_'+champId] = currentRound + 4;
-    fireSoloLine(champId, 'battlestart');
-  }
-}
-
-function spawnFloatText(x,y,text,color,mode){
-  const isBig = mode==='dramatic' || mode==='banter';
-  const shakes = mode==='dramatic';
-  floatingTexts.push({x,y,text,color,life: isBig?3500:800, age:0, big:isBig, shake:shakes});
-}
-function spawnCastEffect(x,y,color){
-  castEffects.push({x,y,color,age:0,life:450});
-}
-
-function applyDamage(attacker, target, baseDmg, tag, ignoreDefense){
-  const now = performance.now();
-  if(target.element==='vento' && !ignoreDefense && target.alive){
-    const lowHp = target.hp/target.maxhp < 0.40;
-    const isBot = !!ENEMY_CATALOG[target.champId];
-    const dodgeChance = isBot ? (lowHp?0.20:0.10) : (lowHp?0.30:0.20);
-    if(Math.random() < dodgeChance){
-      spawnFloatText(target.rx, target.ry-24, 'ESQUIVOU', '#7fd49a');
-      return;
-    }
-  }
-  const mult = elemMultiplier(attacker.element, target.element);
-  let dmg = Math.round(baseDmg * mult * jedegarAuraMultiplier(attacker) * (attacker.jedegarDeathBuffUntil && now < attacker.jedegarDeathBuffUntil ? 1.25 : 1) * (attacker.shavaSecretBonus ? 1.15 : 1) * (attacker.shavaWeakenUntil && now < attacker.shavaWeakenUntil ? 0.75 : 1));
-  if(countItem(attacker,'furia_crescente')>0 && Math.random()<0.18){
-    dmg = Math.round(dmg*1.5);
-    spawnFloatText(attacker.rx, attacker.ry-36, 'CR√çTICO!', '#e8c250');
-  }
-  if(attacker.champId==='gelida' && attacker.gelidaDmgBuffUntil && now < attacker.gelidaDmgBuffUntil) dmg = Math.round(dmg*2); // f√∫ria glacial p√≥s-renascimento
-  if(target.vulnerableUntil && now < target.vulnerableUntil) dmg = Math.round(dmg*1.15);
-  if(!ignoreDefense){
-    let effectiveReduction = target.dmgReduction || 0;
-    if(target.barrierUntil && now < target.barrierUntil) effectiveReduction = Math.min(0.9, effectiveReduction + 0.15*(target.stars||1)*passiveAmp(target));
-    if(target.element==='metal'){
-      const auraSource = units.find(o=>o.alive && o.team===target.team && o.champId==='ima' && o.id!==target.id && hexDistance(o,target)<=1);
-      if(auraSource) effectiveReduction += 0.08*passiveAmp(auraSource);
-    }
-    if(target.champId==='shecry'){
-      effectiveReduction += (target.hp/target.maxhp) * 0.35;
-    }
-    if(target.crateShieldUntil && now < target.crateShieldUntil) effectiveReduction += 0.10;
-    if(target.special==='couraca') dmg = Math.round(dmg*0.8);
-    let armorPenPct = 0;
-    if(countItem(attacker,'punho_serra')>0) armorPenPct = Math.max(armorPenPct, 0.15*countItem(attacker,'punho_serra'));
-    if(countItem(attacker,'carniceiro')>0) armorPenPct = Math.max(armorPenPct, 0.25);
-    if(countItem(attacker,'fio_mortal')>0) armorPenPct = Math.max(armorPenPct, 0.25);
-    if(armorPenPct>0) effectiveReduction = effectiveReduction * (1-Math.min(1,armorPenPct));
-    if(jedegarEnemyDefenseDebuff(target)) effectiveReduction = Math.max(0, effectiveReduction - 0.30);
-    if(target.jedegarShieldUntil && now < target.jedegarShieldUntil) effectiveReduction = Math.min(0.9, effectiveReduction + 0.20);
-    if(target.champId==='frosk') effectiveReduction = Math.min(0.9, effectiveReduction + 0.15); // pele de gelo, passiva permanente
-    if(target.shavaArmorDebuffUntil && now < target.shavaArmorDebuffUntil) effectiveReduction = Math.max(0, effectiveReduction - 0.20);
-    if(effectiveReduction) dmg = Math.round(dmg*(1-effectiveReduction));
-    if(target.special==='couraca' || effectiveReduction) spawnCastEffect(target.rx, target.ry, target.color);
-  }
-  if((target.frenzyUntil && now < target.frenzyUntil) || (target.barrierUntil && now < target.barrierUntil) || (target.ghostUntil && now < target.ghostUntil) || (target.champId==='raio' && target.comboActive) || (target.voltraDetonateUntil && now < target.voltraDetonateUntil)){
-    dmg = 0;
-    const immuneColor = (target.barrierUntil && now < target.barrierUntil) ? '#c7cfd9' : (target.ghostUntil && now<target.ghostUntil) ? '#8fd4e8' : (target.champId==='raio' && target.comboActive) ? '#f5e663' : (target.voltraDetonateUntil && now<target.voltraDetonateUntil) ? '#f5e663' : '#e0693a';
-    spawnFloatText(target.rx, target.ry-24, 'IMUNE', immuneColor);
-  }
-  if(target.shecryShield>0 && dmg>0){
-    const absorbed = Math.min(dmg, target.shecryShield);
-    target.shecryShield -= absorbed;
-    dmg -= absorbed;
-    if(absorbed>0) spawnFloatText(target.rx, target.ry-30, `ESCUDO -${absorbed}`, '#8fd4e8');
-  }
-  target.hp -= dmg;
-  target.flashUntil = now+150;
-  if(dmg>0){
-    if(attacker.range && attacker.range>1) sfxRangedHit(); else sfxMeleeHit();
-    if(attacker.team==='player'){
-      const stats = ensureMatchStats(attacker.champId);
-      stats.damageDealt += dmg;
-      checkDamageRecord(attacker.champId, stats.damageDealt);
-    }
-    if(target.team==='player') ensureMatchStats(target.champId).damageTaken += dmg;
-    if(attacker.isTentacle){
-      spawnCastEffect(target.rx, target.ry, '#4f9fd4');
-      triggerScreenShake(attacker.tentacleFrenzy ? 6 : 4, 140);
-    }
-  }
-  let color = mult>1 ? '#f2a541' : (mult<1 ? '#7d8590' : '#e8e0d4');
-  if(dmg>0) spawnFloatText(target.rx, target.ry-24, (tag?tag+' ':'')+String(dmg), color);
-  const cls = attacker.champId==='ferrha' ? 'hl' : '';
-  const suffix = mult>1 ? ' (vantagem elemental!)' : mult<1 ? ' (resistido)' : '';
-  if(dmg>0) log(`${attacker.name} atinge ${target.name} ‚Äî ${dmg} de dano${suffix}`, cls);
-
-  if((target.champId==='terrus' || target.borrowedChampPower==='terrus') && !target.stoneSkinUsed && target.hp>0 && target.hp/target.maxhp<=0.30){
-    target.stoneSkinUsed = true;
-    target.barrierUntil = now + 2000*passiveAmp(target);
-    target.hp = Math.min(target.maxhp, target.hp + Math.round(target.maxhp*0.20*passiveAmp(target)));
-    target.dmgReduction = Math.min(0.6, (target.dmgReduction||0) + 0.15*passiveAmp(target));
-    spawnCastEffect(target.rx, target.ry, '#b08a52');
-    spawnFloatText(target.rx, target.ry-34, 'PELE DE PEDRA!', '#b08a52');
-    const terrusPhrase = randomPhrase('terrus');
-    spawnFloatText(target.rx, target.ry-58, terrusPhrase, '#b08a52', 'dramatic');
-    log(`${target.name}: "${terrusPhrase}"`, 'hl');
-    log(`${target.name} petrifica a pele ‚Äî fica imune por 2s, cura 20% da vida e ganha defesa permanente!`, 'hl');
-    triggerScreenShake(6, 180);
-  }
-
-  if(target.champId==='jedegar' && target.hp>0 && target.hp/target.maxhp<=0.30){
-    const jprog = getJedegarProgress(target);
-    if(!jprog.lowHpUsed){
-      jprog.lowHpUsed = true;
-      const nearEnemy = units.filter(o=>o.alive && o.team!==target.team).sort((a,b)=>hexDistance(target,a)-hexDistance(target,b))[0];
-      if(nearEnemy){
-        knockbackUnit(target, nearEnemy, 8); // ergue um pilar debaixo dele, arremessando longe
-        knockbackUnit(nearEnemy, target, 4); // ela foge sobre uma fileira de pedra rec√©m-criada
-      }
-      spawnCastEffect(target.rx, target.ry, '#8a6a4a');
-      spawnFloatText(target.rx, target.ry-40, 'PILAR DE FUGA!', '#8a6a4a');
-      log(`${target.name} ergue um pilar sob o inimigo mais pr√≥ximo, arremessando-o longe, e foge sobre uma fileira de pedra rec√©m-criada!`, 'hl');
-      triggerScreenShake(8, 260);
-    }
-  }
-
-  if((target.champId==='raio' || target.borrowedChampPower==='raio') && !target.comboActive && target.comboHpArmed && target.hp>0 && target.hp/target.maxhp<=0.10){
-    target.comboHpArmed = false;
-    triggerComboUltimate(target, attacker);
-  }
-
-  if(target.champId==='shecry' && !target.shecryUltUsed && target.hp>0 && target.hp/target.maxhp<=0.30){
-    target.shecryUltUsed = true;
-    target.shecryUltStartAt = now;
-    target.shecryUltUntil = now + 6000*passiveAmp(target);
-    target.shecryShield = Math.round(target.maxhp*0.25*passiveAmp(target));
-    spawnCastEffect(target.rx, target.ry, '#8fd4e8');
-    spawnFloatText(target.rx, target.ry-34, 'MANTO GLACIAL!', '#8fd4e8');
-    log(`${target.name} ergue um escudo de gelo e desacelera tudo ao redor!`, 'hl');
-    triggerScreenShake(7, 220);
-  }
-
-  if(dmg>0 && attacker.champId==='kael' && attacker.frenzyUntil && now < attacker.frenzyUntil){
-    const healAmt = Math.round(9*passiveAmp(attacker));
-    attacker.hp = Math.min(attacker.maxhp, attacker.hp + healAmt);
-    spawnFloatText(attacker.rx, attacker.ry-40, `+${healAmt} vida`, '#7bbf6a');
-  }
-  if(dmg>0 && countItem(attacker,'amuleto')>0){
-    const healAmt = 3*countItem(attacker,'amuleto');
-    attacker.hp = Math.min(attacker.maxhp, attacker.hp + healAmt);
-    spawnFloatText(attacker.rx, attacker.ry-46, `+${healAmt} vida`, '#7bbf6a');
-  }
-  if(dmg>0 && (countItem(attacker,'presas_sangrentas')>0 || countItem(attacker,'carniceiro')>0)){
-    const lifestealPct = countItem(attacker,'carniceiro')>0 ? 0.12 : 0.08*countItem(attacker,'presas_sangrentas');
-    const healAmt = Math.round(dmg*lifestealPct);
-    if(healAmt>0){
-      attacker.hp = Math.min(attacker.maxhp, attacker.hp + healAmt);
-      spawnFloatText(attacker.rx, attacker.ry-52, `+${healAmt} vida`, '#c2445a');
-    }
-  }
-  if(dmg>0 && attacker.champId==='shava'){
-    attacker.shavaHitCount = (attacker.shavaHitCount||0) + 1;
-    if(attacker.shavaHitCount % 3 === 0){
-      const shavaHealAmt = Math.round(dmg*0.10);
-      attacker.hp = Math.min(attacker.maxhp, attacker.hp + shavaHealAmt);
-      spawnFloatText(attacker.rx, attacker.ry-52, `+${shavaHealAmt} vida`, '#c9d9e8');
-    }
-    if(attacker.shavaComboTargetId === target.id){
-      attacker.shavaComboTargetHits = (attacker.shavaComboTargetHits||0) + 1;
-    } else {
-      attacker.shavaComboTargetId = target.id;
-      attacker.shavaComboTargetHits = 1;
-    }
-    if(attacker.shavaComboTargetHits % 6 === 0){
-      spawnFloatText(attacker.rx, attacker.ry-58, '√Åpice da tormenta!', '#c9d9e8', 'dramatic');
-      log(`${attacker.name}: "√Åpice da tormenta!"`, 'hl');
-      const vortexNearby = units.filter(o=>o.alive && o.team!==attacker.team && o.id!==target.id && hexDistance(attacker,o)<=2);
-      if(vortexNearby.length){
-        vortexNearby.forEach(o=>{ applyCC(o, 800, attacker.element); knockbackUnit(attacker, o, 1); });
-        spawnCastEffect(attacker.rx, attacker.ry, '#c9d9e8');
-        triggerScreenShake(6, 200);
-        log(`${attacker.name} cria um v√≥rtice, empurrando e atordoando ${vortexNearby.length} inimigo${vortexNearby.length>1?'s':''} ao redor!`, 'hl');
-      }
-    }
-  }
-  if(target.hp<=0){
-    if((target.champId==='kael' || target.borrowedChampPower==='kael') && !target.frenzyUsed){
-      target.hp = 1;
-      target.frenzyUsed = true;
-      target.frenzyUntil = now + 3000*passiveAmp(target);
-      spawnCastEffect(target.rx, target.ry, '#e0693a');
-      spawnFloatText(target.rx, target.ry-34, 'FRENESI!', '#e0693a');
-      const kaelPhrase = randomPhrase('kael');
-      spawnFloatText(target.rx, target.ry-58, kaelPhrase, '#e0693a', 'dramatic');
-      log(`${target.name}: "${kaelPhrase}"`, 'hl');
-      log(`${target.name} entra em frenesi ‚Äî imortal, mais r√°pido e mais forte por 3 segundos!`, 'hl');
-      triggerScreenShake(10, 300);
-    } else if((target.champId==='ferrha' || target.borrowedChampPower==='ferrha') && !target.barrierUsed){
-      target.barrierUsed = true;
-      target.barrierUntil = now + 2000*passiveAmp(target);
-      target.hp = Math.min(target.maxhp, Math.round(target.maxhp*0.45*passiveAmp(target)));
-      spawnCastEffect(target.rx, target.ry, '#c7cfd9');
-      spawnFloatText(target.rx, target.ry-34, 'BARREIRA!', '#c7cfd9');
-      const adjacentEnemies = units.filter(o=>o.alive && o.team!==target.team && hexDistance(o,target)===1);
-      const barrierPhraseKey = adjacentEnemies.length>=3 ? 'ferrha_barrier_many' : 'ferrha_barrier_2';
-      const ferrhaBarrierPhrase = randomPhrase(barrierPhraseKey);
-      spawnFloatText(target.rx, target.ry-58, ferrhaBarrierPhrase, '#c7cfd9', 'dramatic');
-      log(`${target.name}: "${ferrhaBarrierPhrase}"`, 'hl');
-      log(`${target.name} ergue uma barreira de ferro, cura 45% da vida e empurra os inimigos ao redor!`, 'hl');
-      const barrierKnockback = currentWeather==='vento_forte' ? 3 : 2;
-      adjacentEnemies.forEach(e=>knockbackUnit(target, e, barrierKnockback));
-      triggerScreenShake(8, 250);
-    } else if(target.champId==='gelida' && owned['gelida'] && (owned['gelida'].gelidaRevivesUsed||0) < 2){
-      target.hp = 1;
-      spawnCastEffect(target.rx, target.ry, '#8fd4e8');
-      spawnFloatText(target.rx, target.ry-34, '√öLTIMO SUSPIRO', '#8fd4e8');
-      log(`${target.name} usa seu √∫ltimo suspiro glacial!`, 'hl');
-
-      // agora ela mira o inimigo com MENOS vida da arena inteira, n√£o quem a matou ‚Äî d√° mais chance da passiva funcionar.
-      const enemies = units.filter(o=>o.alive && o.team!==target.team);
-      enemies.sort((a,b)=>(a.hp/a.maxhp)-(b.hp/b.maxhp));
-      const ghostTarget = enemies[0] || null;
-      target.ghostTargetId = ghostTarget ? ghostTarget.id : null;
-
-      if(ghostTarget){
-        const lowFrac = ghostTarget.hp/ghostTarget.maxhp;
-        if(lowFrac <= 0.05){
-          // execu√ß√£o instant√¢nea ‚Äî ela fica em sil√™ncio dessa vez
-          ghostTarget.hp = 0; ghostTarget.alive = false;
-          spawnFloatText(ghostTarget.rx, ghostTarget.ry-40, 'EXECUTADO!', '#8fd4e8');
-          spawnCastEffect(ghostTarget.rx, ghostTarget.ry, '#8fd4e8');
-          log(`${target.name} executa ${ghostTarget.name} na hora com o gelo!`, 'hl');
-          if(ghostTarget.team==='player'){ roundDeaths.push(ghostTarget.name); ensureMatchStats(ghostTarget.champId).deaths++; }
-          triggerScreenShake(10, 260);
-          target.ghostUntil = now + 3000*passiveAmp(target);
-          if(mode==='pve' && ghostTarget.team==='enemy' && !units.some(o=>o.alive && o.team==='enemy')){
-            triggerFinisherSequence(target, ()=>{ checkVictory(); });
-          }
-        } else {
-          const gelidaUltPhrase = randomPhrase('gelida_ult');
-          spawnFloatText(target.rx, target.ry-58, gelidaUltPhrase, '#8fd4e8', 'dramatic');
-          log(`${target.name}: "${gelidaUltPhrase}"`, 'hl');
-          knockbackUnit(target, ghostTarget, 10);
-          applyCC(ghostTarget, 3000, 'gelo');
-          spawnFloatText(ghostTarget.rx, ghostTarget.ry-40, 'PRESO NO GELO', '#8fd4e8');
-          spawnCastEffect(ghostTarget.rx, ghostTarget.ry, '#8fd4e8');
-          spawnIcePrison({q:ghostTarget.q, r:ghostTarget.r}, 3000);
-          triggerScreenShake(8, 260);
-          const pillarDmg = Math.round(30*passiveAmp(target));
-          for(let i=1;i<=6;i++){
-            emberEvents.push({time: now + i*500, targetId: ghostTarget.id, type:'iceTick', dmg: pillarDmg});
-          }
-          target.ghostUntil = now + 5000*passiveAmp(target);
-        }
-      } else {
-        target.ghostUntil = now + 5000*passiveAmp(target);
-      }
-    } else if(target.champId==='voltra' && target.overchargeUntil && now < target.overchargeUntil && !target.voltraDetonating){
-      target.hp = 1;
-      target.voltraDetonating = true;
-      target.voltraDetonateUntil = now + 4000;
-      spawnCastEffect(target.rx, target.ry, '#f5e663');
-      spawnFloatText(target.rx, target.ry-34, 'CARREGANDO...', '#f5e663');
-      const voltraDetonatePhrase = randomPhrase('voltra_detonate');
-      spawnFloatText(target.rx, target.ry-58, voltraDetonatePhrase, '#f5e663', 'dramatic');
-      log(`${target.name}: "${voltraDetonatePhrase}"`, 'hl');
-      log(`${target.name} entra em colapso ‚Äî carrega energia pra explodir em 4 segundos!`, 'hl');
-      triggerScreenShake(6, 200);
-      // 4 pulsos durante a carga ‚Äî cada um menor que o anterior, puxando os inimigos pra perto aos poucos.
-      // Quando ela explode, libera o efeito acumulado de uma vez (a onda de choque que j√° existe).
-      const pulseSizes = [450, 320, 200, 90];
-      pulseSizes.forEach((size, i)=>{
-        setTimeout(()=>{
-          if(!target.alive || !target.voltraDetonating) return;
-          const enemiesNow = units.filter(o=>o.alive && o.team!==target.team);
-          enemiesNow.forEach(o=>pullAdjacent(target, o));
-          spawnShrinkingRing(target.rx, target.ry, size, '#f5e663');
-          triggerScreenShake(3+i, 150);
-        }, i*1000);
-      });
-    } else {
-      target.hp=0; target.alive=false;
-      log(`${target.name} caiu em combate.`, 'sys');
-      if(target.team==='player'){ roundDeaths.push(target.name); ensureMatchStats(target.champId).deaths++; }
-      if(target.team==='corrupted'){
-        const nearby = units.filter(o=>o.alive && hexDistance(o,target)<=1);
-        if(nearby.length){
-          const explodeDmg = Math.round(target.maxhp*0.35);
-          const explodeSource = {element:'corrupted', team:'corrupted', champId:'devorador', name:target.name};
-          nearby.forEach(o=> applyDamage(explodeSource, o, explodeDmg, 'üí•', true));
-          spawnCastEffect(target.rx, target.ry, '#9b4fd9');
-          triggerScreenShake(5, 150);
-        }
-      }
-      if(target.champId==='nerith'){
-        const tentacles = units.filter(o=>o.alive && o.isTentacle && o.tentacleParentId===target.id);
-        if(tentacles.length){
-          tentacles.forEach(t=>{ t.tentacleFrenzy = true; });
-          spawnFloatText(target.rx, target.ry-40, 'TENT√ÅCULOS ENLOUQUECEM!', '#4f9fd4');
-          const nerithPhrase = randomPhrase('nerith_frenzy');
-          spawnFloatText(target.rx, target.ry-64, nerithPhrase, '#4f9fd4', 'dramatic');
-          log(`${target.name}: "${nerithPhrase}"`, 'hl');
-          triggerScreenShake(8, 260);
-          log(`Os tent√°culos de ${target.name} entram em frenesi!`, 'hl');
-        }
-      }
-      if(target.champId==='jedegar'){
-        const jedegarDeathPhrase = 'A morte √© apenas uma nova etapa de nossa ascens√£o!';
-        spawnCastEffect(target.rx, target.ry, '#8a6a4a');
-        spawnFloatText(target.rx, target.ry-64, jedegarDeathPhrase, '#8a6a4a', 'dramatic');
-        log(`${target.name}: "${jedegarDeathPhrase}"`, 'hl');
-        triggerScreenShake(10, 320);
-        const jedegarAllies = units.filter(o=>o.alive && o.team===target.team && o.id!==target.id);
-        if(jedegarAllies.length){
-          jedegarAllies.sort((a,b)=>(a.hp/a.maxhp)-(b.hp/b.maxhp));
-          const jedegarChosen = jedegarAllies[0];
-          jedegarChosen.jedegarShieldUntil = now + 5000;
-          jedegarChosen.jedegarDeathBuffUntil = now + 5000;
-          spawnCastEffect(jedegarChosen.rx, jedegarChosen.ry, '#8a6a4a');
-          spawnFloatText(jedegarChosen.rx, jedegarChosen.ry-34, 'B√äN√á√ÉO DE JEDEGAR', '#8a6a4a');
-          log(`${target.name} ergue um c√≠rculo protetor ao redor de ${jedegarChosen.name} ‚Äî escudo, dano e velocidade de ataque por 5 segundos!`, 'hl');
-        }
-        const jedegarDeadId = target.id;
-        setTimeout(()=>{
-          Object.keys(jedegarStructures).forEach(k=>{
-            if(jedegarStructures[k].ownerId === jedegarDeadId) delete jedegarStructures[k];
-          });
-        }, 5000);
-      }
-      if(target.isTentacle){
-        const parent = units.find(x=>x.id===target.tentacleParentId);
-        if(parent && parent.alive){
-          const remaining = units.filter(o=>o.alive && o.isTentacle && o.tentacleParentId===parent.id).length;
-          if(remaining===3) parent.tentacleCooldown = 1500; // ela tinha o limite de 4, abriu vaga ‚Äî reabastece r√°pido
-        }
-      }
-      if(mode==='pve' && attacker.team==='player' && (target.team==='enemy' || target.team==='corrupted')){
-        const xpAmt = (2 + Math.floor(wave/6)) + (target.team==='corrupted' ? 3 : 0);
-        waveXpPool += xpAmt; // vai pro fundo comum ‚Äî dividido igualmente com o time no fim da onda
-        spawnFloatText(attacker.rx, attacker.ry-34, `+${formatXp(xpAmt)} xp (time)`, '#e8c250');
-        ensureMatchStats(attacker.champId).kills++;
-        if(hasItem(attacker,'fragmento_corrompido') && Math.random()<0.25 && attacker.alive && attacker.hp<attacker.maxhp){
-          const healAmt = Math.round(attacker.maxhp*0.15);
-          attacker.hp = Math.min(attacker.maxhp, attacker.hp+healAmt);
-          spawnFloatText(attacker.rx, attacker.ry-30, `+${healAmt} ‚ú®`, '#9b4fd9');
-        }
-        if(target.team==='corrupted'){
-          spawnFloatText(target.rx, target.ry-24, `Purificado`, '#9b4fd9');
-          trackCorruptedKill();
-        }
-        if(target.isBoss){
-          unlockAchievement('boss_slayer');
-          if(target.special && target.borrowedChampPower) unlockAchievement('double_boss_slayer');
-          if(Math.random() < 0.4){
-            const relicIds = Object.keys(ITEM_CATALOG).filter(id=>ITEM_CATALOG[id].isRelic);
-            const relicId = relicIds[Math.floor(Math.random()*relicIds.length)];
-            itemInventory[relicId] = (itemInventory[relicId]||0) + 1;
-            spawnFloatText(target.rx, target.ry-50, `‚ú® ${ITEM_CATALOG[relicId].name}!`, '#e8c250', 'dramatic');
-            log(`‚ú® ${target.name} deixou cair uma rel√≠quia: ${ITEM_CATALOG[relicId].name}!`, 'hl');
-          }
-          if(!bossCountedThisWave){
-            bossCountedThisWave = true;
-            bossDefeatCount++;
-            if(bossDefeatCount%3===0) pendingBlessingChoice = true;
-          }
-        }
-        if(target.team==='enemy' && isPassiveMoment(attacker) && !units.some(o=>o.alive && o.team==='enemy')){
-          triggerFinisherSequence(resolveRealAttacker(attacker), ()=>{ checkVictory(); });
-        }
-      }
-    }
-  }
-}
-
-// Corrente El√©trica da Voltra: eletrifica o alvo (reduz velocidade), propaga pra outro inimigo a at√© 3 blocos
-// (25% mais fraca a cada salto), e acumula carga at√© estourar a Sobrecarga.
-function applyElectricChain(u, target, visited, fromX, fromY){
-  if(!visited) visited = new Set();
-  if(visited.has(target.id)) return;
-  visited.add(target.id);
-  const now = performance.now();
-  const baseSlowPct = Math.min(0.5, Math.max(0.1, u.atk*0.012));
-  const hopFactor = Math.pow(0.75, visited.size-1);
-  target.electroSlowPct = baseSlowPct*hopFactor;
-  target.electroSlowUntil = now + 3000;
-  spawnFloatText(target.rx, target.ry-30, 'ELETRIFICADO', '#f5e663');
-  spawnCastEffect(target.rx, target.ry, '#f5e663');
-  if(fromX!==undefined) spawnLightningBolt(fromX, fromY, target.rx, target.ry);
-  u.chainCharge = (u.chainCharge||0) + 1;
-  if(u.chainCharge>=10 && now>=(u.overchargeUntil||0)){
-    u.chainCharge = 0;
-    u.overchargeUntil = now + 5000;
-    spawnFloatText(u.rx, u.ry-40, 'SOBRECARGA!', '#f5e663');
-    const voltraOverchargePhrase = randomPhrase('voltra_overcharge');
-    spawnFloatText(u.rx, u.ry-64, voltraOverchargePhrase, '#f5e663', 'dramatic');
-    log(`${u.name}: "${voltraOverchargePhrase}"`, 'hl');
-    log(`${u.name} entra em Sobrecarga! Se morrer nos pr√≥ximos 5s, explode numa onda de choque.`, 'hl');
-    triggerScreenShake(7,220);
-  }
-  const targetX = target.rx, targetY = target.ry;
-  setTimeout(()=>{
-    if(!u.alive) return;
-    const next = units.find(o=>o.alive && o.team!==u.team && !visited.has(o.id) && hexDistance(o,target)<=3);
-    if(next) applyElectricChain(u, next, visited, targetX, targetY);
-  }, 1000); // 1s de atraso entre cada salto, pra dar tempo do raio visual passar de um pro outro
-}
-
-// Onda de choque da Voltra: dispara quando um inimigo eletrificado morre durante a Sobrecarga ‚Äî
-// paralisa todo mundo do lado inimigo por 5s, com dano que escala conforme quantos estavam na corrente/por perto.
-// Onda de choque da Voltra: dispara quando ELA MESMA morre durante a pr√≥pria Sobrecarga ‚Äî
-// puxa todo inimigo pra perto de onde ela caiu, paralisa todo mundo por 5s, com dano que escala
-// conforme quantos inimigos estavam eletrificados/por perto.
-function triggerElectricShockwave(voltra, deadUnit){
-  const now = performance.now();
-  const chainedCount = units.filter(o=>o.alive && o.team!==voltra.team && o.electroSlowUntil && now<o.electroSlowUntil).length;
-  const nearbyCount = units.filter(o=>o.alive && o.team!==voltra.team && hexDistance(o,deadUnit)<=3).length;
-  const speedBonus = 1 + Math.max(0, voltra.speed - 1) * 2; // quanto mais velocidade de ataque, mais forte a onda
-  const shockDmg = Math.round((90 + (chainedCount+nearbyCount)*25) * speedBonus);
-  const targets = units.filter(o=>o.alive && o.team!==voltra.team);
-  const hadTargets = targets.length>0;
-  const shockSource = {element:'eletrico', team:voltra.team, champId:voltra.champId, name:voltra.name};
-  targets.forEach(o=>{
-    pullAdjacent(voltra, o);
-    applyCC(o, 5000, 'eletrico');
-    applyDamage(shockSource, o, shockDmg, '‚ö°ONDA', true);
-  });
-  const isWipe = hadTargets && voltra.team==='player' && !units.some(o=>o.alive && o.team!==voltra.team);
-  if(isWipe) unlockAchievement('voltra_wipe');
-  spawnFloatText(deadUnit.rx, deadUnit.ry-40, 'ONDA DE CHOQUE!', '#f5e663');
-  spawnShockwaveRing(deadUnit.rx, deadUnit.ry, 520, '#f5e663', 0);
-  spawnShockwaveRing(deadUnit.rx, deadUnit.ry, 520, '#fff2a8', 120);
-  log(`${voltra.name} morre em Sobrecarga e detona uma onda de choque ‚Äî puxa e paraliza todos os inimigos por 5s!`, 'hl');
-  triggerScreenShake(10, 320);
-  if(mode==='pve' && isWipe){
-    triggerFinisherSequence(voltra, ()=>{ checkVictory(); });
-  }
-}
-
-let tentacleIdCounter = 80000;
-// Nerith invoca tent√°culos perto de quem ela est√° atacando ‚Äî eles n√£o se movem, batem com alcance 3,
-// t√™m pouca vida e dano consider√°vel. At√© 5 vivos por vez.
-function spawnNerithTentacle(nerith){
-  const aliveTentacles = units.filter(o=>o.alive && o.isTentacle && o.tentacleParentId===nerith.id);
-  if(aliveTentacles.length>=4) return;
-  const center = {q:nerith.q, r:nerith.r};
-  const occ = occupiedMap();
-  const candidates = allHexes.filter(h=>hexDistance(h,center)<=2 && !isBlockedTile(h) && occ[hexKey(h)]===undefined);
-  if(candidates.length===0) return;
-  const spot = candidates[Math.floor(Math.random()*candidates.length)];
-  const starMult = 1 + (nerith.stars-1)*0.15;
-  const def = {name:'Tent√°culo', element:'agua', hp:Math.round(28*starMult), atk:Math.round(22*starMult), range:3, speed:1};
-  const statOverride = {hp:def.hp, atk:def.atk, range:3, speed:1, dmgReduction:0};
-  const t = makeUnit(tentacleIdCounter++, nerith.team, 'tentaculo', def, 1, spot.q, spot.r, statOverride, 1, []);
-  t.isTentacle = true;
-  t.cantMove = true;
-  t.tentacleParentId = nerith.id;
-  t.spawnPortalUntil = performance.now() + 900; // mesmo efeito de portal das criaturas corrompidas
-  t.actionTimer = 900;
-  units.push(t);
-  spawnCastEffect(t.rx, t.ry, '#4f9fd4');
-  if(aliveTentacles.length+1>=4) unlockAchievement('nerith_swarm');
-}
-function getTentacleTarget(t){
-  const parent = units.find(x=>x.id===t.tentacleParentId);
-  if(!t.tentacleFrenzy && parent && parent.alive && parent.attackAnim){
-    const parentTarget = units.find(x=>x.id===parent.attackAnim.targetId && x.alive);
-    if(parentTarget && hexDistance(t,parentTarget)<=t.range) return parentTarget;
-  }
-  const inRange = units.filter(o=>o.alive && o.team!==t.team && hexDistance(t,o)<=t.range);
-  if(inRange.length===0) return null;
-  return inRange[Math.floor(Math.random()*inRange.length)];
-}
-
-function tryAttackNearbyStructure(u){
-  const now = performance.now();
-  const entries = Object.entries(jedegarStructures).filter(([k,s])=> s.ownerTeam !== u.team && hexDistance(u,s) <= u.range);
-  if(entries.length===0) return false;
-  const [key, s] = entries[0];
-  s.hitsTaken += 1;
-  const p = hexToPixel(s.q, s.r);
-  spawnFloatText(p.x, p.y-20, 'PILAR ATINGIDO', '#c9a53a');
-  triggerScreenShake(3, 150);
-  // libera energia: fortalece os pilares aliados pr√≥ximos por 3s
-  Object.values(jedegarStructures).forEach(other=>{
-    if(other===s || other.ownerTeam!==s.ownerTeam) return;
-    if(hexDistance(other, s) <= 2) other.boostUntil = now + 3000;
-  });
-  const needed = u.isBoss ? 1 : s.hitsNeeded;
-  if(s.hitsTaken >= needed){
-    delete jedegarStructures[key];
-    log('Um pilar de Jedegar foi destru√≠do.', 'sys');
-  }
-  return true;
-}
-function doAction(u){
-  // pilares da Jedegar viram alvo de verdade ‚Äî se tiver um por perto, tem uma chance boa
-  // de atacar ele em vez do inimigo normal, sen√£o eles nunca eram destru√≠dos na pr√°tica.
-  if(!u.isTentacle && Math.random() < 0.35 && tryAttackNearbyStructure(u)) return;
-  const target = u.isTentacle ? getTentacleTarget(u) : nearestEnemy(u);
-  if(!target){
-    tryAttackNearbyStructure(u);
-    return;
-  }
-  const dist = hexDistance(u,target);
-  if(dist <= u.range){
-    if(u.range>1 && dist===1 && !u.cantMove && performance.now() >= (u.kiteCooldownUntil||0)){
-      // atiradores tentam se afastar do corpo a corpo, mas s√≥ a cada 5s (sen√£o fica fugindo toda hora)
-      const occ = occupiedMap();
-      const retreatOptions = neighbors(u).filter(n=>inGrid(n) && !isBlockedTile(n) && occ[hexKey(n)]===undefined && hexDistance(n,target) > dist);
-      if(retreatOptions.length){
-        const dest = retreatOptions[Math.floor(Math.random()*retreatOptions.length)];
-        u.q = dest.q; u.r = dest.r;
-        const p = hexToPixel(u.q,u.r);
-        u.targetRx = p.x; u.targetRy = p.y;
-        checkPortalTeleport(u);
-        u.kiteCooldownUntil = performance.now() + 5000;
-        return;
-      }
-    }
-    if(currentWeather==='vento_forte' && u.range>1 && Math.random()<0.15){
-      spawnFloatText(u.rx, u.ry-24, 'ERROU (vento)', '#7fd49a');
-      log(`${u.name} erra o tiro por causa do vento forte.`, 'sys');
-      return;
-    }
-    u.attackAnim = {targetId:target.id, start:performance.now(), duration:280};
-    let dmg = u.atk;
-    if(u.range>1){
-      const distBonus = 1 + Math.max(0, dist-1)*0.08;
-      dmg = Math.round(dmg*distBonus);
-    }
-    if(u.champId==='shecry'){
-      const missingFrac = 1 - (u.hp/u.maxhp);
-      dmg = Math.round(dmg*(1 + missingFrac*1.2));
-    }
-
-    if(u.special==='lanca'){
-      u.hitCount++;
-      if(u.hitCount%3===0){ dmg=Math.round(dmg*1.8); applyDamage(u,target,dmg,'‚öî'); spawnCastEffect(target.rx,target.ry,u.color); triggerScreenShake(5,150); return; }
-    }
-
-    if(u.special==='perfuro'){
-      u.hitCount++;
-      if(u.hitCount%4===0){ dmg=Math.round(dmg*1.6); applyDamage(u,target,dmg,'üéØ',true); spawnCastEffect(target.rx,target.ry,u.color); return; }
-    }
-
-    if(u.special==='rajada'){
-      u.hitCount++;
-      if(u.hitCount%3===0){
-        applyDamage(u,target,dmg,'‚ö°'); spawnCastEffect(u.rx,u.ry,u.color);
-        if(target.alive) applyDamage(u,target,dmg,'‚ö°');
-        spawnCastEffect(target.rx,target.ry,u.color);
-        return;
-      }
-    }
-
-    if(u.special==='chuva'){
-      u.hitCount++;
-      if(u.hitCount%4===0){
-        const others = units.filter(o=>o.alive && o.team!==u.team && o.id!==target.id);
-        if(others.length){
-          const r = others[Math.floor(Math.random()*others.length)];
-          applyDamage(u, r, Math.round(u.atk*0.7), '‚ûπ');
-          spawnCastEffect(r.rx, r.ry, u.color);
-        }
-      }
-    }
-
-    if(u.special==='furia'){
-      const missing = 1-(u.hp/u.maxhp);
-      dmg = Math.round(dmg*(1+missing*0.8));
-      const inFrenzy = u.frenzyUntil && performance.now() < u.frenzyUntil;
-      if(inFrenzy) dmg = Math.round(dmg*(1.5 + 0.10*((u.stars||1)-1)));
-      u.hitCount++;
-      if(u.hitCount%4===0){ dmg = Math.round(dmg*1.6); applyDamage(u,target,dmg,'üî•'); spawnCastEffect(target.rx,target.ry,u.color); return; }
-      if(missing>0.3 || inFrenzy) spawnCastEffect(u.rx,u.ry, inFrenzy ? '#e0693a' : u.color);
-    }
-
-    if(u.special==='couraca'){
-      u.hitCount++;
-      if(u.hitCount%4===0){
-        dmg = Math.round(dmg*1.5);
-        applyDamage(u,target,dmg,'‚õ∞');
-        u.hp = Math.min(u.maxhp, u.hp + Math.round(u.maxhp*0.10));
-        spawnCastEffect(u.rx,u.ry,u.color);
-        triggerScreenShake(6,180);
-        return;
-      }
-    }
-
-    if(u.special==='ima'){
-      u.hitCount++;
-      if(u.hitCount%4===0 && u.imaUsesLeft>0){
-        u.imaUsesLeft--;
-        u.imaProcAt = performance.now();
-        dmg = Math.round(dmg*1.5);
-        applyDamage(u,target,dmg,'üß≤');
-        if(target.alive) pullAdjacent(u, target);
-        const others = units.filter(o=>o.alive && o.team!==u.team && o.id!==target.id);
-        others.forEach(o=>knockbackUnit(u, o, 2));
-        spawnCastEffect(target.rx, target.ry, u.color);
-        spawnFloatText(u.rx, u.ry-40, `√çM√É (${u.imaUsesLeft} restantes)`, u.color);
-        triggerScreenShake(5,150);
-        return;
-      }
-    }
-
-    if(u.special==='congelamento'){
-      u.hitCount++;
-      const freezeInterval = u.champId==='frosk' ? 4 : 5;
-      if(u.hitCount%freezeInterval===0){
-        const freezeDmg = u.champId==='frosk' ? Math.round(dmg*1.3) : dmg;
-        applyDamage(u,target,freezeDmg,'‚ùÑ');
-        if(target.alive){
-          const stunMs = u.champId==='frosk' ? 1500 : 500;
-          applyCC(target, stunMs, 'gelo');
-          spawnFloatText(target.rx, target.ry-40, 'CONGELADO', u.color);
-          spawnCastEffect(target.rx, target.ry, u.color);
-        }
-        return;
-      }
-    }
-
-    if(u.champId==='voltra'){
-      applyDamage(u,target,dmg);
-      if(target.alive) applyElectricChain(u, target, null, u.rx, u.ry);
-    } else {
-      applyDamage(u,target,dmg);
-    }
-
-    if((u.champId==='raio' || u.borrowedChampPower==='raio') && !u.comboActive){
-      u.hitCount++;
-      if(u.hitCount>=5){ triggerComboUltimate(u, null); u.hitCount = 0; }
-    }
-
-    if(u.special==='explosao'){
-      u.hitCount++;
-      if(u.hitCount%3===0){
-        const enemies = units.filter(o=>o.alive && o.team!==u.team && o.id!==target.id);
-        enemies.sort((a,b)=>hexDistance(target,a)-hexDistance(target,b));
-        if(enemies[0] && hexDistance(target,enemies[0])<=1){ applyDamage(u, enemies[0], u.atk, '‚úπ'); spawnCastEffect(enemies[0].rx, enemies[0].ry, u.color); }
-      }
-    }
-
-    if(u.special==='cura'){
-      u.hitCount++;
-      if(u.hitCount%4===0){
-        const allies = units.filter(o=>o.alive && o.team===u.team && o.hp<o.maxhp);
-        allies.sort((a,b)=>(a.hp/a.maxhp)-(b.hp/b.maxhp));
-        if(allies[0]){ allies[0].hp = Math.min(allies[0].maxhp, allies[0].hp+Math.round(allies[0].maxhp*0.25)); spawnFloatText(allies[0].rx, allies[0].ry-24, '+cura', '#7bbf6a'); spawnCastEffect(allies[0].rx, allies[0].ry, u.color); log(`${u.name} cura ${allies[0].name}.`,'hl'); }
-      }
-    }
-  } else {
-    if(u.cantMove) return; // tent√°culos n√£o se movem, s√≥ atacam se o alvo entrar no alcance
-    if(u.barrierUntil && performance.now() < u.barrierUntil) return; // im√≥vel durante a barreira
-    tryMoveToward(u, target);
-  }
-}
-
-function updateBattleLogic(dt){
-  if(finisherActive) return; // pausa a f√≠sica normal enquanto a cinem√°tica do golpe final roda
-  const now = performance.now();
-  units.forEach(u=>{
-    if(!u.alive) return;
-
-    if(u.voltraDetonating && now >= u.voltraDetonateUntil){
-      u.voltraDetonating = false;
-      u.hp = 0; u.alive = false;
-      log(`${u.name} caiu em combate.`, 'sys');
-      if(u.team==='player'){ roundDeaths.push(u.name); ensureMatchStats(u.champId).deaths++; }
-      triggerElectricShockwave(u, u);
-      return;
-    }
-
-    if(u.ghostUntil){
-      if(now >= u.ghostUntil){
-        const target = units.find(x=>x.id===u.ghostTargetId);
-        if(target && !target.alive){
-          u.q = target.q; u.r = target.r;
-          const p = hexToPixel(u.q,u.r);
-          u.rx=p.x; u.ry=p.y; u.targetRx=p.x; u.targetRy=p.y;
-          u.hp = Math.min(u.maxhp, Math.round(u.maxhp*0.60*passiveAmp(u)));
-          u.ghostUntil = 0; u.ghostTargetId = null;
-          if(u.champId==='gelida'){
-            if(owned['gelida']) owned['gelida'].gelidaRevivesUsed = (owned['gelida'].gelidaRevivesUsed||0) + 1;
-            const usedNow = owned['gelida'] ? owned['gelida'].gelidaRevivesUsed : 1;
-            u.gelidaDmgBuffUntil = now + 999999; // dura at√© o fim da onda (unidade √© recriada do zero na pr√≥xima)
-            spawnFloatText(u.rx, u.ry-46, 'F√öRIA GLACIAL!', '#8fd4e8');
-            const left = Math.max(0, 2-usedNow);
-            log(`${u.name} volta com muito mais for√ßa at√© o fim da onda! (${left} renascimento${left===1?'':'s'} restante${left===1?'':'s'})`, 'hl');
-          }
-          spawnCastEffect(u.rx, u.ry, '#8fd4e8');
-          spawnFloatText(u.rx, u.ry-34, 'RENASCEU!', '#8fd4e8');
-          if(u.champId==='gelida'){
-            const gelidaRevivePhrase = randomPhrase('gelida_revive');
-            spawnFloatText(u.rx, u.ry-58, gelidaRevivePhrase, '#8fd4e8', 'dramatic');
-            log(`${u.name}: "${gelidaRevivePhrase}"`, 'hl');
-          }
-          log(`${u.name} toma o lugar do inimigo e volta √† batalha!`, 'hl');
-        } else {
-          u.hp = 0; u.alive = false; u.ghostUntil = 0;
-          log(`${u.name} n√£o resistiu e caiu de vez.`, 'sys');
-          if(u.team==='player'){ roundDeaths.push(u.name); ensureMatchStats(u.champId).deaths++; }
-          return;
-        }
-      } else {
-        return; // em espectro: n√£o age nem sofre dano (imunidade tratada em applyDamage)
-      }
-    }
-
-    if(u.champId==='raio' && !u.comboHpArmed && u.hp/u.maxhp>0.25){
-      u.comboHpArmed = true;
-    }
-
-    if(u.champId==='ferrha' && u.barrierUsed && u.barrierUntil && now>=u.barrierUntil && !u.barrierFollowupDone){
-      u.barrierFollowupDone = true;
-      const nearby = units.filter(o=>o.alive && o.team!==u.team && hexDistance(u,o)<=5);
-      if(nearby.length){
-        nearby.forEach(o=>{
-          pullAdjacent(u, o);
-          applyCC(o, 1600, 'metal');
-        });
-        spawnCastEffect(u.rx, u.ry, u.color);
-        spawnFloatText(u.rx, u.ry-40, 'ATRA√á√ÉO!', u.color);
-        const ferrhaPullPhrase = randomPhrase('ferrha_pull');
-        spawnFloatText(u.rx, u.ry-64, ferrhaPullPhrase, u.color, 'dramatic');
-        log(`${u.name}: "${ferrhaPullPhrase}"`, 'hl');
-        log(`${u.name} puxa os inimigos de volta pra perto e os atordoa!`, 'hl');
-        triggerScreenShake(7, 200);
-      }
-    }
-
-    if(u.alive && u.hp<u.maxhp && hasItem(u,'vigor_absoluto') && now>=u.vigorRegenAt){
-      u.vigorRegenAt = now + 3000;
-      const healAmt = Math.round(u.maxhp*0.02);
-      u.hp = Math.min(u.maxhp, u.hp+healAmt);
-      spawnFloatText(u.rx, u.ry-24, `+${healAmt}`, '#7bbf6a');
-    }
-
-    if(u.isWave60Boss && u.alive){
-      if(now >= u.ecoBlastAt){
-        u.ecoBlastAt = now + 5000;
-        const targets = units.filter(o=>o.alive && o.team==='player' && hexDistance(u,o)<=3);
-        const blastSource = {element:'corrupted', team:'enemy', champId:'eco_rachadura', name:u.name};
-        spawnShockwaveRing(u.rx, u.ry, 220, '#9b4fd9', 0);
-        spawnFloatText(u.rx, u.ry-40, 'RAJADA DE ENERGIA!', '#9b4fd9');
-        log(`${u.name} solta uma rajada de energia!`, 'hl');
-        triggerScreenShake(10, 300);
-        setTimeout(()=>{
-          targets.forEach(o=>{ if(o.alive) applyDamage(blastSource, o, Math.round(u.atk*1.8), 'üí•', true); });
-        }, 350);
-      }
-      if(now >= u.ecoSummonAt){
-        u.ecoSummonAt = now + 9000;
-        const occ = occupiedMap();
-        const nearby = neighbors(u).filter(n=>inGrid(n) && !isBlockedTile(n) && occ[hexKey(n)]===undefined);
-        const spawnCount = Math.min(3, nearby.length);
-        for(let i=0;i<spawnCount;i++){
-          const spot = nearby[i];
-          const waveScaleForSpawn = 1 + Math.max(0,wave-15)*0.06;
-          const statOverride = { hp: Math.round(70*waveScaleForSpawn), atk: Math.round(20*waveScaleForSpawn), range:1, speed:1.1, dmgReduction:0 };
-          const def2 = {name:'Fragmento Corrompido', element:'corrupted', hp:statOverride.hp, atk:statOverride.atk, range:1, speed:1.1};
-          const newU = makeUnit(corruptedIdCounter++, 'enemy', 'devorador', def2, 1, spot.q, spot.r, statOverride, 1, []);
-          newU.spawnPortalUntil = now+900;
-          newU.actionTimer = 900;
-          occ[hexKey(spot)] = newU.id;
-          units.push(newU);
-        }
-        if(spawnCount>0){
-          spawnFloatText(u.rx, u.ry-50, 'INVOCANDO FRAGMENTOS!', '#9b4fd9');
-          log(`${u.name} invoca fragmentos corrompidos pra ajudar na luta!`, 'hl');
-        }
-      }
-    }
-
-    if(u.champId==='nerith' && u.alive){
-      const aliveTentacleCount = units.filter(o=>o.alive && o.isTentacle && o.tentacleParentId===u.id).length;
-      if(aliveTentacleCount<4){
-        u.tentacleCooldown -= dt;
-        if(u.tentacleCooldown<=0){
-          spawnNerithTentacle(u);
-          const newCount = units.filter(o=>o.alive && o.isTentacle && o.tentacleParentId===u.id).length;
-          u.tentacleCooldown = 2500 + newCount*500; // 1¬∫:2.5s, 2¬∫:3s, 3¬∫:3.5s, 4¬∫:4s
-        }
-      }
-    }
-
-    if(u.champId==='shava' && u.alive){
-      u.shavaKickCooldown -= dt;
-      if(u.shavaKickCooldown<=0){
-        const enemies = units.filter(o=>o.alive && o.team!==u.team);
-        const inRange = enemies.filter(o=>{ const d=hexDistance(u,o); return d>=3 && d<=5; });
-        if(inRange.length){
-          inRange.sort((a,b)=>b.hp-a.hp); // prioriza quem tem mais vida
-          const kickTarget = inRange[0];
-          u.shavaKickCooldown = 10000;
-
-          // avan√ßa at√© perto do alvo ‚Äî corrida visual (n√£o teleporte instant√¢neo), a posi√ß√£o
-          // l√≥gica j√° muda na hora (pro combate ser justo), mas o visual "corre" at√© l√°.
-          const occ = occupiedMap();
-          const adjacentFree = neighbors(kickTarget).filter(n=>inGrid(n) && !isBlockedTile(n) && occ[hexKey(n)]===undefined);
-          let landingX = u.rx, landingY = u.ry;
-          if(adjacentFree.length){
-            adjacentFree.sort((a,b)=>hexDistance(a,u)-hexDistance(b,u));
-            u.q = adjacentFree[0].q; u.r = adjacentFree[0].r;
-            const p = hexToPixel(u.q,u.r);
-            landingX = p.x; landingY = p.y;
-            u.shavaDashFromRx = u.rx; u.shavaDashFromRy = u.ry;
-            u.shavaDashToRx = p.x; u.shavaDashToRy = p.y;
-            u.shavaDashStartAt = now;
-            u.shavaDashDuration = 220;
-            u.targetRx = p.x; u.targetRy = p.y;
-            checkPortalTeleport(u);
-          }
-          spawnFloatText(landingX, landingY-40, 'Golpe a√©reo', '#c9d9e8', 'dramatic');
-          log(`${u.name}: "Golpe a√©reo"`, 'hl');
-          spawnShockwaveRing(landingX, landingY, 200, '#c9d9e8', 0); // onda de vento no impacto, estilo Voltra
-          triggerScreenShake(5, 180);
-
-          if(kickTarget.hp>0 && kickTarget.hp/kickTarget.maxhp < 0.10){
-            // execu√ß√£o na hora
-            kickTarget.hp = 0; kickTarget.alive = false;
-            spawnFloatText(landingX, landingY-58, 'Golpe a√©reo: √∫ltimo sopro', '#c9d9e8', 'dramatic');
-            log(`${u.name}: "Golpe a√©reo: √∫ltimo sopro"`, 'hl');
-            log(`${u.name} executa ${kickTarget.name}!`, 'hl');
-            if(kickTarget.team==='player'){ roundDeaths.push(kickTarget.name); ensureMatchStats(kickTarget.champId).deaths++; }
-            spawnCastEffect(kickTarget.rx, kickTarget.ry, '#c9d9e8');
-            // arremessa o corpo em outro inimigo pr√≥ximo ‚Äî atordoa, sem causar dano
-            const others = units.filter(o=>o.alive && o.team===kickTarget.team && o.id!==kickTarget.id && hexDistance(kickTarget,o)<=2);
-            if(others.length){
-              const thrown = others[Math.floor(Math.random()*others.length)];
-              applyCC(thrown, 2000, u.element);
-              thrown.shavaWeakenUntil = now + 5000;
-              spawnFloatText(thrown.rx, thrown.ry-30, 'ATINGIDO PELO CORPO', '#c9d9e8');
-              log(`O corpo de ${kickTarget.name} acerta ${thrown.name} ‚Äî atordoado, com dano reduzido por 5s.`, 'hl');
-            }
-            if(mode==='pve' && kickTarget.team==='enemy' && !units.some(o=>o.alive && o.team==='enemy')){
-              triggerFinisherSequence(u, ()=>{ checkVictory(); });
-            }
-          } else {
-            // repuls√£o ‚Äî dano dobrado, e se bater em algo, atordoa + reduz armadura
-            spawnFloatText(landingX, landingY-58, 'Golpe a√©reo: onda de ar', '#c9d9e8', 'dramatic');
-            log(`${u.name}: "Golpe a√©reo: onda de ar"`, 'hl');
-            applyDamage(u, kickTarget, u.atk*2, 'üí®', false);
-            if(kickTarget.alive){
-              const beforeQ = kickTarget.q, beforeR = kickTarget.r;
-              knockbackUnit(u, kickTarget, 5);
-              const traveled = hexDistance({q:beforeQ,r:beforeR}, kickTarget);
-              if(traveled < 5){
-                // n√£o percorreu a dist√¢ncia inteira ‚Äî bateu em obst√°culo/parede/estrutura/fenda
-                applyCC(kickTarget, 4000, u.element);
-                kickTarget.shavaArmorDebuffUntil = now + 3000;
-                spawnFloatText(kickTarget.rx, kickTarget.ry-30, 'BATEU NA PAREDE!', '#c9d9e8');
-                log(`${kickTarget.name} bate contra um obst√°culo ‚Äî atordoado, com armadura reduzida por 3s.`, 'hl');
-                triggerScreenShake(6, 200);
-              }
-            }
-          }
-        }
-      }
-    }
-
-    if(u.champId==='jedegar' && u.alive){
-      u.jedegarPillarTimer -= dt;
-      if(u.jedegarPillarTimer<=0){
-        u.jedegarPillarTimer = 3100;
-        const activeCount = Object.values(jedegarStructures).filter(s=>s.ownerId===u.id).length;
-        // mira no aliado MAIS DISTANTE dela (n√£o nela mesma) ‚Äî assim os pilares se espalham pelo
-        // time em vez de empilhar tudo perto dela quando ela avan√ßa sozinha longe de todo mundo.
-        const allies = units.filter(o=>o.alive && o.team===u.team && o.id!==u.id);
-        let targetUnit = u;
-        if(allies.length){
-          allies.sort((a,b)=> hexDistance(u,b) - hexDistance(u,a));
-          targetUnit = allies[0];
-        }
-        const occ = occupiedMap();
-        const freeNeighbors = activeCount < 5 ? neighbors(targetUnit).filter(n=> inGrid(n) && !isBlockedTile(n) && occ[hexKey(n)]===undefined) : [];
-        // nunca constr√≥i no √∫ltimo hex livre ao redor de quem t√° recebendo o pilar ‚Äî sempre
-        // precisa sobrar pelo menos 1 sa√≠da, sen√£o prende a unidade (ela ou o aliado alvo).
-        if(freeNeighbors.length>1){
-          const chosen = freeNeighbors[0];
-          jedegarStructures[hexKey(chosen)] = {q:chosen.q, r:chosen.r, ownerId:u.id, ownerTeam:u.team, hitsTaken:0, hitsNeeded:2, boostUntil:0, createdAt:now};
-          const chosenPixel = hexToPixel(chosen.q, chosen.r);
-          spawnCastEffect(chosenPixel.x, chosenPixel.y, '#8a6a4a');
-          const prog = getJedegarProgress(u);
-          prog.pillarsBuilt++;
-          if(!prog.firstPillarAnnounced){
-            prog.firstPillarAnnounced = true;
-            spawnFloatText(u.rx, u.ry-40, 'Ascens√£o do pico celeste', '#c9a53a');
-            log(`${u.name}: "Ascens√£o do pico celeste"`, 'hl');
-          }
-          if(prog.pillarsBuilt>=5 && !prog.milestoneReached){
-            prog.milestoneReached = true;
-            spawnFloatText(u.rx, u.ry-56, 'Estamos a um passo do para√≠so!', '#e8c250');
-            log(`${u.name}: "Estamos a um passo do para√≠so!" ‚Äî os pilares dela ficam permanentemente muito mais fortes!`, 'hl');
-            triggerScreenShake(6, 300);
-          }
-        }
-      }
-    }
-
-    if(u.frostburnActive && u.alive){
-      u.frostburnTimer -= dt;
-      if(u.frostburnTimer<=0){
-        const frostSource = {element:'gelo', team: u.team==='player'?'enemy':'player', champId:'queimadura_gelada', name:'Queimadura Gelada'};
-        applyDamage(frostSource, u, 3, '‚ùÑ', true);
-        u.frostburnTimer = 1000;
-      }
-    }
-
-    const hk = hexKey(u);
-    if(hazardHexes.has(hk) || voidHexes.has(hk)){
-      u.hazardTimer -= dt;
-      if(u.hazardTimer<=0){
-        const inVoid = voidHexes.has(hk);
-        const dmgAmt = inVoid ? Math.max(1,Math.round(u.maxhp*0.08)) : 6;
-        const envSource = {element:'terra', team: u.team==='player'?'enemy':'player', champId:'arena', name: inVoid?'Zona inst√°vel':'Lava'};
-        applyDamage(envSource, u, dmgAmt, inVoid?'‚ö†':'üåã', true);
-        u.hazardTimer = 1000;
-      }
-    } else {
-      u.hazardTimer = 0;
-    }
-
-    if(supplyCrate && !supplyCrate.claimed && u.alive && u.q===supplyCrate.q && u.r===supplyCrate.r){
-      supplyCrate.claimed = true;
-      u.hp = Math.min(u.maxhp, u.hp + Math.round(u.maxhp*0.30));
-      u.crateShieldUntil = now + 5000;
-      spawnFloatText(u.rx, u.ry-40, 'SUPRIMENTO!', '#e8c250');
-      spawnCastEffect(u.rx, u.ry, '#e8c250');
-      log(`${u.name} pegou a caixa de suprimento!`, 'hl');
-    }
-
-    if(hasItem(u,'brasa')){
-      u.emberCooldown -= dt;
-      if(u.emberCooldown <= 0) triggerEmberItem(u);
-    }
-    u.actionTimer -= dt;
-    if(u.actionTimer <= 0 && u.alive && !u.comboActive && !u.voltraDetonating){
-      doAction(u);
-      const inFrenzy = u.frenzyUntil && now < u.frenzyUntil;
-      let effSpeed = inFrenzy ? (u.speed||1)*1.8 : (u.speed||1);
-      if(u.shockedUntil && now < u.shockedUntil) effSpeed *= 0.8;
-      if(u.electroSlowUntil && now < u.electroSlowUntil) effSpeed *= (1 - u.electroSlowPct);
-      if(u.tentacleFrenzy) effSpeed *= 1.6;
-      if(u.overloadUntil && now < u.overloadUntil) effSpeed *= 1.3;
-      if(u.jedegarDeathBuffUntil && now < u.jedegarDeathBuffUntil) effSpeed *= 1.25;
-      const nearbyShecry = units.find(o=>o.alive && o.champId==='shecry' && o.team!==u.team && o.shecryUltUntil && now<o.shecryUltUntil && hexDistance(o,u)<=2);
-      if(nearbyShecry){
-        const totalDur = 6000*passiveAmp(nearbyShecry);
-        const elapsed = now - nearbyShecry.shecryUltStartAt;
-        const strength = Math.max(0, 1 - elapsed/totalDur);
-        effSpeed *= (1 - 0.30*strength);
-      }
-      u.actionTimer += 900/effSpeed;
-    }
-  });
-  if(!finisherActive) checkVictory();
-}
-
-function checkVictory(){
-  if(!battleActive) return;
-  const playerAlive = units.some(u=>u.team==='player'&&u.alive);
-  const enemyAlive = units.some(u=>u.team==='enemy'&&u.alive);
-  if(!playerAlive || !enemyAlive){
-    battleActive = false;
-    const bannerEl = document.getElementById('banner');
-    bannerEl.style.display='block';
-    if(mode==='pve'){
-      if(enemyAlive===false){
-        bannerEl.className='win'; bannerEl.textContent=`Onda ${wave} conclu√≠da!`;
-        const aliveUnits = units.filter(u=>u.team==='player' && u.alive);
-        let coinGain = 12 + wave*6;
-        if(wave===1) coinGain += 2; // ajuste pra fechar 140 de ouro certinho na primeira rodada
-        if(wave<=5) coinGain += 10; // refor√ßo at√© a onda 5, pra facilitar chegar preparado no primeiro chefe
-        else coinGain += 15 + (wave-5)*8; // refor√ßo maior depois da onda 5, crescendo com a dificuldade
-        let coinBonusMsg = '';
-        if(wave>5){
-          const aliveBonus = aliveUnits.length*3;
-          coinGain += aliveBonus;
-          coinBonusMsg = ' (+' + aliveBonus + ' por ' + aliveUnits.length + ' SU vivo' + (aliveUnits.length>1?'s':'') + ')';
-          if(teamP1.length>1 && aliveUnits.length===1){
-            coinGain += 20;
-            coinBonusMsg += ' (+20 b√¥nus de sobrevivente solo)';
-          }
-        }
-        if(wave>30){
-          const penalty = computeCompletionPenalty();
-          if(penalty < 0.98){
-            coinGain = Math.round(coinGain*penalty);
-            coinBonusMsg += ` (-${Math.round((1-penalty)*100)}% por time j√° muito completo)`;
-          }
-        }
-        coins += coinGain; totalCoinsThisRun += coinGain; updateCoinBadge();
-        if(teamP1.length>0 && waveXpPool>0){
-          const baseShare = waveXpPool / teamP1.length;
-          teamP1.forEach(id=>{
-            if(owned[id]) awardXp(id, Math.round(baseShare*catchUpMultiplier(id)*10)/10);
-          });
-          log(`${formatXp(Math.round(waveXpPool*10)/10)} XP de abate dividido igualmente entre o time!`, 'sys');
-        }
-        aliveUnits.forEach(u=>{
-          if(owned[u.champId]) awardXp(u.champId, Math.round(3*catchUpMultiplier(u.champId)*10)/10);
-        });
-        if(teamP1.length > 1 && aliveUnits.length === 1){
-          const survivor = aliveUnits[0];
-          const bonusAmt = survivorXpAmount(survivor.champId);
-          awardXp(survivor.champId, bonusAmt);
-          roundSurvivorChampId = survivor.champId;
-          pendingXpDebuffChamp = survivor.champId;
-          log(`${survivor.name} foi o √∫nico sobrevivente e ganhou +${formatXp(bonusAmt)} XP b√¥nus!`, 'hl');
-          if(wave>=10) unlockAchievement('solo_survivor');
-        }
-        if(aliveUnits.length === teamP1.length) unlockAchievement('perfect_wave');
-        if(wave>=10) unlockAchievement('wave10');
-        if(wave>=20) unlockAchievement('wave20');
-        if(wave>=30) unlockAchievement('wave30');
-        if(wave>=40) unlockAchievement('wave40');
-        if(wave>=50) unlockAchievement('wave50');
-        if(wave>=20 && Object.values(matchStats).every(s=>!(s.deaths>0))) unlockAchievement('no_deaths_20');
-        if(teamP1.length>0){
-          const elements = teamP1.map(id=>CHAMPION_CATALOG[id].element);
-          if(elements.every(e=>e===elements[0])) unlockAchievement('mono_element');
-        }
-        if(aliveUnits.length===0) log(`Ningu√©m sobreviveu, mas o time inimigo caiu junto ‚Äî a onda ${wave} ainda conta como vencida!`, 'hl');
-        log(`Onda ${wave} vencida! +${coinGain} moedas${coinBonusMsg}.`, 'sys');
-        sfxVictory();
-        if(pendingBlessingChoice) showBlessingChoice(startPrepTimer);
-        else startPrepTimer();
-      } else {
-        bannerEl.className='lose'; bannerEl.textContent=`Derrota na onda ${wave}`;
-        log(`Time derrotado na onda ${wave}. Total ganho na run: ${totalCoinsThisRun} moedas.`, 'sys');
-        sfxDefeat();
-        if(wave > bestWaveEver){ bestWaveEver = wave; updateBestWaveDisplay(); }
-        checkWaveRecord(wave);
-        document.getElementById('quit-battle-btn').style.display = 'block';
-        document.getElementById('view-summary-btn').style.display = 'block';
-      }
-    } else {
-      if(playerAlive && !enemyAlive){
-        bannerEl.className='win'; bannerEl.textContent=`Jogador 1 vence a rodada ${pvpRound}!`;
-        log(`Jogador 1 venceu a rodada ${pvpRound}.`, 'sys');
-      } else if(!playerAlive && enemyAlive){
-        bannerEl.className='win'; bannerEl.textContent=`Jogador 2 vence a rodada ${pvpRound}!`;
-        log(`Jogador 2 venceu a rodada ${pvpRound}.`, 'sys');
-      } else {
-        bannerEl.className='lose'; bannerEl.textContent=`Rodada ${pvpRound} empatou!`;
-        log(`A rodada ${pvpRound} terminou empatada.`, 'sys');
-      }
-      endPvpRoundAndContinue();
-    }
-  }
-}
-
-function renderPrepStats(){
-  const el = document.getElementById('prep-stats');
-  let html = '';
-  const xpEntries = Object.entries(roundXpGain);
-  if(xpEntries.length){
-    html += `<div><strong style="color:var(--molten);">XP ganho na rodada:</strong><br>`;
-    xpEntries.forEach(([cid,amt])=>{
-      html += `${CHAMPION_CATALOG[cid].name}: +${formatXp(amt)} xp<br>`;
-    });
-    html += `</div>`;
-  }
-  if(roundLevelUps.length){
-    html += `<div style="margin-top:8px;"><strong style="color:var(--gold);">Subiram de n√≠vel:</strong><br>`;
-    roundLevelUps.forEach(cid=>{
-      html += `<span style="text-shadow:0 0 6px var(--gold);">‚ú¶ ${CHAMPION_CATALOG[cid].name} ‚Äî Nv.${owned[cid].level}</span><br>`;
-    });
-    html += `</div>`;
-  }
-  if(roundDeaths.length){
-    html += `<div style="margin-top:8px;"><strong style="color:var(--hp-bad);">Ca√≠ram em combate:</strong><br>${roundDeaths.join(', ')}</div>`;
-  }
-  if(roundSurvivorChampId){
-    html += `<div style="margin-top:8px;"><strong style="color:var(--frost);">√öltimo de p√©:</strong> ${CHAMPION_CATALOG[roundSurvivorChampId].name} (vai ganhar menos XP na pr√≥xima rodada)</div>`;
-  }
-  el.innerHTML = html || '<div style="opacity:.6;">Sem eventos nesta rodada.</div>';
-}
-
-function updateGlobalPrepTimer(t){
-  const badge = document.getElementById('global-prep-timer');
-  if(!badge) return;
-  badge.style.display = 'inline-block';
-  badge.textContent = `‚è± Pr√≥xima onda: ${t}s`;
-  if(t<=10){
-    badge.classList.add('danger');
-    const intensity = Math.max(0, Math.min(1, (10-t)/10));
-    const steel = [139,149,163], red = [232,57,74];
-    const mix = steel.map((c,i)=> Math.round(c + (red[i]-c)*intensity));
-    badge.style.color = `rgb(${mix.join(',')})`;
-    badge.style.borderColor = `rgb(${mix.join(',')})`;
-    badge.style.setProperty('--danger-glow', (0.2 + intensity*0.7).toFixed(2));
-    badge.style.animationDuration = Math.max(0.28, (t/10)).toFixed(2)+'s';
-  } else {
-    badge.classList.remove('danger');
-    badge.style.color = '';
-    badge.style.borderColor = '';
-  }
-}
-function hideGlobalPrepTimer(){
-  const badge = document.getElementById('global-prep-timer');
-  if(badge){ badge.style.display = 'none'; badge.classList.remove('danger'); }
-}
-function startPrepTimer(){
-  const overlay = document.getElementById('prep-overlay');
-  const timerEl = document.getElementById('prep-timer');
-  document.querySelector('#prep-overlay h3').textContent = 'Pr√≥xima rodada em';
-  renderPrepStats();
-  overlay.style.display = 'flex';
-  showTeamSuggestion(teamP1);
-  let t = wave>=5 ? 40 : 20;
-  timerEl.textContent = t;
-  updateGlobalPrepTimer(t);
-  let paused = false;
-  const readLogBtn = document.getElementById('read-log-btn');
-  readLogBtn.textContent = 'Ler registro';
-  function tick(){
-    if(paused) return;
-    t--;
-    timerEl.textContent = t;
-    updateGlobalPrepTimer(t);
-    if(t<=0){ finishPrep(); return; }
-    prepTimerHandle = setTimeout(tick, 1000);
-  }
-  prepTimerHandle = setTimeout(tick, 1000);
-  document.getElementById('skip-prep-btn').onclick = ()=>{ clearTimeout(prepTimerHandle); finishPrep(); };
-  readLogBtn.onclick = ()=>{
-    paused = !paused;
-    if(paused){
-      clearTimeout(prepTimerHandle);
-      readLogBtn.textContent = 'Continuar preparo';
-    } else {
-      readLogBtn.textContent = 'Ler registro';
-      prepTimerHandle = setTimeout(tick, 1000);
-    }
-  };
-}
-function finishPrep(){
-  document.getElementById('prep-overlay').style.display='none';
-  hideGlobalPrepTimer();
-  activeXpDebuffs = pendingXpDebuffChamp ? [pendingXpDebuffChamp] : [];
-  pendingXpDebuffChamp = null;
-  recomputeNewcomerBuffs();
-  resetRoundTracking();
-  wave++;
-  if(wave===60) unlockAchievement('segredo_onda60');
-  setupArenaForRound(wave);
-  scheduleNextFracture(performance.now());
-  document.getElementById('roundinfo').textContent = `Onda ${wave} ‚Äî ${BIOME_LABELS[currentBiome]} ‚Äî ${WEATHER_LABELS[currentWeather]}`;
-
-  const defaultSlots = getPlayerZoneSlots();
-  openPositionSelect(teamP1, 'left', defaultSlots, `Reorganize seu time (Onda ${wave})`, (positions)=>{
-    teamP1Positions = positions;
-    finishPrepContinue();
-  }, 10, teamP1Positions);
-}
-
-function finishPrepContinue(){
-  setMenuLocked(true);
-  const fade = document.getElementById('wave-transition-fade');
-  fade.style.opacity = '1';
-  setTimeout(()=>{
-    document.getElementById('quit-battle-btn').style.display = 'none';
-    document.getElementById('view-summary-btn').style.display = 'none';
-    document.getElementById('suggestion-popup').classList.remove('show');
-    bossCountedThisWave = false;
-    interactionFiredThisRound = false;
-    const wavePicks = randomEnemyWave(wave);
-    startNewWaveLog(wave);
-    buildTeams(teamP1, wavePicks.map(w=>w.key), false);
-    applyTempEnemyStats(wavePicks);
-    spawnCorruptedCreatures(wave);
-    // full heal happens naturally since buildTeams recreates units at max hp
-    document.getElementById('banner').style.display='none';
-    log(`Onda ${wave} iniciada. Time totalmente recuperado.`, 'sys');
-    logReinforcements(wavePicks, wave);
-    checkDuoBanter(teamP1, banterNextRoundPve, wave);
-    battleActive = true;
-    showScreen('battle');
-    saveGameSnapshot();
-    setTimeout(()=>{ fade.style.opacity = '0'; }, 60);
-  }, 380);
-}
-
-/* ============ RENDER LOOP ============ */
-function updateAnimations(dt){
-  units.forEach(u=>{
-    u.rx += (u.targetRx - u.rx) * Math.min(1, dt*0.006);
-    u.ry += (u.targetRy - u.ry) * Math.min(1, dt*0.006);
-  });
-  floatingTexts.forEach(f=>f.age += dt);
-  floatingTexts = floatingTexts.filter(f=>f.age < f.life);
-  castEffects.forEach(c=>c.age += dt);
-  castEffects = castEffects.filter(c=>c.age < c.life);
-  lightningBolts.forEach(b=>b.age += dt);
-  lightningBolts = lightningBolts.filter(b=>b.age < b.life);
-  shockwaveRings.forEach(s=>s.age += dt);
-  shockwaveRings = shockwaveRings.filter(s=>s.age < s.life);
-  shrinkingRings.forEach(s=>s.age += dt);
-  shrinkingRings = shrinkingRings.filter(s=>s.age < s.life);
-}
-
-function renderFrame(){
-  svg.innerHTML = '';
-  const now0 = performance.now();
-  let shakeX = 0, shakeY = 0;
-  if(now0 < shakeUntil){
-    const remaining = Math.max(0, (shakeUntil-now0)/shakeTotalDuration);
-    shakeX = (Math.random()*2-1)*shakeIntensity*remaining;
-    shakeY = (Math.random()*2-1)*shakeIntensity*remaining;
-  }
-  svg.setAttribute('viewBox', `${(camViewBox.x+shakeX).toFixed(1)} ${(camViewBox.y+shakeY).toFixed(1)} ${camViewBox.w.toFixed(1)} ${camViewBox.h.toFixed(1)}`);
-
-  allHexes.forEach(h=>{
-    const p = hexToPixel(h.q,h.r);
-    const hk = hexKey(h);
-    const isFreeHex = !obstacleHexes.has(hk) && !voidHexes.has(hk) && !hazardHexes.has(hk);
-
-    const biomeFill = currentBiome==='rachadura' ? 'rgba(58,32,74,0.55)' : 'rgba(28,58,34,0.55)';
-    const biomeBase = document.createElementNS('http://www.w3.org/2000/svg','polygon');
-    biomeBase.setAttribute('points', hexPoints(p.x,p.y));
-    biomeBase.setAttribute('fill', biomeFill);
-    svg.appendChild(biomeBase);
-
-    let zone = h.q<0 ? 'rgba(63,127,168,0.06)' : h.q>0 ? 'rgba(209,72,31,0.06)' : 'rgba(255,255,255,0.03)';
-    let stroke = currentBiome==='rachadura' ? '#5a3a78' : '#3d6b45';
-    if(obstacleHexes.has(hk)){ zone = 'rgba(120,120,130,0.35)'; stroke = '#8a8f99'; }
-    else if(voidHexes.has(hk)){ zone = 'rgba(150,40,40,0.28)'; stroke = '#7a2a2a'; }
-    else if(hazardHexes.has(hk)){ zone = 'rgba(224,105,58,0.25)'; stroke = '#e0693a'; }
-    const poly = document.createElementNS('http://www.w3.org/2000/svg','polygon');
-    poly.setAttribute('points', hexPoints(p.x,p.y));
-    poly.setAttribute('fill', zone);
-    poly.setAttribute('stroke', stroke);
-    poly.setAttribute('stroke-width','1');
-    svg.appendChild(poly);
-
-    if(isFreeHex && currentBiome==='grama'){
-      for(let i=0;i<3;i++){
-        const rx = hexNoise(h.q,h.r,i*7+1), ry = hexNoise(h.q,h.r,i*7+2);
-        const bx = p.x + (rx-0.5)*18, by = p.y + (ry-0.5)*18;
-        const blade = document.createElementNS('http://www.w3.org/2000/svg','line');
-        blade.setAttribute('x1', bx); blade.setAttribute('y1', by+3);
-        blade.setAttribute('x2', bx + (hexNoise(h.q,h.r,i*7+3)-0.5)*3); blade.setAttribute('y2', by-3);
-        blade.setAttribute('stroke', '#16281a');
-        blade.setAttribute('stroke-width','1.2');
-        blade.setAttribute('stroke-linecap','round');
-        svg.appendChild(blade);
-      }
-      if(hexNoise(h.q,h.r,99) > 0.82){
-        const tx = p.x + (hexNoise(h.q,h.r,98)-0.5)*10, ty = p.y + (hexNoise(h.q,h.r,97)-0.5)*10;
-        const trunk = document.createElementNS('http://www.w3.org/2000/svg','rect');
-        trunk.setAttribute('x', tx-1.5); trunk.setAttribute('y', ty-2);
-        trunk.setAttribute('width','3'); trunk.setAttribute('height','9');
-        trunk.setAttribute('fill','#4a3623');
-        svg.appendChild(trunk);
-        const canopy = document.createElementNS('http://www.w3.org/2000/svg','circle');
-        canopy.setAttribute('cx', tx); canopy.setAttribute('cy', ty-6);
-        canopy.setAttribute('r','7');
-        canopy.setAttribute('fill','#2d5a34');
-        canopy.setAttribute('stroke','#1a3a20');
-        svg.appendChild(canopy);
-      }
-    } else if(isFreeHex && currentBiome==='rachadura' && hexNoise(h.q,h.r,55) > 0.45){
-      const veinPulse = 0.35 + 0.25*Math.sin(now0/260 + (h.q*3+h.r));
-      const ang = hexNoise(h.q,h.r,56)*Math.PI*2;
-      const vein = document.createElementNS('http://www.w3.org/2000/svg','line');
-      vein.setAttribute('x1', p.x - Math.cos(ang)*7); vein.setAttribute('y1', p.y - Math.sin(ang)*7);
-      vein.setAttribute('x2', p.x + Math.cos(ang)*7); vein.setAttribute('y2', p.y + Math.sin(ang)*7);
-      vein.setAttribute('stroke', '#b98cf0');
-      vein.setAttribute('stroke-width','1');
-      vein.setAttribute('stroke-opacity', veinPulse.toFixed(2));
-      svg.appendChild(vein);
-    }
-
-    const coordLabel = document.createElementNS('http://www.w3.org/2000/svg','text');
-    coordLabel.setAttribute('x', p.x); coordLabel.setAttribute('y', p.y+3);
-    coordLabel.setAttribute('text-anchor','middle');
-    coordLabel.setAttribute('font-family',"'JetBrains Mono',monospace");
-    coordLabel.setAttribute('font-size','7');
-    coordLabel.setAttribute('fill', 'rgba(255,255,255,0.12)');
-    coordLabel.setAttribute('pointer-events','none');
-    coordLabel.textContent = hexLabel(h);
-    svg.appendChild(coordLabel);
-
-    if(obstacleHexes.has(hk)){
-      const tower = document.createElementNS('http://www.w3.org/2000/svg','rect');
-      tower.setAttribute('x', p.x-8); tower.setAttribute('y', p.y-10);
-      tower.setAttribute('width', 16); tower.setAttribute('height', 20);
-      tower.setAttribute('rx', 2);
-      tower.setAttribute('fill', '#5a5f68');
-      tower.setAttribute('stroke', '#8a8f99');
-      svg.appendChild(tower);
-    }
-    if(jedegarStructures[hk]){
-      const s = jedegarStructures[hk];
-      const boosted = s.boostUntil && performance.now() < s.boostUntil;
-      const dmgFrac = s.hitsTaken / s.hitsNeeded; // 0 = intacto, se aproxima de 1 = quase caindo
-      const phase = (s.createdAt||0);
-      const pulse = 0.5 + 0.5*Math.sin(now0/450 + phase);
-      const swayY = Math.sin(now0/600 + phase) * 1.4;
-
-      const glowBg = document.createElementNS('http://www.w3.org/2000/svg','circle');
-      glowBg.setAttribute('cx', p.x); glowBg.setAttribute('cy', p.y+2);
-      glowBg.setAttribute('r', (12+pulse*3).toFixed(1));
-      glowBg.setAttribute('fill', boosted ? 'rgba(232,194,80,0.28)' : 'rgba(138,106,74,0.20)');
-      svg.appendChild(glowBg);
-
-      const pillar = document.createElementNS('http://www.w3.org/2000/svg','polygon');
-      const topY = (p.y-16-swayY).toFixed(1), midY = (p.y-9-swayY*0.4).toFixed(1);
-      pillar.setAttribute('points', `${p.x-7},${p.y+11} ${p.x-9},${midY} ${p.x},${topY} ${p.x+9},${midY} ${p.x+7},${p.y+11}`);
-      pillar.setAttribute('fill', boosted ? '#c9a53a' : '#8a6a4a');
-      pillar.setAttribute('stroke', boosted ? '#e8c250' : '#5a4530');
-      pillar.setAttribute('stroke-width', '1.5');
-      pillar.setAttribute('opacity', ((1 - dmgFrac*0.35) * (0.85+pulse*0.15)).toFixed(2));
-      const glowStrength = boosted ? (6+pulse*4) : (2+pulse*2);
-      pillar.style.filter = `drop-shadow(0 0 ${glowStrength.toFixed(1)}px rgba(${boosted?'232,194,80':'201,165,58'},0.7))`;
-      svg.appendChild(pillar);
-    }
-    if(hazardHexes.has(hk)){
-      const pulse = 0.5 + 0.3*Math.sin(now0/200);
-      const lava = document.createElementNS('http://www.w3.org/2000/svg','circle');
-      lava.setAttribute('cx', p.x); lava.setAttribute('cy', p.y); lava.setAttribute('r', 10);
-      lava.setAttribute('fill', '#e0693a');
-      lava.setAttribute('opacity', pulse.toFixed(2));
-      svg.appendChild(lava);
-    }
-    if(fractureHexes.has(hk)){
-      const crackPulse = 0.55 + 0.3*Math.sin(now0/110);
-      const crackFill = document.createElementNS('http://www.w3.org/2000/svg','polygon');
-      crackFill.setAttribute('points', hexPoints(p.x,p.y));
-      crackFill.setAttribute('fill', 'rgba(240,240,255,0.18)');
-      crackFill.setAttribute('stroke', '#e8e0ff');
-      crackFill.setAttribute('stroke-width','1.5');
-      crackFill.setAttribute('stroke-opacity', crackPulse.toFixed(2));
-      svg.appendChild(crackFill);
-      const crackLine = document.createElementNS('http://www.w3.org/2000/svg','line');
-      crackLine.setAttribute('x1', p.x-9); crackLine.setAttribute('y1', p.y-6);
-      crackLine.setAttribute('x2', p.x+9); crackLine.setAttribute('y2', p.y+6);
-      crackLine.setAttribute('stroke', '#ffffff'); crackLine.setAttribute('stroke-width','1.5');
-      crackLine.setAttribute('stroke-opacity', crackPulse.toFixed(2));
-      svg.appendChild(crackLine);
-    }
-  });
-
-  icePrisonHexes = icePrisonHexes.filter(ip=>now0 < ip.until);
-  icePrisonHexes.forEach(ip=>{
-    const p = hexToPixel(ip.q, ip.r);
-    const life = Math.max(0, (ip.until-now0)/3000);
-    const pulse = 0.5 + 0.35*Math.sin(now0/100);
-    const shard = document.createElementNS('http://www.w3.org/2000/svg','polygon');
-    shard.setAttribute('points', hexPoints(p.x,p.y));
-    shard.setAttribute('fill', 'rgba(143,212,232,0.22)');
-    shard.setAttribute('stroke', '#8fd4e8');
-    shard.setAttribute('stroke-width','1.5');
-    shard.setAttribute('stroke-opacity', (pulse*life).toFixed(2));
-    svg.appendChild(shard);
-    const pillar = document.createElementNS('http://www.w3.org/2000/svg','polygon');
-    const pw=6, ph=18;
-    pillar.setAttribute('points', `${p.x-pw},${p.y+ph/2} ${p.x-pw*0.4},${p.y-ph/2} ${p.x+pw*0.4},${p.y-ph/2} ${p.x+pw},${p.y+ph/2}`);
-    pillar.setAttribute('fill', 'rgba(200,235,245,0.55)');
-    pillar.setAttribute('stroke', '#e8f6ff');
-    pillar.setAttribute('stroke-width','1');
-    pillar.setAttribute('opacity', life.toFixed(2));
-    svg.appendChild(pillar);
-  });
-
-  portalPairs.forEach(([a,b])=>{
-    [a,b].forEach(h=>{
-      const p = hexToPixel(h.q,h.r);
-      const pulse = 0.5 + 0.35*Math.sin(now0/150);
-      const ring = document.createElementNS('http://www.w3.org/2000/svg','circle');
-      ring.setAttribute('cx', p.x); ring.setAttribute('cy', p.y); ring.setAttribute('r', 11);
-      ring.setAttribute('fill', 'none');
-      ring.setAttribute('stroke', '#9b6bd9');
-      ring.setAttribute('stroke-width', '2.5');
-      ring.setAttribute('opacity', pulse.toFixed(2));
-      svg.appendChild(ring);
-    });
-  });
-
-  fracturePortalPairs.forEach(([a,b])=>{
-    [a,b].forEach(h=>{
-      const p = hexToPixel(h.q,h.r);
-      const pulse = 0.5 + 0.4*Math.sin(now0/110);
-      const ring = document.createElementNS('http://www.w3.org/2000/svg','circle');
-      ring.setAttribute('cx', p.x); ring.setAttribute('cy', p.y); ring.setAttribute('r', 12);
-      ring.setAttribute('fill', 'none');
-      ring.setAttribute('stroke', '#e8e0ff');
-      ring.setAttribute('stroke-width', '3');
-      ring.setAttribute('stroke-dasharray', '3 2');
-      ring.setAttribute('opacity', pulse.toFixed(2));
-      svg.appendChild(ring);
-    });
-  });
-
-  if(supplyCrate && !supplyCrate.claimed){
-    const p = hexToPixel(supplyCrate.q, supplyCrate.r);
-    const pulse = 0.6 + 0.3*Math.sin(now0/180);
-    const crate = document.createElementNS('http://www.w3.org/2000/svg','rect');
-    crate.setAttribute('x', p.x-8); crate.setAttribute('y', p.y-8);
-    crate.setAttribute('width', 16); crate.setAttribute('height', 16);
-    crate.setAttribute('rx', 2);
-    crate.setAttribute('fill', '#e8c250');
-    crate.setAttribute('stroke', '#fff2e6');
-    crate.setAttribute('opacity', pulse.toFixed(2));
-    svg.appendChild(crate);
-  }
-
-  const now = performance.now();
-  units.filter(u=>u.alive).forEach(u=>{
-    let drawX = u.rx, drawY = u.ry;
-    if(u.champId==='shava' && u.shavaDashStartAt && now - u.shavaDashStartAt < u.shavaDashDuration){
-      const dashT = Math.min(1, (now - u.shavaDashStartAt) / u.shavaDashDuration);
-      drawX = u.shavaDashFromRx + (u.shavaDashToRx - u.shavaDashFromRx) * dashT;
-      drawY = u.shavaDashFromRy + (u.shavaDashToRy - u.shavaDashFromRy) * dashT;
-      if(!u.shavaLastTrailAt || now - u.shavaLastTrailAt > 35){
-        u.shavaLastTrailAt = now;
-        spawnCastEffect(drawX, drawY, '#c9d9e8'); // rastro de vento atr√°s dela durante a corrida
-      }
-    }
-    if(u.attackAnim){
-      const elapsed = now - u.attackAnim.start;
-      if(elapsed < u.attackAnim.duration){
-        const target = units.find(o=>o.id===u.attackAnim.targetId);
-        if(target){
-          const t = elapsed/u.attackAnim.duration;
-          const lunge = Math.sin(t*Math.PI)*9;
-          const dx = target.rx-u.rx, dy = target.ry-u.ry;
-          const dist = Math.hypot(dx,dy)||1;
-          drawX += (dx/dist)*lunge; drawY += (dy/dist)*lunge;
-        }
-      } else { u.attackAnim = null; }
-    }
-    const flashing = now < u.flashUntil;
-    const g = document.createElementNS('http://www.w3.org/2000/svg','g');
-
-    if(u.taunt){
-      const ring = document.createElementNS('http://www.w3.org/2000/svg','circle');
-      ring.setAttribute('cx',drawX); ring.setAttribute('cy',drawY); ring.setAttribute('r',20);
-      ring.setAttribute('fill','none'); ring.setAttribute('stroke', u.color); ring.setAttribute('stroke-opacity','0.3'); ring.setAttribute('stroke-width','2');
-      g.appendChild(ring);
-    }
-
-    if(roundLevelUps.includes(u.champId)){
-      const pulse = 0.4 + 0.3*Math.sin(now/220);
-      const glow = document.createElementNS('http://www.w3.org/2000/svg','circle');
-      glow.setAttribute('cx',drawX); glow.setAttribute('cy',drawY); glow.setAttribute('r',18);
-      glow.setAttribute('fill','none'); glow.setAttribute('stroke', '#e8c250');
-      glow.setAttribute('stroke-opacity', pulse.toFixed(2)); glow.setAttribute('stroke-width','3');
-      g.appendChild(glow);
-    }
-
-    if(u.champId==='shava' && u.alive){
-      const chargeProgress = Math.max(0, Math.min(1, 1 - (u.shavaKickCooldown/10000)));
-      if(chargeProgress > 0.12){
-        const ringCount = 1 + Math.floor(chargeProgress*3); // 1 a 4 an√©is conforme carrega
-        for(let ri=0; ri<ringCount; ri++){
-          const spin = (now/(260-ri*30)) * (ri%2===0 ? 1 : -1) * 40;
-          const ring = document.createElementNS('http://www.w3.org/2000/svg','circle');
-          ring.setAttribute('cx',drawX); ring.setAttribute('cy',drawY); ring.setAttribute('r', 15+ri*5);
-          ring.setAttribute('fill','none'); ring.setAttribute('stroke', '#c9d9e8');
-          ring.setAttribute('stroke-width','1.6');
-          ring.setAttribute('stroke-dasharray','7 11');
-          ring.setAttribute('stroke-dashoffset', spin.toFixed(1));
-          ring.setAttribute('stroke-opacity', (chargeProgress*0.75).toFixed(2));
-          g.appendChild(ring);
-        }
-        if(chargeProgress > 0.85){
-          // quase pronta pro chute ‚Äî um brilho extra pra avisar que t√° quase ativando
-          const readyPulse = 0.5 + 0.5*Math.sin(now/90);
-          const readyGlow = document.createElementNS('http://www.w3.org/2000/svg','circle');
-          readyGlow.setAttribute('cx',drawX); readyGlow.setAttribute('cy',drawY); readyGlow.setAttribute('r',13);
-          readyGlow.setAttribute('fill','none'); readyGlow.setAttribute('stroke', '#eaf2f8');
-          readyGlow.setAttribute('stroke-opacity', readyPulse.toFixed(2)); readyGlow.setAttribute('stroke-width','2.5');
-          g.appendChild(readyGlow);
-        }
-      }
-    }
-
-    if(u.frenzyUntil && now < u.frenzyUntil){
-      const pulse = 0.5 + 0.4*Math.sin(now/100);
-      const glow = document.createElementNS('http://www.w3.org/2000/svg','circle');
-      glow.setAttribute('cx',drawX); glow.setAttribute('cy',drawY); glow.setAttribute('r',22);
-      glow.setAttribute('fill','none'); glow.setAttribute('stroke', '#e0693a');
-      glow.setAttribute('stroke-opacity', pulse.toFixed(2)); glow.setAttribute('stroke-width','3.5');
-      g.appendChild(glow);
-    }
-
-    if(u.barrierUntil && now < u.barrierUntil){
-      const pulse = 0.5 + 0.35*Math.sin(now/130);
-      const glow = document.createElementNS('http://www.w3.org/2000/svg','circle');
-      glow.setAttribute('cx',drawX); glow.setAttribute('cy',drawY); glow.setAttribute('r',24);
-      glow.setAttribute('fill','none'); glow.setAttribute('stroke', '#c7cfd9');
-      glow.setAttribute('stroke-opacity', pulse.toFixed(2)); glow.setAttribute('stroke-width','4');
-      glow.setAttribute('stroke-dasharray','4 3');
-      g.appendChild(glow);
-    }
-
-    if(u.ghostUntil && now < u.ghostUntil){
-      const pulse = 0.35 + 0.25*Math.sin(now/160);
-      const glow = document.createElementNS('http://www.w3.org/2000/svg','circle');
-      glow.setAttribute('cx',drawX); glow.setAttribute('cy',drawY); glow.setAttribute('r',18);
-      glow.setAttribute('fill','#8fd4e8'); glow.setAttribute('fill-opacity', (pulse*0.4).toFixed(2));
-      glow.setAttribute('stroke', '#8fd4e8'); glow.setAttribute('stroke-opacity', pulse.toFixed(2)); glow.setAttribute('stroke-width','2.5');
-      g.appendChild(glow);
-    }
-
-    if(u.comboActive){
-      const flicker = Math.random()>0.4 ? 0.9 : 0.3;
-      const glow = document.createElementNS('http://www.w3.org/2000/svg','circle');
-      glow.setAttribute('cx',drawX); glow.setAttribute('cy',drawY); glow.setAttribute('r',19);
-      glow.setAttribute('fill','none'); glow.setAttribute('stroke', '#f5e663');
-      glow.setAttribute('stroke-opacity', flicker.toFixed(2)); glow.setAttribute('stroke-width','3');
-      g.appendChild(glow);
-    }
-
-    if(u.shecryUltUntil && now < u.shecryUltUntil){
-      const totalDur = 6000*passiveAmp(u);
-      const elapsed = now - u.shecryUltStartAt;
-      const strength = Math.max(0, 1 - elapsed/totalDur);
-      const glow = document.createElementNS('http://www.w3.org/2000/svg','circle');
-      glow.setAttribute('cx',drawX); glow.setAttribute('cy',drawY); glow.setAttribute('r',24);
-      glow.setAttribute('fill','none'); glow.setAttribute('stroke', '#8fd4e8');
-      glow.setAttribute('stroke-opacity', (strength*0.9).toFixed(2)); glow.setAttribute('stroke-width','4');
-      glow.setAttribute('stroke-dasharray','5 3');
-      g.appendChild(glow);
-    }
-
-    if(u.spawnPortalUntil && now < u.spawnPortalUntil){
-      const spawnDur = 900;
-      const spawnElapsed = spawnDur - (u.spawnPortalUntil - now);
-      const spin = (spawnElapsed/1000) * 360;
-      const portalColor = u.isTentacle ? '#4f9fd4' : '#9b4fd9';
-      for(let ring=0; ring<2; ring++){
-        const rSize = 26 - ring*7;
-        const portalRing = document.createElementNS('http://www.w3.org/2000/svg','circle');
-        portalRing.setAttribute('cx',drawX); portalRing.setAttribute('cy',drawY); portalRing.setAttribute('r',rSize);
-        portalRing.setAttribute('fill','none'); portalRing.setAttribute('stroke', portalColor);
-        portalRing.setAttribute('stroke-width','3');
-        portalRing.setAttribute('stroke-dasharray','7 5');
-        portalRing.setAttribute('stroke-dashoffset', (ring===0?spin:-spin).toFixed(1));
-        portalRing.setAttribute('opacity','0.85');
-        g.appendChild(portalRing);
-      }
-    }
-
-    if(dramaticActive && u.id===dramaticUnitId){
-      const pulse = 0.55 + 0.4*Math.sin(now/90);
-      const glow = document.createElementNS('http://www.w3.org/2000/svg','circle');
-      glow.setAttribute('cx',drawX); glow.setAttribute('cy',drawY); glow.setAttribute('r',20);
-      glow.setAttribute('fill','none'); glow.setAttribute('stroke', '#c94d3d');
-      glow.setAttribute('stroke-opacity', pulse.toFixed(2)); glow.setAttribute('stroke-width','3');
-      g.appendChild(glow);
-    }
-
-    if(u.isBoss){
-      const pulse = 0.5 + 0.35*Math.sin(now/160);
-      const bossGlow = document.createElementNS('http://www.w3.org/2000/svg','circle');
-      bossGlow.setAttribute('cx',drawX); bossGlow.setAttribute('cy',drawY); bossGlow.setAttribute('r',27);
-      bossGlow.setAttribute('fill','none'); bossGlow.setAttribute('stroke','#e8c250');
-      bossGlow.setAttribute('stroke-opacity', pulse.toFixed(2)); bossGlow.setAttribute('stroke-width','3');
-      g.appendChild(bossGlow);
-    }
-
-    let circ;
-    if(u.isTentacle){
-      circ = document.createElementNS('http://www.w3.org/2000/svg','rect');
-      circ.setAttribute('x', drawX-9); circ.setAttribute('y', drawY-11);
-      circ.setAttribute('width', 18); circ.setAttribute('height', 22);
-      circ.setAttribute('rx', 3);
-      circ.setAttribute('fill', flashing ? '#ffffff' : (u.tentacleFrenzy ? '#7fd4c8' : '#2f6f8f'));
-      circ.setAttribute('stroke', STAR_BORDER_COLORS[u.stars] || STAR_BORDER_COLORS[1]);
-      circ.setAttribute('stroke-width', 2);
-      circ.setAttribute('opacity', '0.68');
-    } else {
-      circ = document.createElementNS('http://www.w3.org/2000/svg','circle');
-      circ.setAttribute('cx',drawX); circ.setAttribute('cy',drawY); circ.setAttribute('r', u.isBoss ? 20 : 14);
-      circ.setAttribute('fill', flashing ? '#ffffff' : u.color);
-      circ.setAttribute('stroke', STAR_BORDER_COLORS[u.stars] || STAR_BORDER_COLORS[1]);
-      circ.setAttribute('stroke-width', u.team==='player' ? 3 : 2);
-    }
-    if(u.spawnPortalUntil && now < u.spawnPortalUntil){
-      const spawnFrac = 1 - Math.max(0, (u.spawnPortalUntil-now))/900;
-      const baseOpacity = u.isTentacle ? 0.68 : 1;
-      circ.setAttribute('opacity', (Math.max(0.15, spawnFrac)*baseOpacity).toFixed(2));
-    }
-    g.appendChild(circ);
-
-    const label = document.createElementNS('http://www.w3.org/2000/svg','text');
-    label.setAttribute('x',drawX); label.setAttribute('y', u.isBoss ? drawY-27 : drawY-20);
-    label.setAttribute('class','hex-label');
-    label.textContent = u.isBoss ? '‚òÖ '+u.name : u.name;
-    g.appendChild(label);
-
-    if(u.team==='player' && (u.itemIds||[]).some(iid=>ITEM_CATALOG[iid] && ITEM_CATALOG[iid].isRelic)){
-      const relicMark = document.createElementNS('http://www.w3.org/2000/svg','text');
-      relicMark.setAttribute('x', drawX+12); relicMark.setAttribute('y', u.isBoss ? drawY-34 : drawY-27);
-      relicMark.setAttribute('font-size','11'); relicMark.setAttribute('text-anchor','middle');
-      relicMark.textContent = '‚ú®';
-      g.appendChild(relicMark);
-    }
-
-    const barW = u.isBoss ? 40 : 30, barH=4;
-    const barYOffset = u.isBoss ? 24 : 18;
-    const track = document.createElementNS('http://www.w3.org/2000/svg','rect');
-    track.setAttribute('x',drawX-barW/2); track.setAttribute('y',drawY+barYOffset);
-    track.setAttribute('width',barW); track.setAttribute('height',barH); track.setAttribute('fill','#111');
-    g.appendChild(track);
-    const fillW = Math.max(0, barW*(u.hp/u.maxhp));
-    const fill = document.createElementNS('http://www.w3.org/2000/svg','rect');
-    fill.setAttribute('x',drawX-barW/2); fill.setAttribute('y',drawY+barYOffset);
-    fill.setAttribute('width',fillW); fill.setAttribute('height',barH);
-    fill.setAttribute('fill', u.hp/u.maxhp>0.35 ? '#7bbf6a' : '#c94d3d');
-    g.appendChild(fill);
-
-    const manaThresh = SPECIAL_CHARGE_THRESHOLD[u.special];
-    if(manaThresh){
-      const manaY = drawY+barYOffset+barH+2;
-      const manaProgress = (u.hitCount % manaThresh) / manaThresh;
-      const manaTrack = document.createElementNS('http://www.w3.org/2000/svg','rect');
-      manaTrack.setAttribute('x',drawX-barW/2); manaTrack.setAttribute('y',manaY);
-      manaTrack.setAttribute('width',barW); manaTrack.setAttribute('height',3); manaTrack.setAttribute('fill','#111');
-      g.appendChild(manaTrack);
-      const manaFill = document.createElementNS('http://www.w3.org/2000/svg','rect');
-      manaFill.setAttribute('x',drawX-barW/2); manaFill.setAttribute('y',manaY);
-      manaFill.setAttribute('width', Math.max(0, barW*manaProgress)); manaFill.setAttribute('height',3);
-      manaFill.setAttribute('fill','#3f7fa8');
-      g.appendChild(manaFill);
-    }
-
-    if(u.champId==='voltra'){
-      const chargeY = drawY+barYOffset+barH+2;
-      const overcharging = u.overchargeUntil && now < u.overchargeUntil;
-      const chargeProgress = overcharging ? 1 : Math.min(1, (u.chainCharge||0)/10);
-      const chargeTrack = document.createElementNS('http://www.w3.org/2000/svg','rect');
-      chargeTrack.setAttribute('x',drawX-barW/2); chargeTrack.setAttribute('y',chargeY);
-      chargeTrack.setAttribute('width',barW); chargeTrack.setAttribute('height',3); chargeTrack.setAttribute('fill','#111');
-      g.appendChild(chargeTrack);
-      const chargeFill = document.createElementNS('http://www.w3.org/2000/svg','rect');
-      chargeFill.setAttribute('x',drawX-barW/2); chargeFill.setAttribute('y',chargeY);
-      chargeFill.setAttribute('width', Math.max(0, barW*chargeProgress)); chargeFill.setAttribute('height',3);
-      chargeFill.setAttribute('fill', overcharging ? '#fff2a8' : '#f5e663');
-      if(overcharging){
-        const pulse = 0.6+0.4*Math.sin(now/70);
-        chargeFill.setAttribute('opacity', pulse.toFixed(2));
-      }
-      g.appendChild(chargeFill);
-    }
-
-    svg.appendChild(g);
-  });
-
-  floatingTexts.forEach(f=>{
-    const t = document.createElementNS('http://www.w3.org/2000/svg','text');
-    const riseY = f.big ? f.y - (f.age/f.life)*42 : f.y - (f.age/f.life)*26;
-    const shakeX = f.shake ? (Math.random()-0.5)*4 : 0;
-    const opacity = 1 - (f.age/f.life);
-    t.setAttribute('x', f.x+shakeX); t.setAttribute('y', riseY);
-    t.setAttribute('text-anchor','middle');
-    if(f.big){
-      t.setAttribute('font-family',"Oswald, sans-serif");
-      t.setAttribute('font-size', f.shake ? '17' : '13');
-      t.setAttribute('font-weight','700');
-      t.setAttribute('letter-spacing','0.5');
-      t.setAttribute('stroke','#0a0807');
-      t.setAttribute('stroke-width', f.shake ? '3' : '2.5');
-      t.setAttribute('paint-order','stroke');
-    } else {
-      t.setAttribute('font-family','JetBrains Mono, monospace');
-      t.setAttribute('font-size','12');
-      t.setAttribute('font-weight','700');
-    }
-    t.setAttribute('fill', f.color);
-    t.setAttribute('opacity', opacity.toFixed(2));
-    t.textContent = f.text;
-    svg.appendChild(t);
-  });
-
-  castEffects.forEach(c=>{
-    const t = c.age / c.life;
-    const ring = document.createElementNS('http://www.w3.org/2000/svg','circle');
-    ring.setAttribute('cx', c.x); ring.setAttribute('cy', c.y);
-    ring.setAttribute('r', 6 + t*22);
-    ring.setAttribute('fill','none');
-    ring.setAttribute('stroke', c.color);
-    ring.setAttribute('stroke-width','2.5');
-    ring.setAttribute('opacity', (1-t).toFixed(2));
-    svg.appendChild(ring);
-  });
-
-  lightningBolts.forEach(b=>{
-    const t = b.age / b.life;
-    const dx = b.x2-b.x1, dy = b.y2-b.y1;
-    const segments = 5;
-    let d = `M ${b.x1} ${b.y1} `;
-    for(let i=1;i<segments;i++){
-      const frac = i/segments;
-      const px = b.x1 + dx*frac + (Math.random()-0.5)*10;
-      const py = b.y1 + dy*frac + (Math.random()-0.5)*10;
-      d += `L ${px} ${py} `;
-    }
-    d += `L ${b.x2} ${b.y2}`;
-    const bolt = document.createElementNS('http://www.w3.org/2000/svg','path');
-    bolt.setAttribute('d', d);
-    bolt.setAttribute('fill','none');
-    bolt.setAttribute('stroke', '#fff2a8');
-    bolt.setAttribute('stroke-width', (3*(1-t)+0.5).toFixed(1));
-    bolt.setAttribute('opacity', (1-t).toFixed(2));
-    svg.appendChild(bolt);
-    const boltGlow = document.createElementNS('http://www.w3.org/2000/svg','path');
-    boltGlow.setAttribute('d', d);
-    boltGlow.setAttribute('fill','none');
-    boltGlow.setAttribute('stroke', '#f5e663');
-    boltGlow.setAttribute('stroke-width', (7*(1-t)).toFixed(1));
-    boltGlow.setAttribute('opacity', (0.35*(1-t)).toFixed(2));
-    svg.appendChild(boltGlow);
-  });
-
-  shockwaveRings.forEach(s=>{
-    if(s.age<0) return; // ainda no atraso, n√£o desenha
-    const t = Math.min(1, s.age / s.life);
-    const radius = s.maxRadius * t;
-    const opacity = (1-t) * 0.9;
-    const ring = document.createElementNS('http://www.w3.org/2000/svg','circle');
-    ring.setAttribute('cx', s.x); ring.setAttribute('cy', s.y);
-    ring.setAttribute('r', radius.toFixed(1));
-    ring.setAttribute('fill','none'); ring.setAttribute('stroke', s.color);
-    ring.setAttribute('stroke-width', (5*(1-t)+1.5).toFixed(1));
-    ring.setAttribute('stroke-dasharray','9 5');
-    ring.setAttribute('opacity', opacity.toFixed(2));
-    svg.appendChild(ring);
-    const ringGlow = document.createElementNS('http://www.w3.org/2000/svg','circle');
-    ringGlow.setAttribute('cx', s.x); ringGlow.setAttribute('cy', s.y);
-    ringGlow.setAttribute('r', radius.toFixed(1));
-    ringGlow.setAttribute('fill','none'); ringGlow.setAttribute('stroke', s.color);
-    ringGlow.setAttribute('stroke-width', (14*(1-t)).toFixed(1));
-    ringGlow.setAttribute('opacity', (opacity*0.3).toFixed(2));
-    svg.appendChild(ringGlow);
-  });
-
-  shrinkingRings.forEach(s=>{
-    const t = Math.min(1, s.age / s.life);
-    const radius = Math.max(2, s.startRadius * (1-t));
-    const opacity = 0.25 + t*0.65; // vai ficando mais intenso conforme encolhe
-    const ring = document.createElementNS('http://www.w3.org/2000/svg','circle');
-    ring.setAttribute('cx', s.x); ring.setAttribute('cy', s.y);
-    ring.setAttribute('r', radius.toFixed(1));
-    ring.setAttribute('fill','none'); ring.setAttribute('stroke', s.color);
-    ring.setAttribute('stroke-width', (2+4*t).toFixed(1));
-    ring.setAttribute('stroke-dasharray','9 5');
-    ring.setAttribute('opacity', opacity.toFixed(2));
-    svg.appendChild(ring);
-    const ringGlow2 = document.createElementNS('http://www.w3.org/2000/svg','circle');
-    ringGlow2.setAttribute('cx', s.x); ringGlow2.setAttribute('cy', s.y);
-    ringGlow2.setAttribute('r', radius.toFixed(1));
-    ringGlow2.setAttribute('fill','none'); ringGlow2.setAttribute('stroke', s.color);
-    ringGlow2.setAttribute('stroke-width', (10*t).toFixed(1));
-    ringGlow2.setAttribute('opacity', (opacity*0.3).toFixed(2));
-    svg.appendChild(ringGlow2);
-  });
-  renderWeatherEffects(now0);
-}
-
-/* ============ EFEITOS VISUAIS DE CLIMA ============ */
-// Desenhados por cima de tudo, no fim do quadro. Preparado pra trocar de clima no MEIO da
-// batalha com uma transi√ß√£o suave (fade), pensando num futuro personagem que controla o clima.
-let lastRenderedWeather = null;
-let weatherTransitionStart = 0;
-const WEATHER_TRANSITION_MS = 1500;
-function renderWeatherEffects(now0){
-  if(currentWeather !== lastRenderedWeather){
-    weatherTransitionStart = now0;
-    lastRenderedWeather = currentWeather;
-  }
-  const fadeIn = Math.min(1, (now0 - weatherTransitionStart) / WEATHER_TRANSITION_MS);
-  const w = currentWeather;
-  const bx = camViewBox.x, by = camViewBox.y, bw = camViewBox.w, bh = camViewBox.h;
-
-  if(w==='limpo' || !w){
-    const glow = document.createElementNS('http://www.w3.org/2000/svg','rect');
-    glow.setAttribute('x',bx); glow.setAttribute('y',by); glow.setAttribute('width',bw); glow.setAttribute('height',bh);
-    glow.setAttribute('fill','rgba(232,194,80,0.03)'); glow.setAttribute('pointer-events','none');
-    svg.appendChild(glow);
-    return;
-  }
-
-  const TINTS = {
-    chuva:'rgba(80,110,150,0.07)', nevasca:'rgba(150,180,210,0.08)',
-    tempestade_areia:'rgba(200,150,80,0.09)', vento_forte:null,
-  };
-  if(TINTS[w]){
-    const tint = document.createElementNS('http://www.w3.org/2000/svg','rect');
-    tint.setAttribute('x',bx); tint.setAttribute('y',by); tint.setAttribute('width',bw); tint.setAttribute('height',bh);
-    tint.setAttribute('fill',TINTS[w]); tint.setAttribute('opacity',fadeIn.toFixed(2)); tint.setAttribute('pointer-events','none');
-    svg.appendChild(tint);
-  }
-
-  if(w==='chuva'){
-    for(let i=0;i<18;i++){
-      const seedX = bx + ((i*53.7) % bw);
-      const y = by + (((now0/6 + i*90) % (bh+40)) - 20);
-      const line = document.createElementNS('http://www.w3.org/2000/svg','line');
-      line.setAttribute('x1',seedX.toFixed(1)); line.setAttribute('y1',y.toFixed(1));
-      line.setAttribute('x2',(seedX-4).toFixed(1)); line.setAttribute('y2',(y+14).toFixed(1));
-      line.setAttribute('stroke','rgba(150,180,220,0.55)'); line.setAttribute('stroke-width','1.3');
-      line.setAttribute('opacity',fadeIn.toFixed(2)); line.setAttribute('pointer-events','none');
-      svg.appendChild(line);
-    }
-  } else if(w==='nevasca'){
-    for(let i=0;i<15;i++){
-      const seedX = bx + ((i*61.3) % bw);
-      const y = by + (((now0/14 + i*70) % (bh+30)) - 15);
-      const x = seedX + Math.sin(now0/700+i)*12;
-      const flake = document.createElementNS('http://www.w3.org/2000/svg','circle');
-      flake.setAttribute('cx',x.toFixed(1)); flake.setAttribute('cy',y.toFixed(1));
-      flake.setAttribute('r',(1.6+(i%3)*0.5).toFixed(1));
-      flake.setAttribute('fill','rgba(255,255,255,0.8)');
-      flake.setAttribute('opacity',fadeIn.toFixed(2)); flake.setAttribute('pointer-events','none');
-      svg.appendChild(flake);
-    }
-  } else if(w==='tempestade_areia'){
-    for(let i=0;i<15;i++){
-      const seedY = by + ((i*29.3) % bh);
-      const x = bx + (((now0/5 + i*80) % (bw+40)) - 20);
-      const dust = document.createElementNS('http://www.w3.org/2000/svg','circle');
-      dust.setAttribute('cx',x.toFixed(1)); dust.setAttribute('cy',(seedY+Math.sin(now0/500+i)*6).toFixed(1));
-      dust.setAttribute('r',(1.2+(i%3)*0.6).toFixed(1));
-      dust.setAttribute('fill','rgba(224,180,110,0.6)');
-      dust.setAttribute('opacity',fadeIn.toFixed(2)); dust.setAttribute('pointer-events','none');
-      svg.appendChild(dust);
-    }
-  } else if(w==='vento_forte'){
-    for(let i=0;i<8;i++){
-      const cycle = 2200;
-      const t = ((now0 + i*280) % cycle) / cycle;
-      const y = by + ((i*47) % bh);
-      const x = bx - 30 + t*(bw+60);
-      const streakOpacity = Math.sin(t*Math.PI) * fadeIn;
-      const streak = document.createElementNS('http://www.w3.org/2000/svg','path');
-      streak.setAttribute('d', `M${(x-18).toFixed(1)},${y.toFixed(1)} Q${(x-9).toFixed(1)},${(y-4).toFixed(1)} ${x.toFixed(1)},${y.toFixed(1)}`);
-      streak.setAttribute('stroke','rgba(220,230,240,0.55)'); streak.setAttribute('stroke-width','1.6'); streak.setAttribute('fill','none');
-      streak.setAttribute('opacity',streakOpacity.toFixed(2)); streak.setAttribute('pointer-events','none');
-      svg.appendChild(streak);
-    }
-  }
-}
-
-let rafRunning = false;
-let dramaticActive = false;
-let dramaticUnitId = null;
-let camViewBox = {x:0, y:0, w:500, h:460};
-let finisherActive = false; // pausa a l√≥gica de batalha enquanto a cinem√°tica do golpe final roda
-
-// S√≥ considera "golpe final" quando o abate vem de uma passiva/habilidade especial em andamento ‚Äî
-// n√£o de um ataque b√°sico qualquer.
-// V√°rios efeitos especiais (combo do Raio, corrente da Voltra, etc) aplicam dano usando um objeto
-// gen√©rico s√≥ pra registrar a origem, em vez da unidade de verdade ‚Äî isso resolve pra unidade real,
-// pra checar as flags de passiva certinho e pra pegar a cor certa no retrato do golpe final.
-function resolveRealAttacker(attacker){
-  if(attacker && attacker.id!==undefined) return attacker;
-  if(!attacker) return null;
-  return units.find(u=>u.alive && u.champId===attacker.champId && u.team===attacker.team) || null;
-}
-function isPassiveMoment(rawAttacker){
-  const attacker = resolveRealAttacker(rawAttacker);
-  if(!attacker) return false;
-  const now = performance.now();
-  return !!(
-    (attacker.frenzyUntil && now < attacker.frenzyUntil) || attacker.comboActive ||
-    attacker.tentacleFrenzy || attacker.isTentacle ||
-    (attacker.ghostUntil && now < attacker.ghostUntil) ||
-    (attacker.overchargeUntil && now < attacker.overchargeUntil) ||
-    attacker.voltraDetonating ||
-    (attacker.barrierUntil && now < attacker.barrierUntil) ||
-    (attacker.shecryUltUntil && now < attacker.shecryUltUntil) ||
-    (attacker.imaProcAt && now - attacker.imaProcAt < 300)
-  );
-}
-
-// Dispara a cinem√°tica de "golpe final", estilo jogo de luta: vinheta fechando, retrato do
-// personagem no centro, c√¢mera dram√°tica nele, flash de impacto, e s√≥ ent√£o libera o resultado.
-function triggerFinisherSequence(killer, onDone){
-  finisherActive = true;
-  dramaticActive = true;
-  dramaticUnitId = killer.id;
-  const overlay = document.getElementById('finisher-overlay');
-  const portrait = document.getElementById('finisher-portrait');
-  const nameEl = document.getElementById('finisher-name');
-  const flash = document.getElementById('finisher-flash');
-  portrait.style.background = killer.color;
-  portrait.style.color = killer.color;
-  nameEl.textContent = killer.name;
-  overlay.classList.add('show');
-  triggerScreenShake(6, 300);
-  const pulseFlash = (shakeStrength, shakeDur, big)=>{
-    flash.classList.remove('pulse','pulse-big'); void flash.offsetWidth; flash.classList.add(big?'pulse-big':'pulse');
-    triggerScreenShake(shakeStrength, shakeDur);
-  };
-  // sequ√™ncia de flashes tipo raio/estrobosc√≥pio, crescendo at√© o golpe final
-  setTimeout(()=> pulseFlash(6, 150), 900);
-  setTimeout(()=> pulseFlash(8, 180), 1200);
-  setTimeout(()=> pulseFlash(10, 220), 1550);
-  setTimeout(()=> pulseFlash(20, 500, true), 2050); // o flash grande do golpe final
-  setTimeout(()=>{
-    overlay.classList.remove('show');
-    finisherActive = false;
-    dramaticActive = false;
-    dramaticUnitId = null;
-    onDone();
-  }, 3400);
-}
-
-function updateDramaticCheck(){
-  if(finisherActive) return; // a cinem√°tica do golpe final j√° controla a c√¢mera sozinha
-  if(!battleActive){
-    if(dramaticActive){ dramaticActive=false; dramaticUnitId=null; }
-    return;
-  }
-  if(dramaticActive){
-    const u = units.find(x=>x.id===dramaticUnitId);
-    const stillAlone = u && u.alive && units.filter(o=>o.team===u.team && o.alive).length===1;
-    if(!u || !u.alive || !stillAlone || u.hp/u.maxhp > 0.25){
-      dramaticActive = false;
-      dramaticUnitId = null;
-    }
-    return;
-  }
-  for(const t of ['player','enemy']){
-    const aliveOfTeam = units.filter(o=>o.team===t && o.alive);
-    if(aliveOfTeam.length===1 && aliveOfTeam[0].hp/aliveOfTeam[0].maxhp <= 0.15){
-      dramaticActive = true;
-      dramaticUnitId = aliveOfTeam[0].id;
-      break;
-    }
-  }
-}
-
-// Aproxima/afasta a c√¢mera aos poucos em vez de cortar de repente pro zoom.
-// C√¢mera din√¢mica: em vez de mostrar sempre a arena inteira (o que deixa muito vazio quando a luta
-// t√° concentrada num canto), ela se ajusta sozinha pra enquadrar onde as unidades vivas realmente est√£o.
-function computeDynamicViewTarget(){
-  const aliveUnits = units.filter(u=>u.alive);
-  if(aliveUnits.length===0) return fullViewBox;
-  let minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity;
-  aliveUnits.forEach(u=>{
-    if(u.rx<minX) minX=u.rx; if(u.rx>maxX) maxX=u.rx;
-    if(u.ry<minY) minY=u.ry; if(u.ry>maxY) maxY=u.ry;
-  });
-  const pad = 95;
-  let x = minX-pad, y = minY-pad, w = (maxX-minX)+pad*2, h = (maxY-minY)+pad*2;
-  const minSize = 230; // n√£o deixa apertar demais quando sobra 1-2 unidades bem pr√≥ximas
-  if(w<minSize){ const cx=x+w/2; w=minSize; x=cx-w/2; }
-  if(h<minSize){ const cy=y+h/2; h=minSize; y=cy-h/2; }
-  w = Math.min(w, fullViewBox.w);
-  h = Math.min(h, fullViewBox.h);
-  return {x,y,w,h};
-}
-
-function updateCamera(rawDt){
-  let targetX, targetY, targetW, targetH;
-  if(dramaticActive){
-    const u = units.find(x=>x.id===dramaticUnitId);
-    if(u){
-      const zoomSize = 190;
-      targetW = zoomSize; targetH = zoomSize;
-      targetX = u.rx - zoomSize/2;
-      targetY = u.ry - zoomSize/2;
-    } else {
-      const t = computeDynamicViewTarget();
-      targetX=t.x; targetY=t.y; targetW=t.w; targetH=t.h;
-    }
-  } else {
-    const t = computeDynamicViewTarget();
-    targetX=t.x; targetY=t.y; targetW=t.w; targetH=t.h;
-  }
-  const ease = Math.min(1, rawDt*0.0035);
-  camViewBox.x += (targetX-camViewBox.x)*ease;
-  camViewBox.y += (targetY-camViewBox.y)*ease;
-  camViewBox.w += (targetW-camViewBox.w)*ease;
-  camViewBox.h += (targetH-camViewBox.h)*ease;
-}
-
-function startBattleLoopIfNeeded(){
-  if(rafRunning) return;
-  rafRunning = true;
-  lastTs = null; frameCount=0; fpsTimer=0;
-  requestAnimationFrame(loop);
-}
-function loop(ts){
-  if(lastTs===null) lastTs = ts;
-  const rawDt = ts - lastTs;
-  lastTs = ts;
-  frameCount++; fpsTimer += rawDt;
-  if(fpsTimer >= 1000){ document.getElementById('fps').textContent = 'FPS: '+frameCount; frameCount=0; fpsTimer=0; }
-  updateDramaticCheck();
-  updateCamera(rawDt);
-  const dt = dramaticActive ? rawDt*0.4 : rawDt; // c√¢mera lenta discreta no momento dram√°tico
-  if(battleActive){
-    updateBattleLogic(dt);
-    if(fractureState==='idle' && ts>=fractureNextAt) triggerFracture(ts);
-    else if(fractureState==='active' && ts>=fractureEndAt) healFracture(ts);
-  }
-  updateAnimations(dt);
-  updateEmberEvents();
-  updateComboState();
-  renderFrame();
-  requestAnimationFrame(loop);
-}
+Y™Áäx-ÆÈ‹j◊ù¢Îi∫⁄+äßj[hëÈ‹¢ÈÌ◊O6ÁDËµ©h∫⁄n∂XßzÕJù[ò›[€ä
+^¬à€€ú›€€ùZ[ô\àHÿ›[Y[ùôŸ][[Y[ùûRY
+	⁄[ùõÀ\‹\ö‹ÀX€€ùZ[ô\â N¬àYä€€ùZ[ô\ä^¬àõ‹ä]OL⁄Oçé⁄J  ^¬à€€ú›»Hÿ›[Y[ùò‹ôX]Q[[Y[ù
+	Ÿ]â N¬àÀò€\‹”ò[YHH	⁄[ùõÀ\‹\ö…Œ¬àÀú›[KõYùH
+X]úò[ô€J
+JåL
+J……IŒ¬àÀú›[Kò[ö[X][€ë[^HH
+X]úò[ô€J
+JåKç
+J…‹…Œ¬àÀú›[KúŸ]õ‹\ùJ	ÀKYöYù	À
+X]úò[ô€J
+JçåLÃ
+J…‹	 N¬à€€ùZ[ô\ãò\[ô⁄[
+ N¬àBàBÇà€€ú›]\⁄X»Hÿ›[Y[ùôŸ][[Y[ùûRY
+	⁄[ùõÀ[]\⁄X… N¬à€€ú›ô\⁄›»Hÿ›[Y[ùôŸ][[Y[ùûRY
+	⁄[ùõÀ\ô\⁄›… N¬à€€ú›‹\⁄[Hÿ›[Y[ùôŸ][[Y[ùûRY
+	⁄[ùõÀ\‹\⁄]^	 N¬à€€ú›[ùõ‘ÿ‹ôY[àHÿ›[Y[ùôŸ][[Y[ùûRY
+	⁄[ùõÀ\ÿ‹ôY[â N¬à€€ú›€›’‹ò\Hÿ›[Y[ùôŸ][[Y[ùûRY
+	⁄[ùõÀY€›À]‹ò\	 N¬à€€ú›õ€€Y\àHÿ›[Y[ùôŸ][[Y[ùûRY
+	⁄[ùõÀ]õ€[YK\€Y\â N¬à€€ú›€›[ô[ùHÿ›[Y[ùôŸ][[Y[ùûRY
+	⁄[ùõÀ\€›[ôZ[ù	 N¬à€€ú›ô\‹‘›\ùùàHÿ›[Y[ùôŸ][[Y[ùûRY
+	⁄[ùõÀ\ô\‹À\›\ùXùâ N¬à€€ú››ô\ò[òYHHÿ›[Y[ùôŸ][[Y[ùûRY
+	⁄[ùõÀ[›ô\ò[YòYI N¬ÇàÀ»pÓú⁄XÿH∞ËHô[H€‹ùYHŸ\ù[öH
+€€YpÈÿH[HåH»[ùY€»Nç H8†%ÿÿH¬àÀ»ô\õ»Ÿ[HôX⁄\ÿ\à[\àòHYÿ\àô[ö[K[ù0Ë€»∞Ë€»€ŸúôHXZ\»‹»ùY‹»HŸYZÀÇà€€ú›”SPV–UHç»À»€0Î[X^^]»[ùõ»»\ú]Z]õ»∞ËH€‹ùY¬à€€ú›–RU—TêUS”àH”SPV–U»À»åç»HŸ€‹»[ù\»»€0Î[X^à€€ú›ë◊‘ëUëPS—SVHHÃ»À»\»8†%»ôù[ô»àHŸ€»[ùòH\›H[\»\⁄\»\»]ò\¬à€€ú›ëT‘◊‘’Tï—SVHHç»À»\»\⁄\»»€0Î[X^]0ÍH»õ›0Ë€»\\ôXŸ\ÇÇàÀ»»Ÿ€‹»öX›0ÎX⁄X\À€€\ö[ZY\»ô\‹Ÿ\»åç»
+ÿYH[XH€€HòYKZ[ã⁄€ŸòYK[›]
+Bà€€ú›‘T“––Të»H¬à‹›\ùåK[ôçÀ^â‘êP“QTêH’QS‘…ﬂKà‹›\ùé[ôåM^âŸ[H\òŸ\öXH€€Hì‘íêH””UUêIﬂKà‹›\ùåMK[ôååK^â‘ëSëQMH\ô\Ÿ[ùIﬂKàN¬à]]UöYŸŸ\ôYHò[ŸN¬à][ùõ—[ôYHò[ŸN¬à][ùõ–ò]PX›]ôHHò[ŸN»À»\»õ€[ö\»Ï»][HH\ù\à»€0Î[X^
+õ€YH»õŸ€ BÇà àOOOOOOOOOOOH–SïêTŒà⁄[][pÈË€»H›Y\úòH
+»úò\ÿH
+»ôZ^HH^àOOOOOOOOOOOH
+ã¬à€€ú›ÿ[ùò\»Hÿ›[Y[ùôŸ][[Y[ùûRY
+	⁄[ùõÀXÿ[ùò\… N¬à€€ú››Hÿ[ùò\»»ÿ[ùò\ÀôŸ]€€ù^
+	Ãô	 Hàù[¬àù[ò›[€àô\⁄^ôR[ùõ–ÿ[ùò\ 
+^¬àYäXÿ[ùò\ Hô]\õé¬àÿ[ùò\Àù⁄YH⁄[ô›Àö[õô\ï⁄Y¬àÿ[ùò\ÀöZY⁄H⁄[ô›Àö[õô\íZY⁄¬àBàô\⁄^ôR[ùõ–ÿ[ùò\ 
+N¬à⁄[ô›ÀòY]ô[ù\›[ô\ä	‹ô\⁄^ôIÀô\⁄^ôR[ùõ–ÿ[ùò\ N¬Çà€€ú›TìVW–””‘î»H»…»ŸLéLÿIÀ	»ÿŒXMLÿI◊K…»ÕNYô	À	»ŒéMÿL…◊K…»ÕŸXŒNIÀ	»ÿåôôâ◊HN¬à]€€Y\ú»H◊N¬àù[ò›[€à[ö]€€Y\ú 
+^¬à€€Y\ú»H◊N¬àYäXÿ[ùò\ Hô]\õé¬à€€ú›»Hÿ[ùò\Àù⁄YHÿ[ùò\ÀöZY⁄¬à€€ú›‹õ›[ôHH
+åéé¬à€€ú›\î⁄YHHé¬àõ‹ä]⁄YOL»⁄YOé»⁄YJ  ^¬àõ‹ä]OL⁄O\î⁄YN⁄J  ^¬à€€ú›€YVH⁄YOOOL» ååà
+»Jä ååJHà åéMHJä ååJN¬à€€ú›Z\àHTìVW–””‘î÷⁄H	HTìVW–””‘îÀõ[ô›N¬à€€Y\úÀú\⁄
+¬à⁄YK€YVö€YVNà‹õ›[ôKàéàä”X]úò[ô€J
+JåÀà\ŸNàX]úò[ô€J
+JìX]îJåãà€€‹êNàZ\ñÃK€€‹êéàZ\ñÃWKàJN¬àBàBàBà[ö]€€Y\ú 
+N¬Çà][Xô\ú»H◊N¬àù[ò›[€à‹]€ë[Xô\äJ^¬à[Xô\úÀú\⁄
+ﬁKûNãJN
+”X]úò[ô€J
+JåçäKûäX]úò[ô€J
+JååLL
+KYôNåKX^YôNàKå ”X]úò[ô€J
+JåKåÀ⁄^ôNåKç
+”X]úò[ô€J
+JåüJN¬àBàù[ò›[€à‹]€ë[Xô\êù\ú›
+K€›[ù
+^¬àõ‹ä]OL⁄O€›[ù⁄J  ^¬à[Xô\úÀú\⁄
+»KûäX]úò[ô€J
+JåMåN
+KûNäX]úò[ô€J
+JãLMM
+KYôNåKX^YôNåçä”X]úò[ô€J
+Jåçã⁄^ôNåKçJ”X]úò[ô€J
+JåãçHJN¬àBàBÇà]õ⁄ôX›[\»H◊N¬àù[ò›[€à‹]€îõ⁄ôX›[J
+^¬àYäXÿ[ùò\ Hô]\õé¬à€€ú›»Hÿ[ùò\Àù⁄YHÿ[ùò\ÀöZY⁄¬à€€ú›úõ€SYùHX]úò[ô€J
+OçN¬à€€ú›‹õ›[ôHH
+åéé¬àõ⁄ôX›[\Àú\⁄
+¬à›\ùàúõ€SYù» ååà åéLã[ôàúõ€SYù» åéLàà ååà›\ùNà‹õ›[ôKLLå\ò][€éàKåJ”X]úò[ô€J
+JåçàJN¬àBÇà]ôX[PX›]ôHHò[ŸKôX[T›\ùH¬à€€ú›ëPSW—TêUS”àHLÃ¬àù[ò›[€àöYŸŸ\êôX[J
+^»ôX[PX›]ôHHùYN»ôX[T›\ùH\ôõ‹õX[òŸKõõ› 
+N»BÇà]Y⁄ö[ô–X›]ôHHò[ŸKY⁄ö[ô‘›\ùHY⁄ö[ô÷HY⁄ö[ô÷HH¬à€€ú›Q“íSë◊—TêUS”àHŒ¬àù[ò›[€àöYŸŸ\ìY⁄ö[ô J^»Y⁄ö[ô–X›]ôHHùYN»Y⁄ö[ô‘›\ùH\ôõ‹õX[òŸKõõ› 
+N»Y⁄ö[ô÷H»Y⁄ö[ô÷HHN»BÇàù[ò›[€àò]‘€€Y\ä ^¬à›òôY⁄[î]
+
+N»›ò\ò ÀûÀûKÀúãSX]îKÃãX]îKÃäN»›ò€‹ŸT]
+
+N¬à›ôö[›[HHÀò€€‹êN»›ôö[
+
+N¬à›òôY⁄[î]
+
+N»›ò\ò ÀûÀûKÀúãX]îKÃãX]îJåKçJN»›ò€‹ŸT]
+
+N¬à›ôö[›[HHÀò€€‹êé»›ôö[
+
+N¬àBÇà]\›€\⁄ﬁX€HHLN¬à]\›õ⁄ôX›[PﬁX€HHLN¬àù[ò›[€à\]T€€Y\ú õ›À
+^¬àYäXÿ[ùò\ Hô]\õé¬à€€ú›÷P”HHL¬à€€ú›Hõ›»	H÷P”N¬à€€ú›ﬁX€R[ô^HX]ôõ€‹äõ›À–÷P”JN¬à€€ú›»Hÿ[ùò\Àù⁄YHÿ[ùò\ÀöZY⁄¬à€€ú›Ÿ[ù\ñHÀÃé¬à€€ú›‹õ›[ôHH
+åéé¬Çà€€Y\úÀôõ‹ëXX⁄
+œOû¬à€€ú›\î⁄Y€àHÀú⁄YOOOL»HàLN¬à€€ú›€\⁄HŸ[ù\ñ
+»\î⁄Y€ääLçäN¬à]\ôŸ]¬àYäå
+^¬à\ôŸ]HÀö€YV
+»
+€\⁄HÀö€YV
+H
+à
+Ãå
+N¬àH[ŸHYäçÃ
+^¬à\ôŸ]H€\⁄
+»X]ú⁄[äõ›ÀÕÃ
+»Àú\ŸJJåŒ¬àH[ŸHYäÃ
+^¬à\ôŸ]H€\⁄
+»
+Àö€YVH€\⁄
+H
+à
+
+LçÃ
+KÃå
+N¬àH[ŸH¬à\ôŸ]HÀö€YV¬àBàÀû
+œH
+\ôŸ]HÀû
+H
+àX]õZ[äK
+çäN¬àÀûHH‹õ›[ôH
+»X]ú⁄[äõ›ÀÃÃ
+»Àú\ŸJJåãçN¬àJN¬ÇàYäèLå	âàåå	âà\›€\⁄ﬁX€HOOHﬁX€R[ô^
+^¬à\›€\⁄ﬁX€HHﬁX€R[ô^¬à‹]€ë[Xô\êù\ú›
+Ÿ[ù\ñ‹õ›[ôKNL
+N¬àBàYäèNL	âàMå	âà\›õ⁄ôX›[PﬁX€HOOHﬁX€R[ô^
+^¬à\›õ⁄ôX›[PﬁX€HHﬁX€R[ô^¬àYäX]úò[ô€J
+Oç H‹]€îõ⁄ôX›[J
+N¬àBàBÇàù[ò›[€à\]P[ôò]‘õ⁄ôX›[\ 
+^¬àõ⁄ôX›[\»Hõ⁄ôX›[\Àôö[\äOû¬àù
+œH‹ô\ò][€é¬àYäùèLJHô]\õàò[ŸN¬à€€ú›Hú›\ù
+»
+ô[ô\ú›\ù
+Júù¬à€€ú›\ò“ZY⁄H¬à€€ú›HHú›\ùHHX]ú⁄[äX]îJúù
+Jò\ò“ZY⁄¬à€€ú›\àHô[ôúú›\ù»HàLN¬à›úÿ]ôJ
+N¬à›ùò[ú€]JJN¬à›úõ›]J\ääLå ‹ù
+åçäJN¬à›ú›õ⁄ŸT›[HH	‹ôÿòJåååNéJIŒ¬à›õ[ôU⁄YHé¬à›òôY⁄[î]
+
+N»›õ[›ôU LL ô\ã
+N»›õ[ôU L ô\ã
+N»›ú›õ⁄ŸJ
+N¬à›ôö[›[HH	‹ôÿòJåÃåLNLéJIŒ¬à›òôY⁄[î]
+
+N¬à›õ[›ôU L ô\ã
+N»›õ[ôU  ô\ãM
+N»›õ[ôU  ô\ã
+N»›ò€‹ŸT]
+
+N»›ôö[
+
+N¬à›úô\›‹ôJ
+N¬àô]\õàùYN¬àJN¬àBÇàù[ò›[€à\]P[ôò]—[Xô\ú 
+^¬à[Xô\ú»H[Xô\úÀôö[\äOOû¬àKõYôHOHŸKõX^YôN¬àYäKõYôOL
+Hô]\õàò[ŸN¬àKû
+œHKùû
+ô»KûH
+œHKùûJô¬à›ô€ÿò[[HHX]õX^
+KõYôJN¬à›ôö[›[HH	»ŸåòMMIŒ¬à›òôY⁄[î]
+
+N»›ò\ò KûKûKKú⁄^ôKX]îJåäN»›ôö[
+
+N¬à›ô€ÿò[[HHN¬àô]\õàùYN¬àJN¬àYäÿ[ùò\»	âàX]úò[ô€J
+OåN
+^¬à‹]€ë[Xô\äX]úò[ô€J
+Jòÿ[ùò\Àù⁄Yÿ[ùò\ÀöZY⁄
+äéJ”X]úò[ô€J
+JååJJN¬àBàBÇàù[ò›[€àò]–ôX[RYêX›]ôJõ› ^¬àYäXôX[PX›]ôHXÿ[ùò\ Hô]\õé¬à€€ú›[\ŸYHõ›»HôX[T›\ù¬àYä[\ŸYàëPSW—TêUS”ä^»ôX[PX›]ôHHò[ŸN»ô]\õé»Bà€€ú›H[\ŸY–ëPSW—TêUS”é¬à€€ú›[HHåMH»ÃåMHàX]õX^
+KJ
+LåMJKÃéJJN¬à€€ú›‹òYH›ò‹ôX]S[ôX\ë‹òYY[ù
+ÿ[ùò\ÀöZY⁄
+åçKMÃÿ[ùò\ÀöZY⁄
+åçJÕÃ
+N¬à‹òYòY€€‹î›‹
+	‹ôÿòJçMKåÕKå
+I N¬à‹òYòY€€‹î›‹
+çKôÿòJçMKåÕKå	Ãçäò[_JX
+N¬à‹òYòY€€‹î›‹
+K	‹ôÿòJçMKåÕKå
+I N¬à›ôö[›[HH‹òY¬à›ôö[ôX›
+ÿ[ùò\ÀöZY⁄
+åçKMÃÿ[ùò\Àù⁄YM
+N¬à›ôö[›[HHôÿòJçMKçMKçMK	Ãç
+ò[_JX¬à›ôö[ôX›
+ÿ[ùò\ÀöZY⁄
+åçKLãÿ[ùò\Àù⁄Y
+N¬àBÇàù[ò›[€àò]”Y⁄ö[ô“YêX›]ôJõ› ^¬àYä[Y⁄ö[ô–X›]ôHXÿ[ùò\ Hô]\õé¬à€€ú›[\ŸYHõ›»HY⁄ö[ô‘›\ù¬àYä[\ŸYàQ“íSë◊—TêUS”ä^»Y⁄ö[ô–X›]ôHHò[ŸN»ô]\õé»Bà›úÿ]ôJ
+N¬à›ú›õ⁄ŸT›[HH	‹ôÿòJçMKçMKçMKéJIŒ¬à›õ[ôU⁄YHé¬àõ‹ä]èLÿèŒÿä  ^¬à]ﬁHY⁄ö[ô÷
+»
+X]úò[ô€J
+JçLLçJKﬁHH¬à›òôY⁄[î]
+
+N»›õ[›ôU ﬁﬁJN¬à⁄[JﬁHY⁄ö[ô÷J^¬àﬁ
+œH
+X]úò[ô€J
+JåÕãLN
+N»ﬁH
+œHåä”X]úò[ô€J
+Jååé¬à›õ[ôU ﬁﬁJN¬àBà›ú›õ⁄ŸJ
+N¬àBà›úô\›‹ôJ
+N¬à›ôö[›[HHôÿòJçMKåÕKå	ÃåçJäKY[\ŸY”Q“íSë◊—TêUS”ä_JX¬à›ôö[ôX›
+ÿ[ùò\Àù⁄Yÿ[ùò\ÀöZY⁄
+N¬àBÇà]ÿ[ùò\‘ù[õö[ô»HùYN¬à]\›úò[YU[YHH\ôõ‹õX[òŸKõõ› 
+N¬àù[ò›[€àÿ[ùò\”€‹
+õ› ^¬àYäXÿ[ùò\‘ù[õö[ô Hô]\õé¬àYäÿ[ùò\»	âà›
+^¬à€€ú›HX]õZ[äåK
+õ›À[\›úò[YU[YJKÃL
+N¬à\›úò[YU[YHHõ›Œ¬à›ò€X\îôX›
+ÿ[ùò\Àù⁄Yÿ[ùò\ÀöZY⁄
+N¬àYä[ùõ–ò]PX›]ôJ^¬à\]T€€Y\ú õ›À
+N¬à€€Y\úÀôõ‹ëXX⁄
+œOôò]‘€€Y\ä JN¬àBà\]P[ôò]‘õ⁄ôX›[\ 
+N¬à\]P[ôò]—[Xô\ú 
+N¬àò]–ôX[RYêX›]ôJõ› N¬àò]”Y⁄ö[ô“YêX›]ôJõ› N¬àBàô\]Y\›[ö[X][€ëúò[YJÿ[ùò\”€‹
+N¬àBàô\]Y\›[ö[X][€ëúò[YJÿ[ùò\”€‹
+N¬Çàù[ò›[€à[ô[ùõ‘Ÿ\]Y[òŸJ
+^¬àYä[ùõ—[ôY
+Hô]\õé¬à[ùõ—[ôYHùYN¬àÿ[ùò\‘ù[õö[ô»Hò[ŸN¬àYäô\⁄›»	âàô\⁄›Àú\ô[ùõŸJHô\⁄›Àúô[[›ôJ
+N¬àYä[ùõ‘ÿ‹ôY[à	âà[ùõ‘ÿ‹ôY[ãú\ô[ùõŸJH[ùõ‘ÿ‹ôY[ãúô[[›ôJ
+N¬àYä›ô\ò[òYH	âà›ô\ò[òYKú\ô[ùõŸJH›ô\ò[òYKúô[[›ôJ
+N¬àYäÿ[ùò\»	âàÿ[ùò\Àú\ô[ùõŸJHÿ[ùò\Àúô[[›ôJ
+N¬àBÇàÀ»[H\ô]»õ»€0Î[X^
+õ€YH»õŸ€»
+»ô\‹»›\ù
+KÇàÀ»Y€‹òH\‹€»Ï»0ÍHX⁄[€òY»[»õ›0Ë€»^0ÎX⁄]»î[\àãÇàù[ò›[€à⁄⁄\–€[X^
+
+^¬àYä[ùõ—[ôY]UöYŸŸ\ôY
+Hô]\õé¬à€X\í[ù\ùò[
+X⁄“[ù\ùò[
+N¬à€ÿ⁄‘›\ùH\ôõ‹õX[òŸKõõ› 
+HH–RU—TêUS”äåL»À»ôX[[öH»ô[0ÏŸ⁄[»õ»[ú›[ùH»€0Î[X^àûT^P]Y[ 
+N»À»€€ùH€€[»Ÿ\›»»\›pË\ö[ÀXô\òH»0Ë]Y[»ŸHZ[ôH∞Ë€»[öBàŸYZ’ŸXê]Y[’ ”SPV–U
+N¬àöYŸŸ\ê€[X^
+
+N¬àBàYäô\⁄› ^¬à€€ú›⁄⁄\[ùõ–ùàHÿ›[Y[ùò‹ôX]Q[[Y[ù
+	ÿù]€â N¬à⁄⁄\[ùõ–ùãöYH	⁄[ùõÀ\⁄⁄\XùâŒ¬à⁄⁄\[ùõ–ùãù\HH	ÿù]€âŒ¬à⁄⁄\[ùõ–ùãù^€€ù[ùH	‘[\âŒ¬à⁄⁄\[ùõ–ùãúŸ]]öXù]J	ÿ\öXK[Xô[	À	‘[\à[ùõŸpÈË€… N¬àô\⁄›Àò\[ô⁄[
+⁄⁄\[ùõ–ùäN¬à⁄⁄\[ùõ–ùãòY]ô[ù\›[ô\ä	ÿ€X⁄…À
+JOOû¬àKúô]ô[ùYò][
+
+N¬àKú›‹õ‹Yÿ][€ä
+N¬àûT^P]Y[ 
+N¬à⁄⁄\–€[X^
+
+N¬àJN¬àBÇàÀ»õ€[YHò\ŸH
+LJHZù\›0Ë]ô[[»€Y\àH]X[]Y\à[€Y[ù¬à]\Ÿ\ïõ€[YHHçŒ¬àYäõ€€Y\ä^¬àõ€€Y\ãòY]ô[ù\›[ô\ä	⁄[ú]	À
+
+OOû¬à\Ÿ\ïõ€[YHHõ€€Y\ãùò[YKÃL¬àYä]\⁄X»	âà[]\⁄XÀú]\ŸY
+H\Tò[\Yõ€[YJ
+\ôõ‹õX[òŸKõõ› 
+KX€ÿ⁄‘›\ù
+KÃL
+N¬àJN¬àBÇàù[ò›[€à\Tò[\Yõ€[YJ[\ŸY
+^¬àYäYÿZ[ìõŸJHô]\õé¬à]ò[\¬àYä[\ŸY–RU—TêUS”ä^¬à€€ú›õŸ‹ô\‹»HX]õZ[äKX]õX^
+[\ŸY»–RU—TêUS”äJN¬àò[\HåL
+»õŸ‹ô\‹ úõŸ‹ô\‹ åéN¬àH[ŸHYä[\ŸY–RU—TêUS”à
+»ä^¬àò[\HéMN¬àH[ŸH¬àò[\HåÕN¬àBàÿZ[ìõŸKôÿZ[ãùò[YHHX]õX^
+X]õZ[äKò[\
+à\Ÿ\ïõ€[YJJN¬àBÇàù[ò›[€àöYŸŸ\ê€[X^
+
+^¬à]UöYŸŸ\ôYHùYN¬à[ùõ–ò]PX›]ôHHùYN¬à‹\⁄[ú›[Kõ‹X⁄]HH	Ã	Œ¬àYä[ùõ‘ÿ‹ôY[äH[ùõ‘ÿ‹ôY[ãú›[Kô\‹^HH	Ÿõ^	Œ¬àöYŸŸ\êôX[J
+N¬àYä[ùõ‘ÿ‹ôY[ä^¬à[ùõ‘ÿ‹ôY[ãò€\‹”\›òY
+	⁄[\X›\⁄ZŸI N¬àŸ][Y[›]
+
+
+OOà[ùõ‘ÿ‹ôY[ãò€\‹”\›úô[[›ôJ	⁄[\X›\⁄ZŸI KÕL
+N¬àBàYä€›’‹ò\
+^¬à€›’‹ò\ò€\‹”\›úô[[›ôJ	‹⁄›… N¬àŸ][Y[›]
+
+
+OOà€›’‹ò\ò€\‹”\›òY
+	‹⁄›… Kë◊‘ëUëPS—SVJN¬àBàŸ][Y[›]
+
+
+OOû¬àYäô\‹‘›\ùùäHô\‹‘›\ùùãò€\‹”\›òY
+	‹⁄›… N¬àKëT‘◊‘’Tï—SVJN¬àBÇàYäô\‹‘›\ùùä^¬àô\‹‘›\ùùãòY]ô[ù\›[ô\ä	ÿ€X⁄…À
+
+OOû¬àYä[ùõ—[ôY
+Hô]\õé¬à€€ú›ôX›Hô\‹‘›\ùùãôŸ]õ›[ô[ô–€Y[ùôX›
+
+N¬àöYŸŸ\ìY⁄ö[ô ôX›õYù
+‹ôX›ù⁄YÃãôX›ù‹
+‹ôX›öZY⁄ÃäN¬à‹]€ë[Xô\êù\ú›
+ôX›õYù
+‹ôX›ù⁄YÃãôX›ù‹
+‹ôX›öZY⁄Ããç
+N¬àô\‹‘›\ùùãò€\‹”\›òY
+	⁄[\X›Yõ\⁄	 N¬àô\‹‘›\ùùãò€\‹”\›úô[[›ôJ	‹⁄›… N¬àYä›ô\ò[òYJH›ô\ò[òYKò€\‹”\›òY
+	‹⁄›… N¬àŸ][Y[›]
+
+
+OOû¬à[ô[ùõ‘Ÿ\]Y[òŸJ
+N¬àÿ›[Y[ùôŸ][[Y[ùûRY
+	€[ÿö[K[[ŸKX\⁄À[›ô\õ^I Kò€\‹”\›òY
+	‹⁄›… N¬àKL
+N¬àJN¬àBÇàÀ»ô[0ÏŸ⁄[»∞Ï‹ö[»
+∞Ë€»\[ôH»0Ë]Y[ H8†%H[ùõ»õŸH]]€X]Xÿ[Y[ùH[»ÿ\úôYÿ\àH0ËY⁄[òBà]€ÿ⁄‘›\ùH\ôõ‹õX[òŸKõõ› 
+N¬àù[ò›[€à›\úô[ù[ùõ—[\ŸY
+
+^¬àô]\õàX]õX^
+
+\ôõ‹õX[òŸKõõ› 
+HH€ÿ⁄‘›\ù
+H»L
+N¬àBÇà àOOOOOOOOOOOH0‡UQS»íPH—PàUQS»THOOOOOOOOOOOH
+ã¬àÀ»]Y[œãò›\úô[ù[YH[H€€\‹ù[Y[ù»[ò€€ú⁄\›[ùH[ùôHò]ôYÿY‹ô\»
+ŸYZ¬àÀ»Y€õ‹òYÀô\Ÿ]€ﬁö[ö»õ»å] KàHŸXà]Y[»THYŸ[ôHHô\õŸpÈË€¬àÀ»H[HôZ]»ôX⁄\€»H∞Ë€»€ŸúôH\‹Ÿ\»ùY‹»8†%[XHô^à[öX⁄XY»õ»€ù¬àÀ»Ÿ\ùÀ[HïSê–Hõ€H€ﬁö[öÀÇà]]Y[–›Hù[]Y[–ùYôô\àHù[ÿZ[ìõŸHHù[€›\òŸSõŸHHù[¬à]ŸXê]Y[‘ôXYHHò[ŸK]Y[“\‘^Z[ô»Hò[ŸKX€Ÿ[ô‘›\ùYHò[ŸN¬Çàù[ò›[€à[ö]ŸXê]Y[ 
+^¬àYäX€Ÿ[ô‘›\ùY[]\⁄X Hô]\õé¬àX€Ÿ[ô‘›\ùYHùYN¬àû^¬à€€ú›]Y[–€€ù^€\‹»H⁄[ô›Àê]Y[–€€ù^⁄[ô›ÀùŸXö⁄]]Y[–€€ù^¬àYäP]Y[–€€ù^€\‹ Hô]\õé¬à]Y[–›Hô]»]Y[–€€ù^€\‹ 
+N¬àÿZ[ìõŸHH]Y[–›ò‹ôX]QÿZ[ä
+N¬àÿZ[ìõŸKôÿZ[ãùò[YHHåH
+à\Ÿ\ïõ€[YN¬àÿZ[ìõŸKò€€õôX›
+]Y[–›ô\›[ò][€äN¬à€€ú›€›\òŸQ[H]\⁄XÀú]Y\ûTŸ[X›‹ä	‹€›\òŸI N¬à€€ú›]U\öHH€›\òŸQ[»€›\òŸQ[ôŸ]]öXù]J	‹‹ò… Hà	…Œ¬à€€ú›ò\ŸMçH]U\öKú€XŸJ]U\öKö[ô^Ÿä	À	 JÃJN¬à€€ú›ö[ò\ûHH]ÿäò\ŸMç
+N¬à€€ú›û]\»Hô]»Z[ù\úò^Jö[ò\ûKõ[ô›
+N¬àõ‹ä]OL⁄Oö[ò\ûKõ[ô›⁄J  ^»û]\÷⁄WHHö[ò\ûKò⁄\ê€ŸP]
+JN»Bà]Y[–›ôX€ŸP]Y[—]Jû]\ÀòùYôô\ã
+ùYôô\äOOû¬à]Y[–ùYôô\àHùYôô\é¬àŸXê]Y[‘ôXYHHùYN¬àYä]Y[’[õÿ⁄‘ô\]Y\›Y
+HûT^P]Y[ 
+N¬àK
+
+OOû» àò[H[»X€ŸYöXÿ\à8†%ŸY›YHŸ[HpÓú⁄XÿK»ö\›X[€€ù[ùXHõ‹õX[
+ã»JN¬àXÿ]⁄
+J^» àŸXà]Y[»∞Ë€»›\‹ùY»8†%ŸY›YHŸ[HpÓú⁄XÿH
+ã»BàBÇàù[ò›[€à›\ùŸXê]Y[–]
+ŸôúŸ]ŸX€€ô ^¬àYäX]Y[–›X]Y[–ùYôô\à]Y[–›ú›]HOOH	‹ù[õö[ô… Hô]\õàò[ŸN¬àû^»Yä€›\òŸSõŸJ^»€›\òŸSõŸKõ€ô[ôYHù[»€›\òŸSõŸKú›‹
+
+N»HXÿ]⁄
+J^ﬂBà€›\òŸSõŸHH]Y[–›ò‹ôX]PùYôô\î€›\òŸJ
+N¬à€›\òŸSõŸKòùYôô\àH]Y[–ùYôô\é¬à€›\òŸSõŸKò€€õôX›
+ÿZ[ìõŸJN¬à€€ú›ÿYôSŸôúŸ]HX]õX^
+X]õZ[äŸôúŸ]ŸX€€ôÀ]Y[–ùYôô\ãô\ò][€àHåJJN¬àû^»€›\òŸSõŸKú›\ù
+ÿYôSŸôúŸ]
+N»Xÿ]⁄
+J^»ô]\õàò[ŸN»Bà]Y[“\‘^Z[ô»HùYN¬àYä€›[ô[ù
+H€›[ô[ùú›[Kõ‹X⁄]HH	Ã	Œ¬àô]\õàùYN¬àBÇàÀ»\ÿY»]X[ô»H\ùYHHô\ôYH€€YpÈÿH8†%HpÓú⁄XÿH»ÿòûH∞Ë€»ò^àŸ[ùY»€€ù[ùX\ÇàÀ»ÿÿ[ô»\ò[ùHHò][K[ù0Ë€»€€YH€€H[HòYH›\ù[ö»[Hô^àH€‹ù\àŸX€ÀÇà⁄[ô›Àú›‹[ùõ”]\⁄X»Hù[ò›[€äòYS\ ^¬àYäX]Y[“\‘^Z[ô»\€›\òŸSõŸJHô]\õé¬àòYS\»HòYS\»å¬àû^¬àYäÿZ[ìõŸH	âà]Y[–›
+^¬à€€ú›õ›ÃàH]Y[–›ò›\úô[ù[YN¬àÿZ[ìõŸKôÿZ[ãòÿ[òŸ[ÿ⁄Y[Yò[Y\ õ›ÃäN¬àÿZ[ìõŸKôÿZ[ãúŸ]ò[YP][YJÿZ[ìõŸKôÿZ[ãùò[YKõ›ÃäN¬àÿZ[ìõŸKôÿZ[ãõ[ôX\îò[\’ò[YP][YJõ›Ãà
+»òYS\ÀÃL
+N¬àBà€€ú›õŸU‘›‹H€›\òŸSõŸN¬àŸ][Y[›]
+
+
+OOû»û^»õŸU‘›‹ú›‹
+
+N»Xÿ]⁄
+J^ﬂHKòYS\»
+»L
+N¬à]Y[“\‘^Z[ô»Hò[ŸN¬àXÿ]⁄
+J^ﬂBàN¬Çà]]Y[’[õÿ⁄‘ô\]Y\›YHò[ŸN¬àù[ò›[€àûT^P]Y[ 
+^¬à]Y[’[õÿ⁄‘ô\]Y\›YHùYN¬àYä]Y[“\‘^Z[ô Hô]\õé¬àYäYX€Ÿ[ô‘›\ùY
+^»[ö]ŸXê]Y[ 
+N»BàYäX]Y[–›
+Hô]\õé¬Çà€€ú››\ù⁄[îôXYHH
+
+OOû¬àYä]Y[“\‘^Z[ô Hô]\õé¬àYäŸXê]Y[‘ôXYJH›\ùŸXê]Y[–]
+›\úô[ù[ùõ—[\ŸY
+
+JN¬àN¬ÇàYä]Y[–›ú›]HOOH	‹ù[õö[ô… ^¬à›\ù⁄[îôXYJ
+N¬àô]\õé¬àBÇàÀ»Ÿ[HŸ\›»»ò]ôYÿY‹àŸHôX›\ÿ\é»õ»ö[YZ\õ»‹]YKÿ€\]YH⁄[X[[‹»Hõ›õ¬àÀ»[ùõ»H]]òpÈË€»»\›pË\ö[»Hô]€X[[‹»^][Y[ùHõ»[\»]X[H[ùõÀÇà]Y[–›úô\›[YJ
+Kù[ä›\ù⁄[îôXYJKòÿ]⁄
+
+
+OOûﬂJN¬àBÇàÀ»[HHpÓú⁄XÿH\ô]»õ»€ù»Ÿ\ù»
+\ÿY»õ»€0Î[X^öXH\‹pÈ€À‹à^[\ Bàù[ò›[€àŸYZ’ŸXê]Y[’ ŸôúŸ]ŸX€€ô ^¬àYäŸXê]Y[‘ôXYJ^»›\ùŸXê]Y[–]
+ŸôúŸ]ŸX€€ô N»BàBÇà[ö]ŸXê]Y[ 
+N»À»X€ŸYöXÿH[HŸY›[ô»[õ¬àûT^P]Y[ 
+N»À»]]‹^Hô\›YYôõ‹ù»ŸH»ò]ôYÿY‹àõ‹]YX\ãY›X\ôH»ö[YZ\õ»Ÿ\›¬Çàù[ò›[€à[õÿ⁄–]Y[—úõ€QŸ\›\ôJ
+^¬àûT^P]Y[ 
+N¬àBàÿ›[Y[ùòY]ô[ù\›[ô\ä	‹⁄[ù\ô›€âÀ[õÿ⁄–]Y[—úõ€QŸ\›\ôK€€òŸNùùYKÿ\\ôNùùY_JN¬àÿ›[Y[ùòY]ô[ù\›[ô\ä	⁄Ÿ^Y›€âÀ[õÿ⁄–]Y[—úõ€QŸ\›\ôK€€òŸNùùYKÿ\\ôNùùY_JN¬Çà€€ú›X⁄»H
+
+OOû¬àYä[ùõ—[ôY
+^»ô]\õé»Bà€€ú›[\ŸYH
+\ôõ‹õX[òŸKõõ› 
+HH€ÿ⁄‘›\ù
+H»L¬à\Tò[\Yõ€[YJ[\ŸY
+N¬àYä]]UöYŸŸ\ôY
+^¬àYä[\ŸYèH–RU—TêUS”ä^¬à€X\í[ù\ùò[
+X⁄“[ù\ùò[
+N¬àöYŸŸ\ê€[X^
+
+N¬àH[ŸH¬à€€ú›ÿ\ôH‘T“––TëÀôö[ô
+œOà[\ŸYèXÀú›\ù	âà[\ŸYXÀô[ô
+N¬à‹\⁄[ù^€€ù[ùHÿ\ô»ÿ\ôù^à	…Œ¬à‹\⁄[ú›[Kõ‹X⁄]HHÿ\ô»	ÃI»à	Ã	Œ¬àBàBàN¬à€€ú›X⁄“[ù\ùò[HŸ][ù\ùò[
+X⁄Àå
+N¬àX⁄ 
+N¬üJJ
+N¬Çã àOOOOOOOOOOOHU‘íPS’RPQ»OOOOOOOOOOOH
+ã¬õ]]‹öX[›\»H◊N¬õ]]‹öX[›\[ô^H¬õ]]‹öX[€ê€€\]HHù[¬Çôù[ò›[€à›\ù›ZYY]‹öX[
+›\À€ê€€\]J^¬à]‹öX[›\»H›\Œ¬à]‹öX[›\[ô^H¬à]‹öX[€ê€€\]HH€ê€€\]Hù[¬àÿ›[Y[ùôŸ][[Y[ùûRY
+	›]‹öX[[›ô\õ^I Kú›[Kô\‹^HH	ÿõÿ⁄…Œ¬à⁄›’]‹öX[›\
+
+N¬üBÇôù[ò›[€à⁄›’]‹öX[›\
+
+^¬à€€ú››\H]‹öX[›\÷›]‹öX[›\[ô^N¬àYä\›\
+^»[ô›ZYY]‹öX[
+
+N»ô]\õé»BàÀ»\‹\òH»^[›]\‹Ÿ[ù\àHô\ôYH
+0Óù[Ÿ€»\0Ï‹»õÿÿ\àH[JH[ù\»HYY\àH‹⁄pÈË€»»[õ¬àô\]Y\›[ö[X][€ëúò[YJ
+
+OOàô\]Y\›[ö[X][€ëúò[YJ
+
+OOà‹⁄][€ï]‹öX[›\
+›\
+JJN¬üBÇôù[ò›[€à‹⁄][€ï]‹öX[›\
+›\
+^¬à€€ú›\ôŸ]Hÿ›[Y[ùú]Y\ûTŸ[X›‹ä›\úŸ[X›‹äN¬àYä]\ôŸ]\ôŸ]õŸôúŸ]\ô[ùOO[ù[
+^¬à]‹öX[›\[ô^
+ Œ¬à⁄›’]‹öX[›\
+
+N¬àô]\õé¬àBàYä\ôŸ]úÿ‹õ€[ù’öY] H\ôŸ]úÿ‹õ€[ù’öY] ÿõÿ⁄ŒâÿŸ[ù\âÀôZ]ö[‹éâÿ]]…ﬂJN¬à€€ú›ôX›H\ôŸ]ôŸ]õ›[ô[ô–€Y[ùôX›
+
+N¬àYäôX›ù⁄YôX›öZY⁄
+^¬àÀ»Z[ôH∞Ë€»ô[ô\ö^õ›HHô\ôYH8†%[ùHHõ›õ»õ»∞Ïﬁ[[»]XYõ»[Hô^àH\Ÿ[ö\à[H[ô[\úòY¬àô\]Y\›[ö[X][€ëúò[YJ
+
+OOàô\]Y\›[ö[X][€ëúò[YJ
+
+OOà‹⁄][€ï]‹öX[›\
+›\
+JJN¬àô]\õé¬àBà€€ú›YH¬à€€ú›ö[ô»Hÿ›[Y[ùôŸ][[Y[ùûRY
+	›]‹öX[\ö[ô… N¬àö[ôÀú›[KõYùH
+ôX›õYù\Y
+J…‹	Œ¬àö[ôÀú›[Kù‹H
+ôX›ù‹\Y
+J…‹	Œ¬àö[ôÀú›[Kù⁄YH
+ôX›ù⁄Y
+‹Y
+åäJ…‹	Œ¬àö[ôÀú›[KöZY⁄H
+ôX›öZY⁄
+‹Y
+åäJ…‹	Œ¬Çà€€ú›€€\Hÿ›[Y[ùôŸ][[Y[ùûRY
+	›]‹öX[]€€\	 N¬à€€ú›\”\›H]‹öX[›\[ô^OOH]‹öX[›\Àõ[ô›LN¬à€€\ö[õô\íSHà]àYHù]‹öX[\›\X€›[ùèî\‹€»	›]‹öX[›\[ô^
+Ã_HH	›]‹öX[›\Àõ[ô›OŸ]èÇàâ‹›\ù]_O⁄Çàâ‹›\ù^O‹Çà]à›[OHô\‹^Nôõ^⁄ù\›YûKX€€ù[ùú‹XŸKXô]ŸY[éŸÿ\é»èÇàù]€à€\‹œHô⁄‹›XùààYHù]‹öX[\⁄⁄\Xùàà›[OHôõ^åN»èî[\èÿù]€èÇàù]€à€\‹œHõXZ[ãXùààYHù]‹öX[[ô^Xùàà›[OHôõ^åN»èâ⁄\”\›»	–€€ò€Z\â»à	‘∞Ïﬁ[[…ﬂOÿù]€èÇàŸ]èÇà¬à]HôX›õYù¬à]HHôX›òõ›€H
+»Mé¬à€€ú›€€\HMå¬àYäH
+»€€\à⁄[ô›Àö[õô\íZY⁄
+HHHôX›ù‹H€€\¬àYäH
+HHH¬àYä
+»éLà⁄[ô›Àö[õô\ï⁄Y
+HH⁄[ô›Àö[õô\ï⁄YHÃ¬àYä
+HH¬à€€\ú›[KõYùH
+…‹	Œ¬à€€\ú›[Kù‹HJ…‹	Œ¬Çàÿ›[Y[ùôŸ][[Y[ùûRY
+	›]‹öX[[ô^Xùâ Kõ€ò€X⁄»H
+
+OOû»]‹öX[›\[ô^
+ Œ»⁄›’]‹öX[›\
+
+N»N¬àÿ›[Y[ùôŸ][[Y[ùûRY
+	›]‹öX[\⁄⁄\Xùâ Kõ€ò€X⁄»H[ô›ZYY]‹öX[¬üBÇôù[ò›[€à[ô›ZYY]‹öX[
+
+^¬àÿ›[Y[ùôŸ][[Y[ùûRY
+	›]‹öX[[›ô\õ^I Kú›[Kô\‹^HH	€õ€ôIŒ¬à€€ú›ÿàH]‹öX[€ê€€\]N¬à]‹öX[€ê€€\]HHù[¬àYäÿäHÿä
+N¬üBÇò€€ú›U‘íPS‘’T◊”QSïHH¬à‹Ÿ[X›‹éâ÷Ÿ]K\ÿ‹ôY[èHú⁄‹óIÀ]Nâ”⁄òIÀ^â–€\]YH\]ZH8†%0ÍHH⁄òH€ôHõÿÍà€€\òH›X⁄»\Ÿ\ú»õ›õ‹»HÏ‹X\»òH]õ€Z\àH\›ô[KàÏ»ù[ò⁄[€òH\ò[ùH[XH\ùYKâﬂKà‹Ÿ[X›‹éâ÷Ÿ]K\ÿ‹ôY[èHö][\»óIÀ]Nâ“][ú…À^â–\]ZHõÿÍà€€\òH][ú»H\]Z\H]0ÍH»[HÿYH›X⁄»\Ÿ\ãà[›[ú»][ú»€€Xö[ò[H⁄\»XZ\»úòX€‹»ù[HXZ\»õ‹ùKâﬂKà‹Ÿ[X›‹éâ÷Ÿ]K\ÿ‹ôY[èHúôX€€[Y[ôYóIÀ]Nâ“][ú»ôX€€Y[ôY‹…À^â”∞Ë€»ÿXôH»]YH€€\ò\è»\]ZH[H›YŸ\›0Ë€»HùZ[òHÿYH\ú€€òYŸ[KâﬂKà‹Ÿ[X›‹éâ÷Ÿ]K\ÿ‹ôY[èHúõ‹›\àóIÀ]Nâ”Y]H[YIÀ^â’ôZòHŸ‹»‹»›X⁄»\Ÿ\ú»]YHõÿÍà∞ËH‹‹›ZK€€H∞Î]ô[H\›ô[\ÀâﬂKà‹Ÿ[X›‹éâ»€[ŸK\ôIÀ]Nâ–€€ùòHõ›	À^â”»[Ÿ»ö[ò⁄\[à€ÿúô]ö]òHH€ô\»H[ö[ZY€‹»ÿYHô^àXZ\»õ‹ù\Àÿ[ö[ô»[ŸY\»H[»ÿ[Z[öÀâﬂKà‹Ÿ[X›‹éâ»€[ŸK\ú	À]NâÃàõŸÿY‹ô\…À^â“õŸ›YHõ»Y\€[»\\ô[»€€ùòH[H[ZY€ÀÿYH[H€€HŸ]H[YHH›X\»[ŸY\ÀâﬂKóN¬Çò€€ú›U‘íPS‘’T◊–êUHH¬à‹Ÿ[X›‹éâ»‹õ›[ô[ôõ…À]Nâ”€ôHH€[XIÀ^â–\]ZH[‹›òH[H]X[€ôHõÿÍà\›0ËHH»€[XH»XH8†%»€[XHŸH]Y\à»€€Xò]H
+⁄]òKô]ò\ÿÿKô[ù»õ‹ùKããäKâﬂKà‹Ÿ[X›‹éâ»ÿ\ô[òIÀ]Nâ–H\ô[òIÀ^â‘Ÿ]H[YHöXÿH0Ë\‹]Y\ôK‹»[ö[ZY€‹»0Ë\ôZ]KàHò][HX€€ùXŸH€ﬁö[öH8†%Ÿ]HòXò[»0ÍH[€ù\à»[YK‹»][ú»HH‹⁄pÈË€»Ÿ\ùH[ù\»[H€€YpÈÿ\ãâﬂKóN¬Çõ]\‘ŸY[êò]U]‹öX[Hò[ŸN¬Çôÿ›[Y[ùôŸ][[Y[ùûRY
+	Ÿ›ZYY]]‹öX[Xùâ KòY]ô[ù\›[ô\ä	ÿ€X⁄…À
+
+OOû¬àYä[ŸHOO[ù[
+Hô]\õé¬à⁄›‘ÿ‹ôY[ä	€Y[ùI N¬à›\ù›ZYY]‹öX[
+U‘íPS‘’T◊”QSïJN¬üJN¬Çôÿ›[Y[ùôŸ][[Y[ùûRY
+	‹]⁄õ›\ÀXùâ KòY]ô[ù\›[ô\ä	ÿ€X⁄…À
+
+OOû¬àÿ›[Y[ùôŸ][[Y[ùûRY
+	‹]⁄õ›\À\[ô[	 Kò€\‹”\›ùŸŸ€J	€‹[â N¬àÿ›[Y[ùôŸ][[Y[ùûRY
+	‹]⁄õ›\ÀY›	 Kò€\‹”\›úô[[›ôJ	‹⁄›… N¬àû^»ÿÿ[›‹òYŸKúŸ]][J	Ÿô\úõ”[òÿSõ›\‘ôXYô\ú⁄[€âÀ–SQW’ëTî“S”äN»Xÿ]⁄
+J^ﬂBüJN¬ôÿ›[Y[ùôŸ][[Y[ùûRY
+	‹]⁄õ›\ÀX€‹ŸI KòY]ô[ù\›[ô\ä	ÿ€X⁄…À
+
+OOû¬àÿ›[Y[ùôŸ][[Y[ùûRY
+	‹]⁄õ›\À\[ô[	 Kò€\‹”\›úô[[›ôJ	€‹[â N¬üJN¬ôÿ›[Y[ùôŸ][[Y[ùûRY
+	›]‹öX[Xùâ KòY]ô[ù\›[ô\ä	ÿ€X⁄…À
+
+OOû¬àÿ›[Y[ùôŸ][[Y[ùûRY
+	›]‹öX[\[ô[	 Kò€\‹”\›ùŸŸ€J	€‹[â N¬üJN¬ôÿ›[Y[ùôŸ][[Y[ùûRY
+	›]‹öX[X€‹ŸI KòY]ô[ù\›[ô\ä	ÿ€X⁄…À
+
+OOû¬àÿ›[Y[ùôŸ][[Y[ùûRY
+	›]‹öX[\[ô[	 Kò€\‹”\›úô[[›ôJ	€‹[â N¬üJN¬Çã àOOOOOOOOOOOHUHOOOOOOOOOOOH
+ã¬ò€€ú›SSQSï–””‘î»HŸõŸ€Œâ»ŸLéLÿIÀY›XNâ»ÕéYô	À\úòNâ»ÿåMLâÀô[ùŒâ»ÕŸôXIÀY][â»ÿÕÿŸôIÀŸ[Œâ»ŒôN	À[]öX€Œâ»ŸçYMçå…À€‹úù\Yâ»ŒXçôIﬂN¬ò€€ú›‘P“PS–“Të—W’ëT“”H€[òÿNåÀ›\òNç\ôù\õŒçòZòYNåÀù\öXNç€›\òXÿNç^‹ÿ[ŒåÀ⁄]òNç[XNç€€ôŸ[[Y[ùŒç_N¬ãÀ»õ›òHõŸH[[Y[ù[à0ËY›XHàõŸ€»àŸ[»à\úòHà[0Í]öX€»àY][àô[ù»à0ËY›XH
+ôX⁄H»⁄X€ Bò€€ú›QêSïQ—T»H÷…ÿY›XIÀ	ŸõŸ€…◊K…ŸõŸ€…À	ŸŸ[…◊K…ŸŸ[…À	›\úòI◊K…›\úòIÀ	Ÿ[]öX€…◊K…Ÿ[]öX€…À	€Y][	◊K…€Y][	À	›ô[ù…◊K…›ô[ù…À	ÿY›XI◊WN¬ãÀ»ô\⁄\›0Íõò⁄XHH€€ùõ€NàY][ô\⁄\›Hò\›[ùH
+Y]YHH\òpÈË€ HH]‹ôÿ[Y[ùÀÿ€€ùõ€Hö[ô¬ãÀ»H]X[]Y\à[[Y[ù»UQH∞‡”»—RêH[0Í]öX€»
+H[]öX⁄YYH€€ô^à[»Y][Ÿ[H\ô\àõ‹∞ÈÿJKÇôù[ò›[€à\P– \ôŸ]\À€›\òŸQ[[Y[ù
+^¬à]][HN¬àYä\ôŸ]ô[[Y[ùOOI€Y][	 H][H€›\òŸQ[[Y[ùOOIŸ[]öX€…»»çÕHàçN¬à€€ú›ôYXŸYH\ õ][¬à\ôŸ]òX›[€ï[Y\à
+œHôYXŸY¬àô]\õàôYXŸY¬üBôù[ò›[€à[[S][\Y\ä]ÀYä^¬àYäQêSïQ—TÀú€€YJ
+ÿKJOOòOOOX]…âôOOYYäJHô]\õàKçN¬àYäQêSïQ—TÀú€€YJ
+ÿKJOOòOOOYYââôOOX] JHô]\õàççŒ¬àô]\õàN¬üBÇÇãÀ»ö\›X[]\›‹ùòZ]ŒàôX[òXŸH\ù⁄[à]òZ[XõKôXYXõHò[òX⁄»õ‹àHô\›ÇãÀ»Ÿ\ÿÿ[»H\›úò[ò⁄€»HõŸX›[€àÿ[YHô[XZ[ú»[ù›X⁄YÇò€€ú›“STS”ó‘‘ïêRU»H¬àŸ[YNà	Ÿ]Nö[XYŸK⁄úYŒÿò\ŸMçŒZãÕPTT⁄÷íîô–PêTPPPTPPêPQÃù–ëPSP–Y“P–Y”P–Y“Q]”QêVQPêTQPêY—–ô’Q–‘Y“–Ÿ⁄“P‘Z“—NPŸ‹”–›⁄“ëëSëŒQPëTPŸ›‘—^TQ]ŒQPëÃù–ëTSQ]‘QêY—PêY‘P›⁄”PêTQPêTQPêTQPêTQPêTQPêTQPêTQPêTQPêTQPêTQPêTQPêTQPêTQPêTQPêTQPêTQPë›–PTê–PêPQPQT“PPZPê^PãŒPRPPPY”PP]—PPPPPPPPPPPPPPùŸ—PîVPê]⁄–ÀŒPS–êPPTSQ]“QPêTP–›–PPPPPPTRQêUQ—TPT“TYê–ì^TîZS[QZî[“ñ[ëU“ê’^ï[Så÷î⁄—PPô–êTQPêTQPPPPPPPPPPPPPPPUQPY”QÀŒPR^PPTTP–Y“P–]–PPPPPPPPPPTPP–^QRTí^Z—QïU“éÿPP]—TPP—TSTêQ[‹ùR›’õ
+‹›éNT⁄Ã\MëYåçUXÀÕúéNTLë›—ZöùÿY]\ëLñSíXò›P€€’^ÿîMêMQíêK—’S›–RíJ ”í”ÿ—⁄^[ﬁöúZúSMî —€ùå”ïñçSYRX’MŸõõêŸùTŸSìVëúZúë\[’é’ ﬁ[—òQTûù⁄€òYùííéNP––êYS]]Uç\ŒNXUúêôMZÕ]’ë[ëŸñX ›íLÀ‘Sÿ’€V\]öKÕç—QïìQ€TÃ—ZŒRŸìPYîî”QŸQ÷íQõ›Õ”êïVíYôñùçR›T›ì ÕU^ìUÃÃ]íí‹÷UTä›ë⁄ñ\õ’ä‹M›ŸäŒQ]çúï‹’’Ÿ[ö ’Z‹€“îëö›Qç\ZéTçPç–ÿÕ—ì
+—Ãäÿûé›çYë]òíúÃﬁQ“òç⁄Õ›åëî€[êŸñí–’ZŸ⁄—YZL‘Õïÿ⁄ëŸú€ﬁúùRÕQXÀÃ‹Yã”ÀŸñ‹MìVìYòVMJ ›Vö⁄“€“⁄—åMVú‹L‹NZ’SŸ[õëìõ⁄îå\å‹R’êRRö⁄öî‘íQùöMZôSY^äﬁ€î’í⁄ã—”ì“UM[çïJ÷MN^ç⁄ÿ⁄€ùÕJ”[\å^ZåñíUìTJ⁄RïVòöVöçìM‘QRî‹—åì’“ì‘ï’Õî]ù‹ò⁄L“ïÕö‹]ÃR“’ïﬁñö“÷öTVöù“å–ë’—ZÿùJ–úôÕ“íZ›Z‹ï›åJﬁåå‹õÃV\ï[^Qçù‹çê⁄UÕíííUMéŸûêR‘⁄—Zÿ‹Tñ^Sú’ûX\€ÃûíNô[YU[Rë‘òïÕR’M—ùï÷^[ ÷\îêêì”òUÕU’QÕ€úö›
+÷⁄ÃPQò⁄RîÕQY—íîŸúúP⁄Õ‘çòòŸõK’Õîú”]U‹‘\V[–]î÷òöUÃUô\
+Ã”⁄íòJ‘€QMã›ùZ^S^]îŸK›–íòì›ìä÷å“ÃÿYQôSî‘‹SUïLŸUZL“êÃT‘€åPSMŸYﬁ]ïõZéVM[öã—Ÿï÷Xì^\]⁄‹ù›ÕU⁄N‹⁄‹U‹R^X€’‹ç—Ã‘QMô÷Àÿö—R›]ïZSZU⁄÷\çê‘ZP‘éÕRå—Z‹Rû–Sô‘\Õö “ë‹LŸ⁄T€îLíìôﬁùŸêÕ“Pç⁄“’⁄îõõïï–Ã’‹⁄ã–”ﬁLõL⁄–ûUZT]í‘Tö—X\ñî⁄íïûëZTU÷MTù”öUM
+€TZéQMòZTÃöR⁄QRVûûTïëÕïåRV⁄ô–ëUê’ñX’K›”ùùççêçMéL–ò“Õ ÷\éSN[ñR’–ëõS€öõLê‘⁄⁄å”[íì” €VN^û[Q–÷Zíìî›í’ùîô€€ÿí[–PQñê^ñ[ì‘‘úíï\]êö[î“õ‹›T[“ùìÿïÃZÕ–\Õö“êRÃäÕLSìÕûûSUï€ã›—ôï[ŒS\VôôZåS‹T\õïMSî›VPï‹ìÕRMLúP^ûP›ï⁄ö\ñ⁄M‘ìLíLû[÷åù[‘—íã‘ñMÃ]îëMLùú^LUTíY‘Lå“^úïÕìPîå—ì—Zì’çÕPMã’“òNS‹S›UÃö^PïVM’Z[SRPU⁄“ÃÿŒMçççíôT⁄“ûòPï”^T—›õ[úùõSV”ÃVôX‘–“òúL÷^ZÕ^QT\^ä€íJÃúŸôïYñéSöå’—êåù[MMLTYX‹ÕRULé–‘NöŒ\€”Ÿ‹åîÿã⁄ï\MZ]ŸLùÀ“’Zä‹ì‹ôZúUYÕ‹÷UT[ŸŸŸçVîïùSùŸÿôöûRK€VTöﬁLQMÿX–ôäÕUY€õõö€î ”]”VQÀ‘—ﬁM^ìK⁄›J‘ZL–Q€”“çî’íTS‘Zö‘õã‘XLT‹TYöŸT^Lñô‹P–öò€–Y—YŸZîYïõUZ\UûK’ïÕû[QúSìòôUÃúò’çùVçPû“ﬁã–PZî—S”ÕòL—–ÃììÃíŸŸ^ZLLQçñYY\ê⁄SñîúXïZﬁPä—ZT‹›çRLí“ñRçMöÿNTíçëY‹öññçS‹ûLÃ——\Tú “åñïYùÕ—M‘çú’À‘“ûM‘”ÃT‹\—ZSïRùîRíûö÷UéZŸñY]õYS€VòZ’LXŸUÃÕŸÃçå”TUä’]íJ’S–T\ùSŸYSîZöM›QXLì—ÃÃñLSëﬁZŸíŸT€›K›–R⁄–ëŸYôîîY’ì÷ò÷Q‹RZL“û[[êöçMRUZ]ï”N]\LSôõ’îúûìê⁄”ù‹SëJ“€ûõî€Ÿ”—Qñù‹ô\î€’Y⁄€XÕåõîﬁú\íçïûëRõïÃP\X–ï]‘€ë]TûRêRQ”—í“î‘PS—ZŸTTúLî‹‹XùSå[Ã‹íïåòïñ[\ïëõ‹ùö–ëÕUûïÃûêY‹U”ZïŸRŸì‹Qöù‹RìP€åÕ’õYîõìT–‹ÿ€ù]Ÿ›⁄ç‹çëXV‹Sñ[õ\Yä€ïìúQô”“‹Xõ‘ä“T\⁄ï]›úZôÃéNYÿ ÷XŸ‹J—ñ^íÕ’’Õ÷[÷“õ÷ULR›Uõ‹Qõ–îQ‘‘‹úJ€”LM’Õ‹LYﬁã’ôLåV[URõö”’[PíPò—úUêåT⁄“K›—åMŸùZïU€î‘å‹ùŸëPöôM
+Ÿ“ôX⁄úò–Ÿ—MSRçŸK–MçVúNTïY\öõ—]SYNRUöôò”ÃLZ‹X’ïZYPÃôX÷êíM]ŸXÿLZôìîú[’ë\URXô“XëTõúVöêPRö€ÿ’ÿ÷ê’ù”ì÷[õŸåRõSíYùùåã÷âÀàòZ[Œà	Ÿ]Nö[XYŸK⁄úYŒÿò\ŸMçŒZãÕPTT⁄÷íîô–PêTPPPTPPêPQÃù–ëPSP–Y“P–Y”P–Y“Q]”QêVQPêTQPêY—–ô’Q–‘Y“–Ÿ⁄“P‘Z“—NPŸ‹”–›⁄“ëëSëŒQPëTPŸ›‘—^TQ]ŒQPëÃù–ëTSQ]‘QêY—PêY‘P›⁄”PêTQPêTQPêTQPêTQPêTQPêTQPêTQPêTQPêTQPêTQPêTQPêTQPêTQPêTQPêTQPêTQPë›–PTê–PêPQPQT“PPZPê^PãŒPQ›–PP]—PêPSPPPPPPPPPPPPPPîX“Pô‘Pê]€ãﬁPLPPPê]”QY’Q]”QP]–PPPPPêY”QPîVTêûZQRQ^ZTUîñTï^ò’Rë‘ò⁄íëíûZÿ“ﬁPVêTPQTQPêPPPPPPPPPPPPPPP–]‘QêTXãﬁP\TPP–TRQP]⁄–êPPPPPPPPPPPêY”PQTTT“UêñYêU[û÷ëﬁQ⁄Œ[–QSPêPRTê^PT–í[ŸRTÕMY[åéTQõŸ‘òXUú‘öì€ôY^ùõêN[”Ÿú^ôŒJ€[ïé⁄ùPõ^çQNQXå]Yö›QúQZ‹⁄ç\^äÃö‘–€ÕöÕS–ååìëTôUùåPÕçõòU›\“Ÿ€⁄ôT€UTûù’õêçŒú^YYïY[‹Lõ›LVö]û⁄”öU”Mõåå›ìVëÿ‹–€ÿïåÿùööåQùﬁT—ÿÃùX]Œö^ê ‘îåJ’ê”ñöòTU’[ﬁî÷õåVRÀÃ“ê›Õ–⁄îûLN]€íRÃêQ€îP€ï‹ïRûYäÃ“⁄ﬁòïVì“ZŸRîÃåSM÷Mïë\UíìÕ—‘’ë\Uö⁄⁄€íçûëò\úìùŸ^\úùVò⁄Õ”VêŸçÕÃL\ä‹òëS⁄ï^\Q’]^[åÕQÿSﬁ[íPïN[RêMT⁄çMê—úõç”ìÕì›ïîZ“Œ\XõõïLN][⁄—÷ZQñÕòZŸMåXå”ùZçT€TSQú”Ãç“‘ŸJ”‹õåùTJ‹R]]L]\Tõñéë⁄û]‹TTSZ’Rì”ZN\]J”MMö—ã÷ﬁSíÃ—Õ–LLÃúX‘⁄”RVZÃ—úùûçTTTôXïMõ⁄–]ôﬁQñêLŸì”›ô”õS]T”‹\úPúQìYM\”ú[ûï€NZ”P—€åûé]Pï\íZÿ[SéUY
+Ã[SZ⁄Ã\QöLYﬁLëìú[⁄Mã—Ÿ^çXZL›öŸRK–íMéòôçôï]\Våñ[[åYÕT—\]€î—òÀ ⁄é€ã“õŸL‘€PñXŒÕô’ì›“ì€ﬁå’‘PéNNQòPúZì›ï‹Qò€ô[öêï÷ïU\TﬁPçTä—ñ^ŒU“]õ—Àﬁòå€⁄⁄÷PVùôUíã⁄åLLQú\îÿõ€‹⁄ﬁ^YU\UúYôŸYîX“–êíTYòXU›úŸLö€[SçLÿ^NS€Zå]í[î’]SúÕ⁄ú’[ŒRìÃTíM^Q[\å^ïîÕöåçí”›PÕQRTùVô’ëôíUùî”’—€S‹åSŒUX[”Uÿî‹õTîŒ”õÃXîÕåöòÿï\⁄⁄—í€ŸÿÕ—ôòŸ÷–ÿëLéëÀﬁîT÷V^U⁄⁄⁄çöìî‹MR⁄ùîöíñYRSP”VRé\çPêêë—J›U€ò›\[S‘“Sëî—úQÃQéLQÕSMSÃTYçMåLK’^YU^\V—XZL[î‘V[ŒVMSò⁄RïTPLMöPÃ–Z—LÕS”QçŒQìÃïä‹]VﬁúMY—õ[Ãì[RR^LRïÕúQöŸ€‘⁄“RRPå”^“Y’”‘Sﬁöîô‘›õî\\Z÷Ã⁄úä’ZõÕXåÕõÕä‹ÿ÷YQM⁄ã–S”Ÿã›Y[[õ’úPòìùëöMöûL’çÿ⁄›Pù\L‹Xî^ÀÃRç‹SVûŒJ€åö›Z›T€ﬁT‹íïZ÷U[éPííûî“›úéUç÷TL’MñïTXôëôZ‘úù‹ñYP’“ÃöíSÕ]’õ”R“íŸû€‹‘ÃZíJﬁUŸN’⁄ìéÃ›–íRô]S\“YXS\ﬁV^úòN—ù—ò—YMS’õç÷Mîìï]ïTŒR‘îîòY[”‹íç[X÷Ué\Ÿ⁄⁄çRõ–õ’ç]YíXù^îTû[íí›⁄îôéULõêùŸYö“\\êÃZ’éõÃTô‹ﬁïVQﬁTú€TåR‘—ÕRTã€úîUï⁄ÃTY[í\îåí]Y€Õ“”‹MéRòåçQJŒÀ”÷PVZSå‹€’Ÿõ“Ã’SVé^ZŸS‹[UQëùLY\\Tí“—]T‹›‘—õå÷^êûé]\Zù^ZÃ›’’P‹]SY\]Õåìòï‹í“ê‘MZ—êN›YûY\‹ì‹”ê]ô\‹\ö›ôPYÃ]Qêõ\Rî€ô‘–R—Rﬁå€ö›⁄îïîMíç’ûëM‹Õ⁄ñ[]\î ÃR‹úTôXõUﬁN“ÿÃù÷€VòLöîTñ^P—[’]€òŸU[í]–”ŸŸ
+’P”úSLÃVYã‘‹RU[Tÿ‘ïåíÃ÷TﬁPQRK‹ZTRçúÃ›€Mëï—ñYôT€çSåúëŸï^][õNò\ôŸ‹L‹çQ—’ôÕ“ïäﬁòYúúê\QX[L[RXòíŸ€“RùTå]⁄ì€⁄À“éò^õUMÿ‘å\ï“õÃ’\õì^ë‘íûë’ì]÷í‘ñù—òòíë–M⁄î’ù‹çŸ[TZŸÕôñ\çÃ]L[‹›J€U‹‹‘Ã⁄SõŸTX—PMÿ‹RL“UP”NUõïòVúúîïQ⁄ﬁ\íùQ“€”ﬁ“ñTí^[ö“‘‹êN—S—⁄çLVçMìRëÿîôULí›U›”Y]Z]‘€KÕ‹U”äÃŸ^ûQõÕîìë”’Zûå[“å”ô÷ö\SëL“Ãåã’ô‹ùÿ€[PNMZ–‹úZVõîù‹õSìûö”‘Qñå‹ô⁄^[]úúõ^‹›ZUX\S—QëLõ]P€ëëçìXÀÿìÃ›–ŸZ‘⁄Uíﬁú\›Yñõ\ëïúPÿ⁄÷RŸì]‘ï’R“TŒLZLZ\ULùúÃ[[ö⁄ìTë—Rö‘P[ùLNL]UíÃ]õLUöXõ’ê\é[Sùî“QYTôUúXU
+››\U€í’\õùåNôòôXúLú[⁄LVú”ùñLô›ŸìUŒSŸä‹[ööçì‹åÿé’€úﬁôLPùïú\’ZõT€[ïì‘ïŸïïLLLR^ù‘€íÕä‘UZŒLŒ]Z’MMMZÕúûìîNSõÃMì^îîVõ^J’]ÿ‘Rûöì’íí⁄ÿô“–Ÿ]^TP÷Ã÷ZôML ŒXTööR’À”öåLõôUúL‹ﬁ^êú›‹ÃSúåú‘“‘TY’ÃïV^[ë’MQŸQŒQûL\Õã’Qëû÷T–⁄û]ïú—Pù–YU‹êãŸÀ—Ÿ\€ôSõ›TìëﬁSù]‹ñëVòù⁄ú‹
+€LQåYMNYÿôç÷Y›€ŸZçŸŸŸ[ïï[Zçú‹ëX[][—\òR€ë⁄T›⁄ŸVLùŸM“êç—QVJŸ\YÃL›ñZë[RZûR]P⁄ôQ⁄^P€XZZMë‘[RÕìQ÷^úì’€õ\^QçMù—[éSﬁQïQòåS÷úNUö‘L⁄“ŒR’Zÿ”€Tïë””VäŸ\ŸLçõ—ZŸ⁄ã–På[åTçUùîñP–Uùì””“ùX–QKﬁTŸ[U^åTêLLSŒX”ô]ZMX[ŸîYúÕ‘’Zç÷ïöäŸ\—ò”R‹ﬁç€ûL⁄—ê⁄⁄PRK⁄ù\^çUSŸLﬁZÕõZ›íçöë\íŸ‹—T⁄’ãÀÃîOOIÀàôYYÿ\éà	Ÿ]Nö[XYŸK⁄úYŒÿò\ŸMçŒZãÕPTT⁄÷íîô–PêTPPPTPPêPQÃù–ëP[“–Z“Pô€“ê–Z”P›€”Q‘ëÕ——–ìXRî—[íöTZê”\úﬁR‘›Õ”Z”LL—‘Z”ê“—íUZUîZãÀÃù–ëT\”QNëëTç“⁄T\Té‘é‘é‘é‘é‘é‘é‘é‘é‘é‘é‘é‘é‘é‘é‘é‘ãÀ›–PTê–PêPQPQT“PPZPê^PãŒPQ›–PPY”PêTQPPPPPPPPPPPPPPîX—êVP–TQﬁPLPPP–TSQY‘Qù”QêPPPPPPPêY”PPêëQëZQ^TìZUU—Qÿ÷QUS\ﬁR“LR⁄ûZ‘\ﬁPVPTPQTQPPPPPPPPPPPPPPPPPêY”PPî—PPåêPRP–]—PêTPPPPPPPPPPPPPPêZQZR^URÃô–SP]—PPZQTPK–SïíôM“íú\MöMòVòôTVZR’–QZ‹ŸîP€”ïLP“ñç⁄X—Z]“QŸûã—VJ›\òQçQñRRòõîë[“ï÷›ë’‹öìùÿúXL]NRê—ÿÀﬁù\ÿN\ö\Ãõ÷⁄ŒRMéÃUõP‘Mí⁄Ÿ›ìíTÿÿ–Vì‘\\⁄‹ö–”ëL–NLëì‹VQ÷ä‹ö“úLN€ùçñK”›[‘V÷VùﬁòZô›òŸSÀÕåUöRMñNM›éU‘‹ìY[ŒôTQY›–ú^õôZRîÿYYÕä€\XYê’]ôŒ]‹ÿJ”[ÿŸ⁄ŸNQöﬁí‘ã’ôã›–ë⁄ÿúRòå€ŸUXùêÿ—ô”‹ŸTïô›Q]\ôSÕS’[VïîúZí^ä€’ç–’Z€VïYûÕ
+ÕìÃŒ\]ŸÀ‹Tú“]‘YÕX÷î“÷YûTîç]MPùZíMöúNP\PJÃÕë€Vë—UYôM“ÿRQ’“íõY[€[€‘ôTúUï]íìUY–ïì›]÷K›–L^êíÀ⁄í—ﬁQP–M[åé\LZëõÿñT\›Pç’ZÕMúçﬁ[çêúïÃõî]ﬁZSçÃ÷XëíQë”ïRì⁄QR\î—YXìî]Rù”Rò“X⁄ÀŒUò€ã–PîZM]õUŸX”]YLPîYP”‘ûïYòìS–‹PíîR‘÷îP—õöTçéLŸïêñûTî[ìPﬁXçŸåì–]“TéR’ëﬁ“‹åX ÷õ[Xé^UçŸîûYÕ÷LŒôXÿï
+÷J›Zö‘YùñRM›LõùUïö⁄’\öçåSñMLNJﬁ\ùRëÕìõL—
+–LéVLUåQúë”—TÃﬁôëVï“N“MMMë[úì—êôîä—ÃïÕëúåN\î]êLûSﬁ[úR€ÕöòÕîòÕõSî⁄êú÷\’ÃŸéLYMõòç‘÷õ€R‘“ŸL’‹S€ZJ“Sñ]ùùXZ‹‘PQQJÃPòåï‘U€ŸÃ–^Sÿ›”““Õò[\Õö‹^“YNUñŸR”îòYûL\€ŒU”L÷^ŒK€éëYYî^õMS^éUíòÕùù€’íVêVõ^SŸåúXSòYñìUQìõöïíQîPNSJÀÕåPõ’–’‹õLê‘ûQöNMN’ö€úîî—ÿQ÷ô‹’\SÃò÷QÃTù^QëQûP‹—^SZû\—úLìòõY›QVVé“êéS“ÿïû⁄ëNXŸZùŸú[÷]ö‘÷Y‘íú[”ùùìåK—⁄\T’öññM—’]ŸRùûêç÷çÃö⁄⁄[î]MõRûTT—”Ÿ[çå⁄îSí€⁄‹—ö÷[òõòÃ–K—€—åLë\Mï]€K€ùÃ‹Må[[]‹T‘õVMZ⁄öYYVUX–öSÃÿê[÷ëúNM^]‹÷Ÿô[PÃöÿYLêXë—RUïS”RSŸLYÿUXë–SRTçïP\ŸYÕëXÃYÃNVöS^]—åîõ€ŒT—úçUåﬁúù—ëNXúÕïQî‹ŸòÀ‹ñŸ[—Xê\[–”€ïL
+ŸÃ‘ãÀÃîOOIÀà\úù\Œà	Ÿ]Nö[XYŸK⁄úYŒÿò\ŸMçŒZãÕPTT⁄÷íîô–PêTPPPTPPêPQÃù–ëP[“–Z“Pô€“ê–Z”P›€”Q‘ëÕ——–ìXRî—[íöTZê”\úﬁR‘›Õ”Z”LL—‘Z”ê“—íUZUîZãÀÃù–ëT\”QNëëTç“⁄T\Té‘é‘é‘é‘é‘é‘é‘é‘é‘é‘é‘é‘é‘é‘é‘é‘ãÀ›–PTê–PêPQPQT“PPZPê^PãŒPQŸ–PPY”PêTPPPPPPPPPPPPPPPîVQêX––Yã—PQTPPRPê]”P–êTQê]’PPPPPPPQP–]–QQTUT“TV^^Rêò‘îîñVëZìZ“–ú‘Y›’“⁄ëŒPQ–QPêTQPêTPPPPPPPPPPPPPPPY—QêQﬁPX—TPQTPQTQPPPPPPPPPPPPPPTRTëZQ^LíÃô–SP]—PPZQTPK–Rõì‘ŸPéXUñéY›Ÿ›ÕôRéZ⁄úëÃúXŸåçTïìUÕíô^í‹’›—Zìù€í€åêä’SZìÕÿ—[€’í^îëTÀ’XMòLNÃ^⁄⁄—’ST€ŒYŸïŸÕŒUNTTNïñêSŸ–RŸ€í›—ﬁìúX€öçÀ”€îﬁLõêYŸ’÷UVZÿ”’XÀ‘’î⁄ÃRîåúñ\ïÕVñúùõRZìÃîòŸ“ñ\îŒSLPÃÃTﬁùSSŒYSP’úÃR‹êÿìXï⁄ÿYŸõ—YùR€ïå’ZXñë—XÕú‹õÃôSùP–‘òã÷Lùö\ç]USç€òSNåëò–’ñ
+ÃT’‘‹–’ú—[‘\MLìõçùï‹P”‹ÿôYMå‘““÷ñVUîúõRù‘—ç“‘€\Ÿ⁄]PRê‹“‘‘›M]éYùXLëîÃ[]ìê “ïï÷]íTãÿ\ZÕì]í[úÕ\ï”õ÷õ€òåÀ⁄ŸìSû‹’›€]VRTK“YPQ’X›Mÿï—éçSôU–ööﬁçôã–PîMûTSSçSô⁄—VîM]ëî]òﬁYﬁSZíù–ï”ïNLí[ÿ–õZùúö‹]LMS–îÃYõNSÿRéQçõúY\SûíRR^Xêé–QçŸîLÃVSŒVŸëöûMö€å÷K›–LôSõSëö⁄ïã”çN
+⁄^ùMåŒSZﬁZ‹–ïä‹[‘”Xí^T‹Lﬁõ]YñM^UÃZ’íPUîÿ^T›[ìî›Y›Pä—í^çŸ’]’\’VçùÕúÃPÃ›ùöR›UU–Zÿñëëÿ ’QJÀ“ú]åçSñTŸM€ôU‘ù”€ôÃRôëç“’çÿ‘ûS‘ÃçŒ“úïZñëòî”ﬁ^U“”Ãí€^^J“ìU^Qì›ô[”Lõå”“îõXÕ
+Ÿÿ÷úﬁK›–Q—À⁄Z]ö]îñùPÃ⁄Z‹‘îìñSåÿåìS€”TïÃRLöŸ]Sÿ^äÕåTìU—TçîSQVK€[ÕﬁMîÕ]Qí\[P[‘ZùL‹TÿT⁄”ñN[ÃúXVXçRëõﬁ⁄ùä‘Qì€U^RëVú[’^ù—K›–ìÿPXUí][éS›€öSî]–VS›÷Tõåõ”]ì‹ŒŒ€õSNÃï’Tî]ûMZ
+“öTﬁíLêé\\Ÿ]‹‹ÃM‘ëUêNSÃV›íçU–‘”’õûP—íù“÷ìëÕô]—L’SﬁñY€ﬁëY[Tïï^åîíåTRôKŸÿ]⁄ôRÕMÿìRMPÃ›ÿUM“ìY[’ö⁄Ÿ “õö”ŸûõûäÃÀ–S]MLÕñéLéM€R^—[ô⁄MŸú›‘’ﬁä“ö€”“K€⁄UM⁄äÀÿåXïì“ÕLS”Ã⁄ëX“ŸXUûX⁄‹TéYLQVç”’USP‹ÃY–⁄–öé]õQ€^íï’–’LåPZ“TNR⁄]ìù⁄^Rÿ[ìíﬁîúK›–“\X⁄Õ[ç[çN[\Ãÿ÷XTëíPô””ùé^õM]]LÃ’ÿ“ïÿ–‘úÀ⁄RŸì›ùñ]Lï“ÿQåT—ZåK›–LX^êÃ][ãÃîOOIÀàõ€òNà	Ÿ]Nö[XYŸK⁄úYŒÿò\ŸMçŒZãÕPTT⁄÷íîô–PêTPPPTPPêPQÃù–ëP[“–Z“Pô€“ê–Z”P›€”Q‘ëÕ——–ìXRî—[íöTZê”\úﬁR‘›Õ”Z”LL—‘Z”ê“—íUZUîZãÀÃù–ëT\”QNëëTç“⁄T\Té‘é‘é‘é‘é‘é‘é‘é‘é‘é‘é‘é‘é‘é‘é‘é‘ãÀ›–PTê–PêPQPQT“PPZPê^PãŒPQŸ–PP]—PêTQPPPPPPPPPPPPPPêUQ–]ÿ––T—PQTPPRPêY’P–îRQPô”PPPPPPPQP–]‘TêPUT“UQ‘TìZUU—û\Zî[—⁄ê‘^ìëíû]ŸRÀŒPQ‘QPPY”PêPPPPPPPPPPPPPPPP]‘PPY’PãŒPRPPY“P–Y”PêPPPPPPPPPPPPPQP—TSZZëUZ—öŒ[–QSPêPRTê^PT—MZ\ûT‹SŒ]Lú‘\À‹öåZ\€UNSåS\‘îúY€’ïÕP]^åŒPô’RS‹Z[Ÿ”\ﬁìR‹TUNT]PZŸ ÷PV”ñXñMï’ìïNYïììíçX⁄ç]KÿŸŒ\‘Mö÷VöïçZﬁî”ï”Vú^‹ö⁄ŒëNSSZ[›⁄€åÕ\ÿã–Q›ÿ\T”\]—ùSìN[Rô€íŸî‹T’M“PùMPRíä‘ûULìﬁTL€”
+“Sòùú”ÃêÃ‹ëõ÷[“ùûL’å ⁄öì‘–”‘êçXïÕSõK“”Õ]‘ö’ïLSõQí\ZXZSR€[÷ﬁPTMT€€QVï⁄ëÃ]ç]öí]ùû –Q]ë—ò”÷ùÿåùöë’”‘ÿ[À€öñM—î‹éZQî“Q“’çô[€L€ÃÃ\ùZUÕìRŸú[úU÷òZZúíVòTòS”R\K‘\QŸÿ—ÃZùVY€N^ûT›^ï›ú]ÕôïúLL’NU‹ë’‘TñLÃ—û[ÕŸä”—Nåúõ€ÃïÕPﬁM]\ìòRîY€⁄îÿ\YöŸUR”SÿÕÕôT⁄ëïïú[íM]Uë–”€úﬁ“îìﬁöïúöSM”PñVäÿç^öìS^\ñïíöR€é’’ùQXêZ⁄õã’YúöÕ]VMﬁ€ÿTìÃNQîT’ö—åù’ŒTôõùSR‘⁄‹PëÃM›\[ûMúLﬁQçS^ﬁå‹ë‹Z–RSÕNJ –S[‹Z“Z⁄Qù^ëY€”ﬁ
+ÃÀ–Q⁄^Lä–[ö]éRî–‹ö’‘[\õ⁄›ŸïT‘çñS^îÿÃQìT‘ìúÃK€PSﬁûêëRîúRVZÀ——–úM[ÿ›ï€ö⁄‘”ë“ïSSêŸòŸòë÷ú’›ZÃRö⁄ñìñòí\õULSYöUPÿúR“é—Yíì—S[LMòYŒ⁄–Ã›çÕë—[R’⁄[”LﬁíU—’U“Y⁄Zÿ“^õòéN\é[ñéMï›\M⁄[›‹⁄ï–[ûR—XÕŒ\”
+‘”åVYûúMêŒ‹Y[Zòõ€ZÿùPôïV^Líï]ÿZ’LïNí]éTåZ”÷íïUúZ\ñç’÷Tå›TòŸë“‹ìMä’êLUíÃM‹“›ûXåù‹õL÷MZ€ë⁄ŸMùSTﬁûUNﬁïï’îJŒNã’\€÷‹ZLS ⁄‹–Ãö—[åLLñYRìÿU⁄K—[SﬁìS—Rê—^[P‘UXR–’‘[SöV[“ﬁõVä⁄õ⁄—⁄Z⁄ñY⁄^ú’ùôÕö^RêﬁîSëÃ^òMMŒTX÷ë“ô‹⁄ÕÃ››ﬁ]ìûì^UÃî—\YòJÃ€–öîŸÕôﬁñíÃU€ñîõ⁄Õ€[  –é⁄\Z⁄⁄Z’Mê”“ÿíôòíVò⁄‘ê⁄õZúU”ç›ò^ÕSé[]úõ€MûMôT÷\NåYﬁ—\ä‘[òK›ûö€Xñúë‹[T—‘ ”‘T⁄ûX[–‘úYÿÿPPçöÕõÕMUﬁLï”õ€⁄\⁄€Ã\ëïM
+–öëJ‘Ãíç[ñòÃT⁄öRYQSV[L^⁄úQúMõì€—U‘’ñïñëö‘S\í^”YÕê›MPçPäŸïéYëïîMVîR⁄S⁄ùU’‘”Möÿ“ñMìî’[€MQÕSZõPîïûïé⁄öúVQ⁄ZõR€êö›P‘Lÿ—ZJÀ‹ôúíú^YìöîVô›\€UL—€ÿéNPŸùÕQï÷åÿ[öÿ›\ŒŸ\ÿŒ⁄ùSöúUññô ÿûNïí–ú“ﬁ[€›Xí€ç]‘Õê[ãÀÃîOOI¬üN¬ôù[ò›[€à⁄[\[€î‹ùòZ][
+YYä^¬à€€ú›‹ò»H“STS”ó‘‘ïêRU÷⁄YN¬àYä‹ò ^¬àô]\õà]à€\‹œHò⁄[\\‹ùòZ]\ÀX\ùà]KY[[Y[ùHâŸYãô[[Y[ùHà]OHâŸYãõò[Y_HèÇà[Y»‹òœHâ‹‹òﬂHà[Hîô]ò]»H	ŸYãõò[Y_HèÇàŸ]èò¬àBàô]\õà]à€\‹œHò⁄[\\‹ùòZ]‹ùòZ]Yò[òX⁄»[[KIŸYãô[[Y[ùHà]KY[[Y[ùHâŸYãô[[Y[ùHà]OHâŸYãõò[Y_HèÇà‹[èâŸYãõò[YKú€XŸJJKù’\\êÿ\ŸJ
+_O‹‹[èÇàŸ]èò¬üBÇò€€ú›“STS”ó––US—»H¬àô\úöNû€ò[YNâ—ô\úöIÀ[[Y[ùâ€Y][	Àõ€Nâ’[ú]YH0≠»[∞ÈÿIÀ€‹›éLååL]ŒåMKò[ôŸNåK‹YYåéK][ùåã‹X⁄X[â€[òÿIÀ\ÿŒâ‘õ›õÿÿH[ö[ZY€‹»∞Ïﬁ[[‹»H‹ò]òHH[∞ÈÿH€€H[õ»^òHHÿYHÆà€€Kà\‹⁄]òNà[»⁄Yÿ\àHHH\ô›YH[XHò\úôZ\òHHô\úõ»8†%öXÿH[][ôHHŸ»[õ»H[pÏ›ô[[\\úòH[ö[ZY€‹»YòXŸ[ù\»àõÿ€‹»òH∞Ë\À›\òHIHHöYHHÿ[öH
+ÃMIHHYô\ÿH‹à\›ô[H‹àú»
+[XHô^à‹àò][JKà\‹⁄[H]YHHò\úôZ\òHXÿXòK[H^HŸ»[ö[ZY€»ù[HòZ[»HHõÿ€‹»Hõ€HòH\ù»[HH‹»]‹ôÿH‹àKúÀâﬂKàõ‹‹Œû€ò[YNâ’õ‹‹…À[[Y[ùâÿY›XIÀõ€Nâ–]\òY‹òIÀ€‹›ééMK]ŒåNKò[ôŸNåÀ‹YYåK‹X⁄X[â‹\ôù\õ…À\ÿŒâ–HÿYH\õ‹À\‹\òH[H\‹\õ»\ôù\ò[ùH]YHY€õ‹òH\ùHHYô\ÿH»[õÀà€€[»Ÿ»›X⁄»\Ÿ\àH€ôÿH\›0Ëõò⁄XKÿ]\ÿHXZ\»[õ»]X[ù»XZ\»€ôŸH\›]ô\à»[õ»
+
+Œ	H‹àõÿ€»[0Í[H»pÆäKâﬂKàû^û€ò[YNâ”û^	À[[Y[ùâ›ô[ù…Àõ€Nâ–\‹ÿ\‹⁄[òIÀ€‹›éLåL]ŒåMKò[ôŸNåK‹YYåKé‹X⁄X[â‹òZòYIÀ\ÿŒâ–HÿYH»€€\À]XÿHX\»ô^ô\»ŸY›ZY\»õ»Y\€[»[õÀà€€[»Ÿ»›X⁄»\Ÿ\àHô[ùÀ[Hå	HH⁄[òŸHH\‹]Z]ò\àH]\]Y\»∞Î\⁄X€‹»
+€ÿôHòHÃ	H€€HY[õ‹»H	HHöYJKà∞Ë€»ò[H€€ùòHXö[YY\À‹\‹⁄]ò\ÀâﬂKà⁄]òNû€ò[YNâ‘⁄]òIÀ[[Y[ùâ›ô[ù…Àõ€Nâ”]Y‹òHHÿ\ŸZ\òIÀ€‹›åLååM]ŒåMãò[ôŸNåK‹YYåKåÀ‹X⁄X[â‹⁄]òIÀ\ÿŒâ‘]X[ô»[H[ö[ZY€»\›0ËHH »õÿ€‹À]ò[∞ÈÿH]0ÍH[H
+[õ»ÿúòY Kö[‹ö^ò[ô»]Y[H[HXZ\»öYH8†%ôXÿ\úôYÿH[HL»HÏ»]]òH€€H»[õ»H]0ÍHHõÿ€‹ÀàŸH»[õ»\›]ô\àXòZ^»HL	HHöYK^X›]HòH‹òHH\úô[Y\‹ÿH»€‹ú»[H›]õ»[ö[ZY€»∞Ïﬁ[[»
+]‹ôÿHúÀôY^à[õ»[H‹à\ KàŸ[∞Ë€À[\\úòH»[õ»]0ÍHHõÿ€‹»8†%ŸHò]\à[H\ôYK€ÿú›0ËX›[À]‹ôÿH»HôY^à\õXY\òH‹à‹ÀàHÿYH»€€\À›\òHL	H»[õ»ÿ]\ÿYÀàHÿYHà€€\»õ»Y\€[»[õÀ‹öXH[H∞Ï‹ùXŸH]YH]‹ôÿH
+ÀŸ[H[õ H[ö[ZY€‹»ù[HòZ[»Hàõÿ€‹À^Ÿ]»»∞Ï‹ö[»[õÀâﬂKàÿY[û€ò[YNâ“ÿY[	À[[Y[ùâŸõŸ€…Àõ€Nâ–ô\úŸ\öŸ\âÀ€‹›åLLåLå]ŒåNò[ôŸNåK‹YYåK‹X⁄X[âŸù\öXIÀ\ÿŒâ‘]X[ù»Y[õ‹àHöYH[KXZ\»õ‹ùH]XÿH8†%HHÿYH€€\»€€H[H€€Hõ[YZò[ùHZ[ôHXZ\»õ‹ùKà\‹⁄]òNà[»⁄Yÿ\àHHH[ùòH[Húô[ô\⁄H‹à‹»
+[XHô^à‹àò][JH8†%öXÿH[[‹ù[XZ\»∞Ë\YÀ€€H[õ»Z[ôHXZ[‹à
+\ÿÿ[H€€H\›ô[JHHò[\\ö\€[»HHHöYH‹à€€KâﬂKà\úù\Œû€ò[YNâ’\úù\…À[[Y[ùâ›\úòIÀõ€Nâ—›X\ôpË€…À€‹›åLLååÃ]ŒåLKò[ôŸNåK‹YYåé‹X⁄X[âÿ€›\òXÿIÀ\ÿŒâ‘ôY^àŸ»[õ»ôXŸXöY»[Hå	H8†%HHÿYH€€\»ÿ]\ÿH[Hô[[‹à]YH0ËHXZ\»[õ»H›\òH[H›X€»[HY\€[Àà\‹⁄]òNà[»ÿZ\à[Hö[YZ\òHô^àXòZ^»HÃ	HHöYK]öYöXÿHH[H8†%öXÿH[][ôH‹àúÀ›\òHå	HHöYHHÿ[öHYô\ÿH^òH\õX[ô[ùHõ»ô\›»Hò][H
+[XHô^à‹àò][JKâﬂKàôYYÿ\éû€ò[YNâ“ôYYÿ\âÀ[[Y[ùâ›\úòIÀõ€Nâ‘[\àH\úŸ]ô\ò[∞ÈÿIÀ€‹›åLÃåNL]ŒåLò[ôŸNåK‹YYåéK‹X⁄X[â⁄ôYYÿ\âÀ\ÿŒâ–HÿYHÀ\»\ô›YH[H[\àHYòH\ù»»[XY»PRT»T’SïH[H
+\‹⁄[H‹»[\ô\»ŸH\‹[[H[»[YKY\€[»ŸH[H]ò[∞Èÿ\à€ﬁö[öJH8†%[\ô\»[\YöXÿ[H»[õ»H[XY‹»ù[HòZ[»Hàõÿ€‹»[HL	H
+ÿúòHòHå	H\⁄\»»pÆà[\äKHÿYH[HY›Y[ùHà€€\»H[ö[ZY€»€€][H
+HH⁄YôJH[ù\»HÿZ\ãà[»Ÿ\à][ô⁄YÀ[H[\àXô\òH[ô\ô⁄XH]YHõ‹ù[XŸH‹»[\ô\»∞Ïﬁ[[‹»‹à‹Àà[»\ô›Y\à»pÆà[\àH\ùYK»YôZ]»HŸ‹»ÿúòH\õX[ô[ù[Y[ùHH[ö[ZY€‹»\ù»H[\ô\»\ô[HÃ	HHYô\ÿKàòHö[YZ\òHô^à]YHÿZHXòZ^»HÃ	HHöYK\ô›YH[H[\àXòZ^»»[ö[ZY€»XZ\»∞Ïﬁ[[»
+\úô[Y\‹ÿ[ô»[H€ôŸJHHõŸŸH€ÿúôH[XHö[Z\òHHYòHôXÍ[KX‹öXYKà[»[‹úô\ã\ô›YH[HÎ\ò›[»õ›]‹à[»ôY‹à»[XY»XZ\»ô\öY»
+\ÿ›YÀ[õ»Hô[ÿ⁄YYHH]\]YH‹à\ H8†%‹»[\ô\»[H\€[‹õ€ò[H\»\⁄\»H›XH[‹ùKâﬂKà\òNû€ò[YNâ‘\òIÀ[[Y[ùâŸõŸ€…Àõ€Nâ”XYÿIÀ€‹›éKåL]ŒååKò[ôŸNåÀ‹YYåçÀ‹X⁄X[âŸ^‹ÿ[…À\ÿŒâ–HÿYH»€€\À›XH^‹Ë€»[X∞Í[H][ôŸH»[ö[ZY€»XZ\»∞Ïﬁ[[»»[õ»€€H[õ»›[à€€[»Ÿ»›X⁄»\Ÿ\àH€ôÿH\›0Ëõò⁄XKÿ]\ÿHXZ\»[õ»]X[ù»XZ\»€ôŸH\›]ô\à»[õ»
+
+Œ	H‹àõÿ€»[0Í[H»pÆäKâﬂKà€X⁄XNû€ò[YNâ—€X⁄XIÀ[[Y[ùâÿY›XIÀõ€Nâ‘›\‹ùIÀ€‹›çÃåL]ŒåLKò[ôŸNåã‹YYåK‹X⁄X[âÿ›\òIÀ\ÿŒâ–HÿYH]\]Y\À›\òHçIHHöYH»[XY»XZ\»ô\öYÀà€€[»Ÿ»›X⁄»\Ÿ\àH€ôÿH\›0Ëõò⁄XKÿ]\ÿHXZ\»[õ»]X[ù»XZ\»€ôŸH\›]ô\à»[õ»
+
+Œ	H‹àõÿ€»[0Í[H»pÆäKâﬂKàô\û€ò[YNâ÷ô\	À[[Y[ùâ›ô[ù…Àõ€Nâ–\ú]YZ\òHô[ﬁâÀ€‹›éMKé]ŒåMò[ôŸNåÀ‹YYåKåLã‹X⁄X[âÿ⁄]òIÀ\ÿŒâ–HÿYH\õ‹À\‹\òH[XHõX⁄H^òH[H›]õ»[ö[ZY€»[X]0Ï‹ö[Àà€€[»Ÿ»›X⁄»\Ÿ\àHô[ùÀ[Hå	HH⁄[òŸHH\‹]Z]ò\àH]\]Y\»∞Î\⁄X€‹»
+€ÿôHòHÃ	H€€HY[õ‹»H	HHöYJKà∞Ë€»ò[H€€ùòHXö[YY\À‹\‹⁄]ò\Àà€€[»Ÿ»›X⁄»\Ÿ\àH€ôÿH\›0Ëõò⁄XKÿ]\ÿHXZ\»[õ»]X[ù»XZ\»€ôŸH\›]ô\à»[õ»
+
+Œ	H‹àõÿ€»[0Í[H»pÆäKâﬂKà[XNû€ò[YNâ„[pË…À[[Y[ùâ€Y][	Àõ€Nâ–€€ùõ€Y‹òIÀ€‹›åLåLK]ŒåMKò[ôŸNåK‹YYåK‹X⁄X[â⁄[XIÀ\ÿŒâ–HÿYH€€\ÀXY€ô]^òH»[õÀ^[ôÀ[»òH\ù»[HHÿ]\ÿ[ô»[õ»^òKà\‹⁄]òNà[XY‹»HY][YòXŸ[ù\»H[Hÿ[ö[H
+Œ	HHYô\ÿKâﬂKàúõ‹⁄Œû€ò[YNâ—úõ‹⁄…À[[Y[ùâŸŸ[…Àõ€Nâ”]Y‹à€€ôŸ[[ùIÀ€‹›çÃåLMK]ŒåMãò[ôŸNåK‹YYåKåçK‹X⁄X[âÿ€€ôŸ[[Y[ù…À\ÿŒâ‘\‹⁄]òNà[HHŸ[»\õX[ô[ùKôY^àŸ»[õ»ôXŸXöY»[HMIKàHÿYH€€\À€€ôŸ[H»[õÀ\ò[\ÿ[ô»‹àK\»8†%Hÿ]\ÿHÃ	HH[õ»^òHô\‹ŸH€€KâﬂKàŸ[YNû€ò[YNâ—Í[YIÀ[[Y[ùâŸŸ[…Àõ€Nâ—\‹X›õ»€X⁄X[	À€‹›åLMKåLÃ]Œååò[ôŸNåK‹YYåK‹X⁄X[âÿ€€ôŸ[[Y[ù…À\ÿŒâ–HÿYHH€€\À€€ôŸ[H»[õÀ\ò[\ÿ[ô»‹à\Àà\‹⁄]òNà[»[‹úô\ãöXÿH[H\‹X›õ»‹à\»8†%Z\òH»[ö[ZY€»€€HQSì‘»öYHH\ô[òH[ùZ\òKàŸH[H∞ËH\›]ô\à€€HIHHöYH›HY[õ‹À[H»^X›]HòH‹òH
+Ï»[[‹òH‹»òHõÿÿ\àHYÿ\äN»Ÿ[∞Ë€À\úô[Y\‹ÿH[H[\àHŸ[»ô[KõŸÿ[ôÀ[»]0ÍHH\ôYK]‹ôÿ[ôÀ[»‹à‹»
+[pÏ›ô[]0ÍHXÿXò\äHHÿ]\ÿ[ô»ÃH[õ»HÿYH\ÀàŸH»[õ»[‹úô\à[ù\»»\‹X›õ»XÿXò\ã[H€XH»Yÿ\à[Kõ€H0Ëò][H€€Hå	HHöYHHÿúòH»∞Ï‹ö[»[õ»]0ÍH»ö[HH€ôKàÏ»ŸHô[ò\ÿŸ\ààô^ô\»‹à\ùYH8†%\⁄\»\‹€ÀŸH[‹úô\àHõ›õÀ0ÍHHô^ãâﬂKàòZ[Œû€ò[YNâ‘òZ[…À[[Y[ùâŸ[]öX€…Àõ€Nâ–€€Xò][ùH[0Í]öX€…À€‹›åMåL]ŒåMÀò[ôŸNåK‹YYåKåã‹X⁄X[õù[\ÿŒâ“Xö[YYH0ÓõöXÿNàHÿYHH€€\»XŸ\ùY‹À’HŸ[\ôH]YH⁄Yÿ\àHL	HHöYH
+ŸHô\]\à\⁄\»]YH›\ò\äK\‹\òH[H€€Xõ»ô[0Ëõ\Y€»H€€\»[Hå»ŸY›[ô‹»8†%[\\úòH»[ö[ZY€»òH€ôŸKŸH[\‹ùH»Y»[Kò]HHô\]KàöXÿH[][ôHHŸ»[õ»\ò[ùH»€€XõÀàÿYH€€H€€ú€€YHIHHöYH[HY\€[»€€[»€€Xù\›0Î]ô[H]X[ù»Y[õ‹»öYH[H]ô\ãXZ\»õ‹ùH[Hò]H
+]0ÍH
+ÃML	JKà»0Æà€€H∞Ë€»[\\úòK]‹ôÿH
+ŸH»[ö[ZY€»€ÿúô]ö]ô\äHHÿ]\ÿHL»[õ»‹»›]õ‹»€€\»
+
+ÃL	HŸH]ô\à][HH[õ»\]Z\Y KàŸH\õZ[ò\à€€H…HHöYH›HY[õ‹ÀöXÿH]‹ôÿY»‹à‹»
+Z[ôH[][ôJHH\⁄\»€ŸúôH[XH€ÿúôXÿ\ôÿNà›\òHL	HHöYHHÿ[öHô[ÿ⁄YYHH]\]YH‹à\ÀâﬂKà⁄X‹ûNû€ò[YNâ‘⁄X‹ûIÀ[[Y[ùâŸŸ[…Àõ€Nâ–€€‹‹€»€X⁄X[	À€‹›åLçKåçK]ŒåNò[ôŸNåK‹YYåéK‹X⁄X[õù[\ÿŒâ‘]X[ù»XZ\»öYH[H\ô]KXZ\»[õ»[Hÿ]\ÿH
+]0ÍH
+ÃLå	JN»]X[ù»XZ\»öYH[HZ[ôH[KXZ\»ô\⁄\›[ùH[HöXÿH
+]0ÍH
+ÃÕIHHôYpÈË€»H[õ Kà\‹⁄]òNà[»ÿZ\àXòZ^»HÃ	HHöYH
+[XHô^à‹àò][JKÿ[öH[H\ÿ›Y»ò\ŸXY»òHöYHpË^[XHH‹öXH[XH]\òH]YHôY^àHô[ÿ⁄YYHH[›ö[Y[ù»H]\]YHH]Y[H\›]ô\àH]0ÍHàõÿ€‹»[H8†%»YôZ]»H]\òHòZH[ôúò\]YXŸ[ô»[‹»›X€‹»[»€ô€»HàŸY›[ô‹ÀâﬂKàô\ö]û€ò[YNâ”ô\ö]	À[[Y[ùâÿY›XIÀõ€Nâ‘õŸô]\ÿH\»X\∞Í\…À€‹›åLÕKåÃ]ŒçKò[ôŸNåK‹YYåéK‹X⁄X[õù[\ÿŒâ–ò]H]Z]»úòX€»€ﬁö[öH8†%›XHõ‹∞ÈÿHHô\ôYHË€»‹»[ù0ËX›[‹Àà[ùõÿÿH[H[ù0ËX›[»\ù»[HY\€XKù[Hö][»]YH‹ô\ÿŸHHÿYH[H
+ã\À‹ÀÀ\À K]0ÍH[H[Z]HHö]õ‹»[»Y\€[»[\»8†%ŸH[Hõ‹à\›ùpÎYÀ»∞Ïﬁ[[»[[‹òHÏ»K\Àà‹»[ù0ËX›[‹»∞Ë€»ŸH[›ô[K]Xÿ[H€€H[ÿ[òŸHH»õÿ€‹Àÿ]\ÿ[H[õ»€€ú⁄Y\∞Ë]ô[X\»0ÍõH›XÿHöYH8†%∞ËXŸZ\»H\›ùZ\ãàŸHô\ö][‹úô\ãŸ‹»‹»[ù0ËX›[‹»ö]õ‹»[ùò[H[Húô[ô\⁄Nà]Xÿ[HXZ\»∞Ë\Y»HZ\ò[H[ö[ZY€‹»[X]0Ï‹ö[‹»]0ÍHŸ\ô[H\›ùpÎY‹ÀâﬂKàõ€òNû€ò[YNâ’õ€òIÀ[[Y[ùâŸ[]öX€…Àõ€Nâ’XŸ[0Ë»H€‹úô[ù\…À€‹›åLÕKåLL]ŒåMãò[ôŸNåÀ‹YYåK‹X⁄X[õù[\ÿŒâ–€‹úô[ùH[0Í]öXÿNàÿYH]\]YH[]öYöXÿH»[õÀôY^ö[ô»Hô[ÿ⁄YYH[H€€Hò\ŸHõ»Ÿ]H]\]YH8†%HŸH›]õ»[ö[ZY€»\›]ô\àH]0ÍH»õÿ€‹À»YôZ]»ŸHõ‹YÿHòH[H[X∞Í[H
+çIHXZ\»úòX€»HÿYHÿ[ KàôXpÈË€»[HÿYZXNàÿYH[ö[ZY€»ÿÿY»[H€‹úô[ùH0ËHHÿ\ôÿN»[»X›[][\àL[H[ùòH[H€ÿúôXÿ\ôÿH‹à\ÀàŸH[H[‹úô\à\ò[ùH\‹ŸH\∞Î[ŸÀöXÿH[][ôH‹à»ÿ\úôYÿ[ô»[ô\ô⁄XH[»pË^[[»[ù\»H^Ÿ\àù[XH€ôHH⁄‹]YH]YH][ôŸHH\ô[òH[ùZ\òH8†%^HŸ»[ö[ZY€»òH\ù»H€ôH[HÿZ]K\ò[\ÿHŸ‹»‹à\»Hÿ]\ÿH[õ»^òH
+XZ\»õ‹ùH]X[ù»XZ\»[ö[ZY€‹»\›]ô\ô[H[]öYöXÿY‹À‹‹à\ù KâﬂKüN¬Çò€€ú›USW––US—»H¬à[ô]Nû€ò[YNâ”[ô]HH€ô€»[ÿ[òŸIÀ⁄[ôâ€€ôÿH\›0Ëõò⁄XIÀ€‹›çå\ÿŒâ ÃHH[ÿ[òŸHH
+ÃMIHH[õ»8†%Ï»ò^àYôZ]»[H›X⁄»\Ÿ\ú»H[ÿ[òŸHäÀâÀYôôX›û‹ò[ôŸNåK]‘›ååMK\Y\’Œâ‹ò[ôŸY	ﬂ_KàZ\òNû€ò[YNâ”Z\òH[\ÿÏ‹XÿIÀ⁄[ôâ€€ôÿH\›0Ëõò⁄XIÀ€‹›ççK\ÿŒâ Ãå	HHô[ÿ⁄YYHH]\]YH8†%Ï»ò^àYôZ]»[H›X⁄»\Ÿ\ú»H[ÿ[òŸHäÀâÀYôôX›û‹‹YY›ååå\Y\’Œâ‹ò[ôŸY	ﬂ_KàX[õ‹Nû€ò[YNâ”X[õ‹HHpÈ€…À⁄[ôâÿ€‹ú»H€‹ú…À€‹›çå\ÿŒâ ÃÕIHH[õ»8†%Ï»ò^àYôZ]»[H›X⁄»\Ÿ\ú»€‹ú»H€‹ú»
+[ÿ[òŸHJKâÀYôôX›ûÿ]‘›ååÕK\Y\’Œâ€Y[YIﬂ_Kà[ö◊‹Ÿ\úòNû€ò[YNâ‘[ö»HŸ\úòIÀ⁄[ôâÿ€‹ú»H€‹ú…À€‹›çÃ\ÿŒâ“Y€õ‹òHMIHHôYpÈË€»H[õ»»[õ»HÿYH€€KH0ËH
+ÕH8†%Ï»€‹ú»H€‹ú»
+[ÿ[òŸHJKà0‰›[[»€€ùòH[ú]Y\ÀâÀYôôX›û⁄õ]ç\Y\’Œâ€Y[YIﬂ_Kàô\ÿ\◊‹ÿ[ô‹ô[ù\Œû€ò[YNâ‘ô\ÿ\»ÿ[ô‹ô[ù\…À⁄[ôâÿ€‹ú»H€‹ú…À€‹›çÕK\ÿŒâ–›\òH	H»[õ»ÿ]\ÿY»€€[»öYHHÿYH€€KH0ËH
+ÃÕHH8†%Ï»€‹ú»H€‹ú»
+[ÿ[òŸHJKàò[\\ö\€[»ô[HXZ\»õ‹ùH]YH»[][]»ö][X\»^€\⁄]õ»H]Y[H]HH\ùÀâÀYôôX›û⁄õ]åÕK\Y\’Œâ€Y[YIﬂ_Kàù\öXWÿ‹ô\ÿŸ[ùNû€ò[YNâ—∞ÓúöXH‹ô\ÿŸ[ùIÀ⁄[ôâÿ€‹ú»H€‹ú…À€‹›çÃ\ÿŒâÃN	HH⁄[òŸHHÿYH€€HHÿ]\ÿ\àL	HH[õ»∞Ìù\»8†%Ï»€‹ú»H€‹ú»
+[ÿ[òŸHJKâÀYôôX›ûÿ\Y\’Œâ€Y[YIﬂ_Kàõ›\◊€]Y‹éû€ò[YNâ–õ›\»H]Y‹âÀ⁄[ôâÿ€‹ú»H€‹ú…À€‹›ççK\ÿŒâ ÃåâHHô[ÿ⁄YYHH]\]YH8†%Ï»€‹ú»H€‹ú»
+[ÿ[òŸHJKàXZ\»õ‹ùH]YH\»õ›\»XŸ[\òY\»õ‹õXZ\ÀX\»^€\⁄]òHH]Y[H]HH\ùÀâÀYôôX›û‹‹YY›åååã\Y\’Œâ€Y[YIﬂ_Kàúò\ÿNû€ò[YNâ–úò\ÿHŸ[òYŸ[IÀ⁄[ôâŸ[õ»]]õ…À€‹›é\ÿŒâ–HÿYH\À]YZ[XH‹»[ö[ZY€‹»[»ôY‹à‹àH[õ»pËY⁄X€ÀàYôZ]»ò\öXH[»[[Y[ù»H]Y[H\ÿNàõŸ€»Hô[ù»õ‹õX[H[XH€ôH]YHŸH\‹[H[‹»õÿ€‹»
+\»H]ò\€»‹àõÿ€»H\›0Ëõò⁄XH8†%ô[ù»[ÿ[∞ÈÿHàõÿ€‹ÀõŸ€»[ÿ[∞ÈÿH K0‡Y›XHò\‹ö^òH
+
+Ãå	HHöYH]X[»[õ»\0Ï‹»ú K\úòH]‹ôÿH‹à\ÀY][X\òÿH»[õ»
+ù[ô\∞Ë]ô[
+ÃMIHH[õ»‹à‹ KŸ[»\XÿH]YZ[XY\òHŸ[YH
+[õ»€€ù0Î[ù[»]YH∞Ë€»\òH]0ÍH»ö[HHõŸYJK[0Í]öX€»ÿ]\ÿH€ÿúôXÿ\ôÿH
+Lå	HHô[ÿ⁄YYH‹àÀ€€H⁄[òŸHHÿ[\àòH›]õ»[ö[ZY€»\ù KâÀYôôX›ûﬂ_KàXÿNû€ò[YNâ‘XÿHHõ[ôYŸ[IÀ⁄[ôâ›[ú]YIÀ€‹›çÃ\ÿŒâ ÕHpË^[[»HôY^àL	H»[õ»ôXŸXöYÀâÀYôôX›û⁄õ]çY‘ôYX›[€î›ååL\Y\’Œâÿ[	ﬂ_Kàõ›\Œû€ò[YNâ–õ›\»XŸ[\òY\…À⁄[ôâ›ô[ÿ⁄YYIÀ€‹›ççK\ÿŒâ ÃMIHHô[ÿ⁄YYHH]\]YK[H]X[]Y\à›X⁄»\Ÿ\ãâÀYôôX›û‹‹YY›ååMK\Y\’Œâÿ[	ﬂ_Kà[][]Œû€ò[YNâ–[][]»ö][	À⁄[ôâ›ò[\\ö\€[…À€‹›çÕK\ÿŒâ–›\òH»HöYHHÿYH€€HXŸ\ùYÀ[H]X[]Y\à›X⁄»\Ÿ\ãà[\[HŸH\]Z\\àXZ\»H[KâÀYôôX›ûﬂ_Kà[\YöXÿY‹éû€ò[YNâ”∞Óò€[»[\YöXÿY‹âÀ⁄[ôâ‹\‹⁄]òIÀ€‹›éL\ÿŒâ Ãå	HHõ‹∞ÈÿH[HŸH\‹⁄]òH\‹X⁄X[»\›pË\ö[»
+\òpÈË€À›\òK[õ»∞Ìù\ÀYô\ÿH\õX[ô[ùJKà[\[H]0ÍHﬁâÀYôôX›ûﬂ_Kàù\öXWÿõ[ôYNû€ò[YNâ—∞ÓúöXHõ[ôYIÀ⁄[ôâÿ€€Xö[òY»0≠»€‹ú»H€‹ú…ÀôX⁄\Nñ…€X[õ‹IÀ	‹XÿI◊K\ÿŒâ–€€Xö[òpÈË€»HX[õ‹HHpÈ€»
+»XÿHHõ[ôYŸ[Kà
+ÃÕIHH[õÀ
+ÃÃHHIHHôYpÈË€»H[õ»8†%Ï»€‹ú»H€‹úÀâÀYôôX›ûÿ]‘›ååÕKõ]åÃY‘ôYX›[€î›ååK\Y\’Œâ€Y[YIﬂ_Kàÿ\õöXŸZ\õŒû€ò[YNâ–ÿ\õöXŸZ\õ…À⁄[ôâÿ€€Xö[òY»0≠»€‹ú»H€‹ú…ÀôX⁄\Nñ…‹[ö◊‹Ÿ\úòIÀ	‹ô\ÿ\◊‹ÿ[ô‹ô[ù\…◊K\ÿŒâ–€€Xö[òpÈË€»H[ö»HŸ\úòH
+»ô\ÿ\»ÿ[ô‹ô[ù\ÀàY€õ‹òHçIHHôYpÈË€»H[õ»»[õÀ›\òHLâH»[õ»ÿ]\ÿY»€€[»öYKH0ËH
+ÕçHH8†%Ï»€‹ú»H€‹úÀâÀYôôX›û⁄õ]ççK\Y\’Œâ€Y[YIﬂ_Kàö[◊€[‹ù[û€ò[YNâ—ö[»[‹ù[	À⁄[ôâÿ€€Xö[òY»0≠»€‹ú»H€‹ú…ÀôX⁄\Nñ…€X[õ‹IÀ	‹[ö◊‹Ÿ\úòI◊K\ÿŒâ–€€Xö[òpÈË€»HX[õ‹HHpÈ€»
+»[ö»HŸ\úòKà
+ÃÕIHH[õÀY€õ‹òHçIHHôYpÈË€»H[õ»»[õÀH0ËH
+ÕHH8†%Ï»€‹ú»H€‹úÀàùZ[H[õ»€€H[H›X€»H∞ÌY€ÀâÀYôôX›ûÿ]‘›ååÕKõ]çK\Y\’Œâ€Y[YIﬂ_Kà[ùô\›YWŸô\õﬁéû€ò[YNâ“[ùô\›YHô\õﬁâÀ⁄[ôâÿ€€Xö[òY»0≠»€‹ú»H€‹ú…ÀôX⁄\Nñ…€X[õ‹IÀ	ÿõ›\◊€]Y‹â◊K\ÿŒâ–€€Xö[òpÈË€»HX[õ‹HHpÈ€»
+»õ›\»H]Y‹ãà
+ÃÕIHH[õ»H
+ÃåâHHô[ÿ⁄YYHH]\]YH8†%Ï»€‹ú»H€‹úÀàùZ[Y‹ô\‹⁄]òK0Ï›[XHòH]Y[H\[ôHHXŸ\ù\à∞Ë\ö[‹»€€\»∞Ë\Y»òH]]ò\àHXö[YYH
+òZ[Àúõ‹⁄Àû^
+KâÀYôôX›ûÿ]‘›ååÕK‹YY›åååã\Y\’Œâ€Y[YIﬂ_Kà€◊Ÿò[ÿ[Œû€ò[YNâ”€»Hò[Ë€…À⁄[ôâÿ€€Xö[òY»0≠»€ôÿH\›0Ëõò⁄XIÀôX⁄\Nñ…€[ô]IÀ	ÿõ›\…◊K\ÿŒâ–€€Xö[òpÈË€»H[ô]HH€ô€»[ÿ[òŸH
+»õ›\»XŸ[\òY\Àà
+ÃHH[ÿ[òŸHH
+ÃMIHH[õ»8†%X\»»YôZ]»Hô\ôYH0ÍHHZ\òNà[Hô^àH]Xÿ\à»[ö[ZY€»XZ\»∞Ïﬁ[[ÀŸ[\ôHõÿÿH]]€X]Xÿ[Y[ùH[H]Y[H\›]ô\à€€HQSì‘»öYH[ùõ»»[ÿ[òŸKàÏ»[ÿ[òŸHäÀâÀYôôX›û‹ò[ôŸNåK]‘›ååMK\Y\’Œâ‹ò[ôŸY	ﬂ_Kà€‹òXÿ[◊Ÿô\úõŒû€ò[YNâ–€‹òpÈË€»Hô\úõ…À⁄[ôâÿ€€Xö[òY»0≠»[ú]YIÀôX⁄\Nñ…ÿ[][]…À	‹XÿI◊K\ÿŒâ–€€Xö[òpÈË€»H[][]»ö][
+»XÿHHõ[ôYŸ[Kà
+ÕåHHMIHHôYpÈË€»H[õÀ[H]X[]Y\à›X⁄»\Ÿ\ãâÀYôôX›û⁄õ]çåY‘ôYX›[€î›ååMK\Y\’Œâÿ[	ﬂ_KàùX€[◊Ÿ]\õõŒû€ò[YNâ”∞Óò€[»]\õõ…À⁄[ôâÿ€€Xö[òY»0≠»\‹⁄]òIÀôX⁄\Nñ…ÿ[\YöXÿY‹âÀ	‹XÿI◊K\ÿŒâ–€€Xö[òpÈË€»H∞Óò€[»[\YöXÿY‹à
+»XÿHHõ[ôYŸ[Kà
+ÃÃ	HHõ‹∞ÈÿH[HŸH\‹⁄]òH\‹X⁄X[
+XZ\»õ‹ùH]YH»[\YöXÿY‹à€ﬁö[ö K
+ÕHHL	HHôYpÈË€»H[õÀâÀYôôX›û⁄õ]çY‘ôYX›[€î›ååL\Y\’Œâÿ[	ﬂ_Kà€‹òXÿ[◊›ö][û€ò[YNâ–€‹òpÈË€»ö][	À⁄[ôâ›öYIÀ€‹›ççK\ÿŒâ ŒHpË^[[À[H]X[]Y\à›X⁄»\Ÿ\ãâÀYôôX›û⁄õ]é\Y\’Œâÿ[	ﬂ_KàX[ù◊‹õÿù\›Œû€ò[YNâ”X[ù»õÿù\›…À⁄[ôâ›öYIÀ€‹›çÕK\ÿŒâ ÃMIHHpË^[[À[H]X[]Y\à›X⁄»\Ÿ\ãâÀYôôX›û⁄›ååMK\Y\’Œâÿ[	ﬂ_Kà]\ò[W›ö]òNû€ò[YNâ”]\ò[Hö]òIÀ⁄[ôâÿ€€Xö[òY»0≠»öYK›[ú]YIÀôX⁄\Nñ…ÿ€‹òXÿ[◊›ö][	À	‹XÿI◊K\ÿŒâ–€€Xö[òpÈË€»H€‹òpÈË€»ö][
+»XÿHHõ[ôYŸ[Kà
+ÃMLHpË^[[»Hå	HHôYpÈË€»H[õÀ[H]X[]Y\à›X⁄»\Ÿ\ãâÀYôôX›û⁄õ]åMLY‘ôYX›[€î›ååå\Y\’Œâÿ[	ﬂ_KàôX⁄\ÿ[◊€[‹ù[û€ò[YNâ‘ôX⁄\Ë€»[‹ù[	À⁄[ôâÿ€€Xö[òY»0≠»€ôÿH\›0Ëõò⁄XIÀôX⁄\Nñ…€Z\òIÀ	€[ô]I◊K\ÿŒâ–€€Xö[òpÈË€»HZ\òH[\ÿÏ‹XÿH
+»[ô]HH€ô€»[ÿ[òŸKà
+ÃàH[ÿ[òŸK
+ÃÃ	HH[õ»H
+ÃÃ	HHô[ÿ⁄YYHH]\]YH8†%Ï»[ÿ[òŸHäÀâÀYôôX›û‹ò[ôŸNåã]‘›ååÃ‹YY›ååÃ\Y\’Œâ‹ò[ôŸY	ﬂ_Kàúò\ÿWŸ]\õòNû€ò[YNâ–úò\ÿH]\õòIÀ⁄[ôâÿ€€Xö[òY»0≠»[õ»]]õ…ÀôX⁄\Nñ…ÿúò\ÿIÀ	ÿ[\YöXÿY‹â◊K\ÿŒâ–€€Xö[òpÈË€»Húò\ÿHŸ[òYŸ[H
+»∞Óò€[»[\YöXÿY‹ãàHúò\ÿHŸ[òYŸ[H]]òHÃ	HXZ\»∞Ë\Y»
+HÿYHÀ\ HHÿ]\ÿHÕIHXZ\»[õ»8†%»YôZ]»[[Y[ù[HÿYH\ú€€òYŸ[H€€ù[ùXH»Y\€[ÀâÀYôôX›ûﬂ_KàöY€‹óÿXú€€]Œû€ò[YNâ’öY€‹àXú€€]…À⁄[ôâÿ€€Xö[òY»0≠»öYIÀôX⁄\Nñ…€X[ù◊‹õÿù\›…À	ÿ€‹òXÿ[◊›ö][	◊K\ÿŒâ–€€Xö[òpÈË€»HX[ù»õÿù\›»
+»€‹òpÈË€»ö][à
+Ãå	HHpË^[[ÀHôYŸ[ô\òHâHHöYHpË^[XHHÿYH»ŸY›[ô‹»[ú]X[ù»\›]ô\àö]õ»8†%0Ï›[[»òHò][\»€ôÿ\ÀYô\ô[ùHHYô\ÿHH[\X›»H]\ò[Hö]òKâÀYôôX›û⁄›ååå\Y\’Œâÿ[	ﬂ_KàùX€[◊‹òX⁄Y\òNû€ò[YNâ”∞Óò€[»HòX⁄Y\òIÀ⁄[ôâ‹ô[0Î\]ZXH0≠»⁄YôIÀ\‘ô[XŒùùYK\ÿŒâ‘ô[0Î\]ZXHò\òH8†%Ï»õ‹HH⁄YôKà
+ÃÕIHH[õ»H
+Ãå	HHô[ÿ⁄YYK[H]X[]Y\à›X⁄»\Ÿ\ãà∞Ë€»[HôXŸZ]K∞Ë€»0ËHòH€€\ò\ãâÀYôôX›ûÿ]‘›ååÕK‹YY›ååå\Y\’Œâÿ[	ﬂ_KàúòY€Y[ù◊ÿ€‹úõ€\YŒû€ò[YNâ—úòY€Y[ù»€‹úõ€\Y…À⁄[ôâ‹ô[0Î\]ZXH0≠»⁄YôIÀ\‘ô[XŒùùYK\ÿŒâ‘ô[0Î\]ZXHò\òH8†%Ï»õ‹HH⁄YôKàHÿYHXò]KçIHH⁄[òŸHH›\ò\àMIHHöYHpË^[XHòH‹òKà∞Ë€»[HôXŸZ]K∞Ë€»0ËHòH€€\ò\ãâÀYôôX›û€€í⁄[X[⁄[òŸNååçK€í⁄[X[›ååMK\Y\’Œâÿ[	ﬂ_Kà€‹õÿWŸô\úõŒû€ò[YNâ–€‹õÿHHô\úõ…À⁄[ôâ‹ô[0Î\]ZXH0≠»⁄YôIÀ\‘ô[XŒùùYK\ÿŒâ‘ô[0Î\]ZXHò\òH8†%Ï»õ‹HH⁄YôKà
+ÃååHpË^[[»HN	HHôYpÈË€»H[õÀ[H]X[]Y\à›X⁄»\Ÿ\ãà∞Ë€»[HôXŸZ]K∞Ë€»0ËHòH€€\ò\ãâÀYôôX›û⁄õ]åååY‘ôYX›[€î›ååN\Y\’Œâÿ[	ﬂ_KüN¬ÇãÀ»KKKH0„X€€ô\»⁄[\\»
+[öKŸ[H[[⁄öJHõ‹»][ú»KKKBò€€ú›USW“P””ó‘“TT»H¬à[\ÿ€‹Nà	œ[ôHOHç»àLOHåçHàèHåçàLèHéãœè⁄\ò€HﬁHåçàﬁOHéàèHçãœè⁄\ò€HﬁHç»àﬁOHåçHàèHåàãœâÀà‹õ‹‹⁄Z\éà	œ⁄\ò€HﬁHåMààﬁOHåMààèHéHãœè[ôHOHåMààLOHåààèHåMààLèHéHãœè[ôHOHåMààLOHåå»àèHåMààLèHåÃãœè[ôHOHåààLOHåMààèHéHàLèHåMàãœè[ôHOHåå»àLOHåMààèHåÃàLèHåMàãœâÀàö\›à	œôX›HéàOHåL»à⁄YHåMààZY⁄HåLààûHå»ãœè⁄\ò€HﬁHåLààﬁOHåLàèHå»ãœè⁄\ò€HﬁHåM»àﬁOHéàèHå»ãœè⁄\ò€HﬁHååààﬁOHåLàèHå»ãœâÀàõ[YNà	œ]HìLMàÀMàNLãNMòNMàÃMLãNMLLKLHÀL»MãLKLàMHMﬁàãœâÀà⁄Y[à	œ]HìLMà»ç»åMêÃç»å»åàç»MàéHLç»Hå»HMïéàãœâÀàõ€›à	œ]HìLLHùåMòMHåíãMòMHÀMàãœâÀàŸ[Nà	œ]HìLMà»ç»L»MàéHHL÷àãœè]HìMHL“ç”LMà»LHL”LMà»åHL”LMàéHLHL”LMàéHåHL»ãœâÀà€‹ôNà	œ⁄\ò€HﬁHåMààﬁOHåMààèHçàãœè[ôHOHåMààLOHåààèHåMààLèHç»ãœè[ôHOHåMààLOHåçHàèHåMààLèHåÃãœè[ôHOHåààLOHåMààèHç»àLèHåMàãœè[ôHOHåçHàLOHåMààèHåÃàLèHåMàãœè[ôHOHçààLOHçààèHéKçHàLèHéKçHãœè[ôHOHååãçHàLOHååãçHàèHåçààLèHåçàãœè[ôHOHçààLOHåçààèHéKçHàLèHååãçHãœè[ôHOHååãçHàLOHéKçHàèHåçààLèHçàãœâÀà^YNà	œ]HìL»MêŒçéHMàççç»Mñàãœè⁄\ò€HﬁHåMààﬁOHåMààèHçãœâÀàX\ùà	œ]HìLMàç–ÕàNH»L»»XMààHLÀLàààHL»òÃL»LLL»NàãœâÀà€ÿZŒà	œ]HìLMààéLMàåàçàéàãœâÀàò[ôŒà	œ]HìLLMåLéàåàãœè]HìLåàçàååàéNåàãœâÀàù\ú›à	œ]HìLMààNHLàéHHåHMàéHå»NHåMàÃL»å»å»LHMà»HL»LñàãœâÀüN¬ò€€ú›USW“P””ó‘“TW–ñW“QH¬à[ô]Nâ›[\ÿ€‹IÀZ\òNâÿ‹õ‹‹⁄Z\âÀX[õ‹NâŸö\›	Àúò\ÿNâŸõ[YIÀXÿNâ‹⁄Y[	Àõ›\Œâÿõ€›	Àà[][]ŒâŸŸ[IÀ[\YöXÿY‹éâÿ€‹ôIÀù\öXWÿõ[ôYNâŸö\›	À€◊Ÿò[ÿ[Œâÿ‹õ‹‹⁄Z\âÀ€‹òXÿ[◊Ÿô\úõŒâ⁄X\ù	ÀàùX€[◊Ÿ]\õõŒâÿ€‹ôIÀ€‹òXÿ[◊›ö][â⁄X\ù	ÀX[ù◊‹õÿù\›Œâÿ€ÿZ…À]\ò[W›ö]òNâ⁄X\ù	ÀàôX⁄\ÿ[◊€[‹ù[âÿ‹õ‹‹⁄Z\âÀúò\ÿWŸ]\õòNâŸõ[YIÀöY€‹óÿXú€€]Œâ⁄X\ù	Àà[ö◊‹Ÿ\úòNâŸö\›	Àô\ÿ\◊‹ÿ[ô‹ô[ù\ŒâŸò[ô…Àù\öXWÿ‹ô\ÿŸ[ùNâÿù\ú›	Àÿ\õöXŸZ\õŒâŸò[ô…Àö[◊€[‹ù[âŸö\›	Ààõ›\◊€]Y‹éâÿõ€›	À[ùô\›YWŸô\õﬁéâÿõ€›	ÀüN¬ôù[ò›[€à][RX€€î’ë ][RY⁄^ôJ^¬à⁄^ôHH⁄^ôHÃé¬à€€ú›⁄\RŸ^HHUSW“P””ó‘“TW–ñW“Q⁄][RYH	ŸŸ[IŒ¬à€€ú›⁄\HHUSW“P””ó‘“TT÷‹⁄\RŸ^WN¬à€€ú›\–€€Xö[ôYHHJUSW––US—÷⁄][RYH	âàUSW––US—÷⁄][RYKúôX⁄\JN¬à€€ú›òX⁄Ÿõ‹H\–€€Xö[ôY»	œ€Y€€à⁄[ùœHåMãHÃçHÃåÀçHMãÃHãåÀçHãçHàö[Hõõ€ôHà›õ⁄ŸOHò›\úô[ù€€‹àà›õ⁄ŸK[‹X⁄]OHååÕHà›õ⁄ŸK]⁄YHåKçHãœâ»à	…Œ¬àô]\õà›ô»⁄YHâ‹⁄^ô_HàZY⁄Hâ‹⁄^ô_HàöY]–õﬁHåÃàÃààö[Hõõ€ôHà›õ⁄ŸOHò›\úô[ù€€‹àà›õ⁄ŸK]⁄YHåàà›õ⁄ŸK[[ôXÿ\Húõ›[ôà›õ⁄ŸK[[ôZõ⁄[èHúõ›[ôèâÿòX⁄Ÿõ‹I‹⁄\_O‹›ôœò¬üBÇãÀ»∞Ìù\»‹à\›ô[H
+\õX[ô[ùKÿ[ö»ù[ô[ô»Ï‹X\ KàÿYH\›ô[HX⁄[XHHp™ÇãÀ»\XÿH\‹Ÿ\»\òŸ[ùXZ\»8†%»\»H\ú€€òYŸ[HYö[ôHòH€ôH»∞Ìù\»\ÿHXZ\ÀÇò€€ú›ì”W‘’Tó‘ì—íSHH¬à	’[ú]YH0≠»[∞ÈÿIŒà⁄åååã]ŒååLã‹YYåYëõ]åå_Kà	—›X\ôpË€…Œà⁄åååã]ŒååLã‹YYåYëõ]åå_Kà	–]\òY‹òIŒà⁄ååã]Œåååã‹YYååKYëõ]åKà	–\‹ÿ\‹⁄[òIŒà⁄ååã]ŒååM‹YYååNYëõ]åKà	–\ú]YZ\òHô[ﬁâŒà⁄ååã]ŒååM‹YYååNYëõ]åKà	–ô\úŸ\öŸ\âŒà⁄ååL]Œåååã‹YYååKYëõ]åKà	”XYÿIŒà⁄ååã]Œåååã‹YYååKYëõ]åKà	‘›\‹ùIŒà⁄ååMã]ŒååM‹YYååKYëõ]ååüKà	–€€ùõ€Y‹òIŒà⁄ååM]ŒååMã‹YYååYëõ]ååﬂKà	”]Y‹à€€ôŸ[[ùIŒà⁄ååMã]ŒååN‹YYååãYëõ]ååüKà	—\‹X›õ»€X⁄X[	Œà⁄ååN]ŒååMã‹YYååYëõ]ååKà	–€€Xò][ùH[0Í]öX€…Œà⁄ååLã]Œååå‹YYååLYëõ]åKà	–€€‹‹€»€X⁄X[	Œà⁄ååç]ŒååM‹YYåYëõ]ååKà	‘õŸô]\ÿH\»X\∞Í\…Œà⁄ååå]Œåå‹YYååKYëõ]ååﬂKà	’XŸ[0Ë»H€‹úô[ù\…Œà⁄ååM]ŒååN‹YYååLYëõ]åKà	‘[\àH\úŸ]ô\ò[∞ÈÿIŒà⁄ååå]ŒååL‹YYååÀYëõ]ååKà	”]Y‹òHHÿ\ŸZ\òIŒà⁄ååLã]Œååå‹YYååLYëõ]åKüN¬ò€€ú›PV‘’Tî»H¬ò€€ú›’Tó–ì‘ëTó–””‘î»HÃNâ»ÿåÕÿIÀéâ»ÿÕÿŸâÀŒâ»ŸNÃçL	Àâ»ŸŸMôå	ﬂN¬ôù[ò›[€à›\íX€€ú ›\ú ^»ô]\õà	¯¶!IÀúô\X]
+›\ú H
+»	¯¶!âÀúô\X]
+PV‘’TîÀ\›\ú N»BÇò€€ú›SëSVW––US—»H¬à‹ù[Nû€ò[YNâ—‹ù[IÀ[[Y[ùâ›\úòIÀåM]ŒåLÀò[ôŸNåK‹YYåéK‹X⁄X[âÿ€›\òXÿIﬂKà\⁄ÿNû€ò[YNâ–\⁄ÿIÀ[[Y[ùâŸõŸ€…ÀåL]ŒåMÀò[ôŸNåÀ‹YYåK‹X⁄X[âŸ^‹ÿ[…ﬂKà›[û€ò[YNâ“›[	À[[Y[ùâ›ô[ù…ÀéL]ŒåLãò[ôŸNåK‹YYåKçÀ‹X⁄X[â‹òZòYIﬂKà\]Z[éû€ò[YNâ–\]Z[âÀ[[Y[ùâÿY›XIÀåLL]ŒåMKò[ôŸNåã‹YYåK‹X⁄X[â‹\ôù\õ…ﬂKàô\úö^û€ò[YNâ—ô\úö^	À[[Y[ùâ€Y][	ÀåMå]ŒåMò[ôŸNåK‹YYåéK][ùåKçK‹X⁄X[â€[òÿIﬂKàòZÿNû€ò[YNâ—òZÿIÀ[[Y[ùâŸõŸ€…ÀéMK]ŒåMãò[ôŸNåK‹YYåKçã‹X⁄X[âŸù\öXIﬂKàõ‹ùNû€ò[YNâ–õ‹ùIÀ[[Y[ùâ›\úòIÀåML]ŒåMãò[ôŸNåK‹YYåéK‹X⁄X[âÿ€›\òXÿIﬂKàﬁ[éû€ò[YNâ‘ﬁ[âÀ[[Y[ùâ›ô[ù…ÀéK]ŒåMò[ôŸNåã‹YYåKåÀ‹X⁄X[âÿ⁄]òIﬂKà‹û[Œû€ò[YNâ“‹û[…À[[Y[ùâŸŸ[…ÀåLK]ŒåMò[ôŸNåK‹YYåKåK‹X⁄X[âÿ€€ôŸ[[Y[ù…ﬂKàõ€éû€ò[YNâ’õ€âÀ[[Y[ùâŸ[]öX€…ÀéL]ŒåMKò[ôŸNåK‹YYåKç‹X⁄X[â‹òZòYIﬂKàX€◊‹òX⁄Y\òNû€ò[YNâ—X€»HòX⁄Y\òIÀ[[Y[ùâÿ€‹úù\Y	Àç]ŒçMKò[ôŸNåã‹YYåé_KüN¬Çã àOOOOOOOOOOOH’UHOOOOOOOOOOOH
+ã¬õ]€⁄[ú»HLå¬õ]›€ôYHﬂN»À»⁄[\YOà‹›\úÀ€‹Y\À]ô[][RYŒàÿ]0ÍH◊_BãÀ»
+HŸYY»\ú€€òYŸ[H[öX⁄X[X€€ùXŸHõ»õ^»Hô\ôYH8†%‹[î›\ù\îX⁄À⁄\ôô\Ÿ]õŸ‹ô\‹¬ãÀ»õ»ëK›\ùúŸ]\õ»î›Hô\›[YTÿ]ôYÿ[YH8†%∞Ë€»\]ZKŸ[∞Ë€»Hô\úöH\\ôX⁄XH[BãÀ»ìY]H[YHà[ù\»]0ÍHH\‹€ÿH€€YpÈÿ\àHö[YZ\òH\ùYKäBõ]][R[ùô[ù‹ûHHﬂN»À»][RYOà]X[ù]H›€ôY[ô\]Z\YÇõ][ŸHHù[»À»	‹ôI»	‹ú	¬õ]\›[ŸHHò[ŸN»À»\›H[ŸNà[ŸY\»[ôö[ö]\»
+»[YHH]0ÍHBõ]PSW”PVHŒ¬õ][ìX]⁄Hò[ŸN»À»€€\ò\»Ï»Xô\òY\»[ú]X[ù»\‹€»õ‹àùYBù⁄[ô›ÀòY]ô[ù\›[ô\ä	ÿôYõ‹ô][õÿY	À
+JOOû¬àYäZ[ìX]⁄
+Hô]\õé¬àKúô]ô[ùYò][
+
+N¬àKúô]\õïò[YHH	…Œ»À»^Y⁄Y»[‹»ò]ôYÿY‹ô\»òH[‹›ò\à»]ö\€»ò]]õ»H€€ôö\õXpÈË€¬üJN¬õ]X[TŸ[X››YŸHHù[»À»õ‹àúà	‹I»‹à	‹â¬õ]X[THH◊KX[TàH◊N¬õ]ÿ]ôHHN¬õ]›[€⁄[ú’\‘ù[àH¬õ]Y][ô”ZYù[àHò[ŸN¬õ]Y][ô”ZYù[î⁄YHH	‹€€…Œ»À»	‹€€…»	‹I»	‹â»8†%òH€ôH»êZù\›\à\]Z\Hà‹ò]òHH]Y[∞ÈÿBõ]úHHù[úàHù[»À»ÿ€⁄[úÀ›€ôY][R[ùô[ù‹û_H8†%X€€õ€ZXH[ô\[ô[ùHHÿYHõŸÿY‹Çõ]X›]ôTú^Y\àHù[»À»	‹I»	‹â»ù[8†%]X[õŸÿY‹à\›0ËHòÿ\úôYÿY»àò\»ò\öpË]ôZ\»€ÿòZ\»Y€‹òBõ]úõ›[ôHN¬õ]úòYùÿ[òX⁄»Hù[»À»\ÿY»òH\ÿ€€H[öX⁄X[H[YH»îõ]ô]ÿ€€Y\ê⁄[\»Hô]»Ÿ]
+
+N»À»⁄[\Y»⁄]Hÿ]⁄]\ùYôÇõ]X›]ôVXùYôú»H◊N»À»⁄[\Y»X\õö[ô»ôYXŸYT»ÿ]ôH
+‹›\›\ùö]õ‹àXùYôäBõ][ô[ô÷XùYôê⁄[\Hù[»À»⁄[ôX€€YHX›]ôHô^ÿ]ôBõ]õ›[ôÿZ[àHﬂN»À»⁄[\YOàX\õôY\»ÿ]ôBõ]õ›[ô]ô[\»H◊N»À»⁄[\Y»]]ô[Y\\»ÿ]ôBõ]õ›[ôX]»H◊N»À»ò[Y\»]YY\»ÿ]ôBõ]X]⁄›]»HﬂN»À»⁄[\YOàŸ[XYŸQX[[XYŸUZŸ[ã⁄[ﬂBÇãÀ»ôX€‹ô\»\‹€ÿZ\»8†%Ÿ\\òY‹»»ÿ]ôHõ‹õX[»õŸ€»
+]YHô\Ÿ]H[»ôXÿ\úôYÿ\àH0ËY⁄[òJKÇãÀ»öXÿ[H›X\ôY‹»Hô\ôYKõ»\ôö[[‹›ò\à»\›0Ï‹öX€»H\‹€ÿKÇò€€ú›Tî””êS‘ëP”‘ë◊“—VHH	Ÿô\úõ”[òÿT\ú€€ò[ôX€‹ô…Œ¬õ]\ú€€ò[ôX€‹ô»H»X^ÿ]ôNàX^[XYŸPûP⁄[\àﬂHN¬ùû^¬à€€ú›ò]‘ôX€‹ô»Hÿÿ[›‹òYŸKôŸ]][JTî””êS‘ëP”‘ë◊“—VJN¬àYäò]‘ôX€‹ô H\ú€€ò[ôX€‹ô»HÿöôX›ò\‹⁄Y€ä€X^ÿ]ôNåX^[XYŸPûP⁄[\ûﬂ_Kî””ãú\úŸJò]‘ôX€‹ô JN¬üXÿ]⁄
+J^ﬂBôù[ò›[€àÿ]ôT\ú€€ò[ôX€‹ô 
+^¬àû^»ÿÿ[›‹òYŸKúŸ]][JTî””êS‘ëP”‘ë◊“—VKî””ãú›ö[ô⁄YûJ\ú€€ò[ôX€‹ô JN»Xÿ]⁄
+J^ﬂBüBôù[ò›[€à⁄X⁄’ÿ]ôTôX€‹ô
+ ^¬àYä»à\ú€€ò[ôX€‹ôÀõX^ÿ]ôJ^¬à\ú€€ò[ôX€‹ôÀõX^ÿ]ôHHŒ¬àÿ]ôT\ú€€ò[ôX€‹ô 
+N¬àBüBôù[ò›[€à⁄X⁄—[XYŸTôX€‹ô
+⁄[\YY ^¬àYäY»à
+\ú€€ò[ôX€‹ôÀõX^[XYŸPûP⁄[\ÿ⁄[\Y_
+J^¬à\ú€€ò[ôX€‹ôÀõX^[XYŸPûP⁄[\ÿ⁄[\YHHYŒ¬àÿ]ôT\ú€€ò[ôX€‹ô 
+N¬àBüBôù[ò›[€à[ú›\ôSX]⁄›] ⁄[\Y
+^¬àYä[X]⁄›]÷ÿ⁄[\YJHX]⁄›]÷ÿ⁄[\YHHŸ[XYŸQX[å[XYŸUZŸ[éå⁄[ŒåX]ŒåN¬àô]\õàX]⁄›]÷ÿ⁄[\YN¬üBõ]õ›[ô›\ùö]õ‹ê⁄[\YHù[¬Çã àOOOOOOOOOOOH–‘ëQSàêUàOOOOOOOOOOOH
+ã¬ôù[ò›[€à⁄›‘ÿ‹ôY[äY
+^¬àÿ›[Y[ùú]Y\ûTŸ[X›‹ê[
+	Àúÿ‹ôY[â Kôõ‹ëXX⁄
+œOúÀò€\‹”\›úô[[›ôJ	ÿX›]ôI JN¬àÿ›[Y[ùôŸ][[Y[ùûRY
+	‹ÿ‹ôY[ãI ⁄Y
+Kò€\‹”\›òY
+	ÿX›]ôI N¬àÿ›[Y[ùú]Y\ûTŸ[X›‹ê[
+	Àõò]ãXùâ Kôõ‹ëXX⁄
+èOòãò€\‹”\›úô[[›ôJ	ÿX›]ôI JN¬à€€ú›ò]êùàHÿ›[Y[ùú]Y\ûTŸ[X›‹äõò]ãXùñŸ]K\ÿ‹ôY[èHâ⁄YHóX
+N¬àYäò]êùäHò]êùãò€\‹”\›òY
+	ÿX›]ôI N¬üBôù[ò›[€àŸ]Y[ùSÿ⁄ŸY
+ÿ⁄ŸY
+^¬à€€ú›ùàHÿ›[Y[ùú]Y\ûTŸ[X›‹ä	Àõò]ãXùñŸ]K\ÿ‹ôY[èHõY[ùHóI N¬àYäùä^¬àùãô\ÿXõYHÿ⁄ŸY¬àùãú›[Kõ‹X⁄]HHÿ⁄ŸY»	ÃåÕI»à	ÃIŒ¬àùãú›[Kú⁄[ù\ë]ô[ù»Hÿ⁄ŸY»	€õ€ôI»à	ÿ]]…Œ¬àBà€€ú››ZYYùàHÿ›[Y[ùôŸ][[Y[ùûRY
+	Ÿ›ZYY]]‹öX[Xùâ N¬àYä›ZYYùä^¬à›ZYYùãú›[Kõ‹X⁄]HHÿ⁄ŸY»	ÃåÕI»à	ÃIŒ¬à›ZYYùãú›[Kú⁄[ù\ë]ô[ù»Hÿ⁄ŸY»	€õ€ôI»à	ÿ]]…Œ¬àBüBÇôÿ›[Y[ùú]Y\ûTŸ[X›‹ê[
+	Àõò]ãXùâ Kôõ‹ëXX⁄
+ùèOû¬àùãòY]ô[ù\›[ô\ä	ÿ€X⁄…À
+
+OOû¬à€€ú›»Hùãô]\Ÿ]úÿ‹ôY[é¬àYäœOOI‹⁄‹	 Hô[ô\î⁄‹
+
+N¬àYäœOOI⁄][\… Hô[ô\í][\ 
+N¬àYäœOOI‹õ‹›\â Hô[ô\îõ‹›\ä
+N¬àYäœOOI‹ôX€€[Y[ôY	 Hô[ô\îôX€€[Y[ôY
+
+N¬àYäœOOIÿX⁄Y]ô[Y[ù… Hô[ô\êX⁄Y]ô[Y[ù”\›
+
+N¬àYäœOOI‹õŸö[I Hô[ô\îõŸö[J
+N¬àYäœOOI€XY\òõÿ\ô	 Hô[ô\ìXY\òõÿ\ô
+
+N¬à⁄›‘ÿ‹ôY[ä N¬àJN¬üJN¬ôù[ò›[€à\]P€⁄[êòYŸJ
+^¬àÿ›[Y[ùôŸ][[Y[ùûRY
+	ÿ€⁄[ãX€›[ù	 Kù^€€ù[ùH\›[ŸH»	¯¢'â»à€⁄[úŒ¬àYä]\›[ŸH	âà€⁄[úœèLL
+H[õÿ⁄–X⁄Y]ô[Y[ù
+	‹öX⁄	 N¬üBÇã àOOOOOOOOOOOH””H
+⁄[ù]^òY»öXHŸXà]Y[»TH8†%Ÿ[H\ú]Z]õ»H0Ë]Y[ HOOOOOOOOOOOH
+ã¬õ]€›[ô[òXõYHò[ŸN»À»\€YÿY»‹àY∞Ë€»Hõ‹0Ï‹⁄]»8†%õŸ€»ôZ]»òHÿÿ\à\ÿ€€ôY¬õ]]Y[–›Hù[¬ôù[ò›[€àŸ]]Y[–›
+
+^¬àYäX]Y[–›
+^¬àû^»]Y[–›Hô]»
+⁄[ô›Àê]Y[–€€ù^⁄[ô›ÀùŸXö⁄]]Y[–€€ù^
+J
+N»Xÿ]⁄
+J^»ô]\õàù[»BàBàYä]Y[–›ú›]OOOI‹›\‹[ôY	 H]Y[–›úô\›[YJ
+N¬àô]\õà]Y[–›¬üBÇãÀ»ÿÿH[H€H⁄[\\»€€H[ùô[‹H
+]\]YH∞Ë\YÀXÿZ[Y[ù H8†%HpÈÿH∞Ë\⁄XÿHHŸ»YôZ]»\]ZKÇôù[ò›[€à^U€ôJúô\K\ã\Kõ€úô\Q[ô
+^¬àYä\€›[ô[òXõY
+Hô]\õé¬à€€ú››HŸ]]Y[–›
+
+N¬àYäX›
+Hô]\õé¬à€€ú›‹ÿ»H›ò‹ôX]S‹ÿ⁄[]‹ä
+N¬à€€ú›ÿZ[àH›ò‹ôX]QÿZ[ä
+N¬à‹ÿÀù\HH\H	‹⁄[ôIŒ¬à‹ÿÀôúô\]Y[òﬁKúŸ]ò[YP][YJúô\K›ò›\úô[ù[YJN¬àYäúô\Q[ô
+H‹ÿÀôúô\]Y[òﬁKô^€ô[ùX[ò[\’ò[YP][YJX]õX^
+Kúô\Q[ô
+K›ò›\úô[ù[YJŸ\äN¬àÿZ[ãôÿZ[ãúŸ]ò[YP][YJ›ò›\úô[ù[YJN¬àÿZ[ãôÿZ[ãõ[ôX\îò[\’ò[YP][YJõ€åMK›ò›\úô[ù[YJÃåJN¬àÿZ[ãôÿZ[ãô^€ô[ùX[ò[\’ò[YP][YJåK›ò›\úô[ù[YJŸ\äN¬à‹ÿÀò€€õôX›
+ÿZ[äN»ÿZ[ãò€€õôX›
+›ô\›[ò][€äN¬à‹ÿÀú›\ù
+
+N»‹ÿÀú›‹
+›ò›\úô[ù[YJŸ\äÃåäN¬üBÇãÀ»òZòYHHùpÎY»ö[òY»8†%\ÿYHòH⁄‹]Y\À⁄€‹⁄\ÀH»ò[ô⁄Y»Húò]\òKÇôù[ò›[€à^Sõ⁄\ŸJ\ãö[\ëúô\Kö[\ï\Kõ€
+^¬àYä\€›[ô[òXõY
+Hô]\õé¬à€€ú››HŸ]]Y[–›
+
+N¬àYäX›
+Hô]\õé¬à€€ú›ùYôô\î⁄^ôHHX]ôõ€‹ä›úÿ[\Tò]Jô\äN¬à€€ú›ùYôô\àH›ò‹ôX]PùYôô\äKùYôô\î⁄^ôK›úÿ[\Tò]JN¬à€€ú›]HHùYôô\ãôŸ]⁄[õô[]J
+N¬àõ‹ä]OL⁄OùYôô\î⁄^ôN⁄J  H]V⁄WHH
+X]úò[ô€J
+JåãLJH
+à
+HHKÿùYôô\î⁄^ôJN¬à€€ú›õ⁄\ŸHH›ò‹ôX]PùYôô\î€›\òŸJ
+N¬àõ⁄\ŸKòùYôô\àHùYôô\é¬à€€ú›ö[\àH›ò‹ôX]Pö\]XYö[\ä
+N¬àö[\ãù\HHö[\ï\H	ÿò[ô\‹…Œ¬àö[\ãôúô\]Y[òﬁKùò[YHHö[\ëúô\HLå¬à€€ú›ÿZ[àH›ò‹ôX]QÿZ[ä
+N¬àÿZ[ãôÿZ[ãúŸ]ò[YP][YJõ€åLã›ò›\úô[ù[YJN¬àÿZ[ãôÿZ[ãô^€ô[ùX[ò[\’ò[YP][YJåK›ò›\úô[ù[YJŸ\äN¬àõ⁄\ŸKò€€õôX›
+ö[\äN»ö[\ãò€€õôX›
+ÿZ[äN»ÿZ[ãò€€õôX›
+›ô\›[ò][€äN¬àõ⁄\ŸKú›\ù
+
+N¬üBÇôù[ò›[€àŸûY[YR]
+
+^»^Sõ⁄\ŸJååå	ÿò[ô\‹…ÀåL
+N»^U€ôJNåK	‹‹]X\ôIÀåJN»Bôù[ò›[€àŸûò[ôŸY]
+
+^»^U€ôJLå	›öX[ô€IÀåL
+N»Bôù[ò›[€àŸûõŸ€ 
+^»^Sõ⁄\ŸJåçKÃ	€›‹\‹…ÀåM
+N»Bôù[ò›[€àŸûY›XJ
+^»^Sõ⁄\ŸJåãM	ÿò[ô\‹…ÀåLäN»Bôù[ò›[€àŸû\úòJ
+^»^U€ôJLåÀ	‹⁄[ôIÀåMãMJN»Bôù[ò›[€àŸûô[ù 
+^»^Sõ⁄\ŸJåÀåå	⁄Y⁄\‹…ÀåJN»Bôù[ò›[€àŸûY][
+
+^»^U€ôJçåN	‹‹]X\ôIÀåLå
+N»Bôù[ò›[€àŸûŸ[ 
+^»^U€ôJMååã	‹⁄[ôIÀåKç
+N»Bôù[ò›[€àŸû[]öX€ 
+^»^U€ôJÃåLã	‹ÿ]›€›	ÀåKå
+N»Bôù[ò›[€àŸûúòX›\ôP‹òX⁄ 
+^»^Sõ⁄\ŸJçÃ	€›‹\‹…ÀåN
+N»^U€ôJåç	‹ÿ]›€›	ÀåLãÃ
+N»Bôù[ò›[€àŸû€⁄[ä
+^»^U€ôJLLåK	‹⁄[ôIÀåLML
+N»Bôù[ò›[€àŸû]ô[\
+
+^»^U€ôJÃåLã	›öX[ô€IÀåLãM
+N»Ÿ][Y[›]
+
+
+OOú^U€ôJLLåMã	›öX[ô€IÀåLãN
+KL
+N»Bôù[ò›[€àŸûöX›‹ûJ
+^»ÕLåçåKôõ‹ëXX⁄
+
+ãJOOúŸ][Y[›]
+
+
+OOú^U€ôJãååã	›öX[ô€IÀåLäKJåLL
+JN»Bôù[ò›[€àŸûYôX]
+
+^»^U€ôJååçK	‹ÿ]›€›	ÀåLãL
+N»Bôù[ò›[€àŸûZP€X⁄ 
+^»^U€ôJLå	‹⁄[ôIÀåäN»BÇôù[ò›[€à[[Y[ùŸû
+[[Y[ù
+^¬àYä[[Y[ùOOIŸõŸ€… HŸûõŸ€ 
+N¬à[ŸHYä[[Y[ùOOIÿY›XI HŸûY›XJ
+N¬à[ŸHYä[[Y[ùOOI›\úòI HŸû\úòJ
+N¬à[ŸHYä[[Y[ùOOI›ô[ù… HŸûô[ù 
+N¬à[ŸHYä[[Y[ùOOI€Y][	 HŸûY][
+
+N¬à[ŸHYä[[Y[ùOOIŸŸ[… HŸûŸ[ 
+N¬à[ŸHYä[[Y[ùOOIŸ[]öX€… HŸû[]öX€ 
+N¬üBÇã àOOOOOOOOOOOH””îURT’T»OOOOOOOOOOOH
+ã¬ò€€ú›P““—VHH	Ÿô\úõ”[òÿPX⁄Y]ô[Y[ù◊›åIŒ¬ò€€ú›P“QUëSQSï»H¬àÿ]ôLLà⁄X€€éâ¯¶•;Ó#…Àò[YNâ‘€ÿúô]ö]ô[ùIÀ\ÿŒâ–[ÿ[òŸHH€ôHL	ﬂKàÿ]ôLåà⁄X€€éâ¸'ÊË{Ó#…Àò[YNâ’ô]\ò[õ…À\ÿŒâ–[ÿ[òŸHH€ôHå	ﬂKàÿ]ôLÃà⁄X€€éâ¸'‰dIÀò[YNâ”[ôHHòX⁄Y\òIÀ\ÿŒâ–[ÿ[òŸHH€ôHÃ	ﬂKàÿ]ôMà⁄X€€éâ¸'„#	Àò[YNâ–[0Í[H»[Z]IÀ\ÿŒâ–[ÿ[òŸHH€ôH	ﬂKàÿ]ôMLà⁄X€€éâ¸'Âl˚Ó#…Àò[YNâ”õ»€‹òpÈË€»HòX⁄Y\òIÀ\ÿŒâ–[ÿ[òŸHH€ôHL	ﬂKàÿ]ôLMWŸ^[ôà⁄X€€éâ¸'ÂÓªÓ#…Àò[YNâ”õ›õ»‹ö^õ€ùIÀ\ÿŒâ’ôZòHH\ô[òHŸH^[ô\àòH€ôHMIﬂKàõ‹‹◊‹€^Y\éà⁄X€€éâ¸'‰†	Àò[YNâ–ÿpÈÿY‹àH⁄Yô\…À\ÿŒâ—\úõ›H[H⁄YôIﬂKà›XõWÿõ‹‹◊‹€^Y\éà⁄X€€éâ¯¶®;Ó#…Àò[YNâ–⁄YôH[Hÿúõ…À\ÿŒâ—\úõ›H[H⁄YôH]YHôZ[»€€HŸ\à[\ô\›Y»H\‹⁄]òHò\òH
+€ôHçJ IﬂKà€‹úù\Y⁄[ù\éà⁄X€€éâ¸'„ 	Àò[YNâ‘\öYöXÿY‹âÀ\ÿŒâ—\úõ›HL‹öX]\ò\»€‹úõ€\Y\…ﬂKà\ôôX››ÿ]ôNà⁄X€€éâ¯ß*	Àò[YNâ‘Ÿ[H\úò[ö0ÌY\…À\ÿŒâ’ô[∞ÈÿH[XH€ôHŸ[H\ô\àö[ô›pÍ[H»[YIﬂKàõ◊ŸX]◊Ãåà⁄X€€éâ¸'ÂbªÓ#…Àò[YNâ“[ùÿË]ô[	À\ÿŒâ–⁄Y›YHòH€ôHåŸ[H\ô\àô[ö[H›X⁄»\Ÿ\àòH\ùYIﬂKà€€◊‹›\ùö]õ‹éà⁄X€€éâ¸'Â)IÀò[YNâÊõ[[»H0ÍIÀ\ÿŒâ’ô[∞ÈÿH[XH€ôHH\ù\àHLŸ[ô»»0ÓõöX€»€ÿúô]ö]ô[ùIﬂKàõ›\ó‹›\éà⁄X€€éâ¯´d	Àò[YNâ—\›ô[HpË^[XIÀ\ÿŒâ—]õ€XH[H›X⁄»\Ÿ\à]0ÍH\›ô[\…ﬂKàù[‹õ‹›\éà⁄X€€éâ¸'‰iIÀò[YNâ–€€X⁄[€òY‹âÀ\ÿŒâ’[öHH›X⁄»\Ÿ\ú»õ»[YHòHY\€XH\ùYIﬂKàX[WŸ^[ú⁄[€óŸö\ú›à⁄X€€éâ¸'‰‚	Àò[YNâ”XZ\»\‹pÈ€…À\ÿŒâ–€€\ôHHö[YZ\òH^[úË€»H[YH
+€ôH
+ IﬂKàX[WŸ^[ú⁄[€óŸù[à⁄X€€éâ¸'„Ï	Àò[YNâ—^0Í\ò⁄]»€€\]…À\ÿŒâ”]ôH»[YH]0ÍH›X⁄»\Ÿ\ú…ﬂKàõ€òW›⁄\Nà⁄X€€éâ¯¶®IÀò[YNâ—^‹Ë€»›\ô[XIÀ\ÿŒâ’ô[∞ÈÿH[XH€ôH€€HH^‹Ë€»Hõ€òH[[Z[ò[ô»»0Óõ[[»[ö[ZY€…ﬂKàô\ö]‹›ÿ\õNà⁄X€€éâ¸'‰&IÀò[YNâ—[û[YH€€\]…À\ÿŒâ’[öH‹»[ù0ËX›[‹»Hô\ö]ö]õ‹»[»Y\€[»[\…ﬂKà[€õ◊Ÿ[[Y[ùà⁄X€€éâ¸'Â+âÀò[YNâ‘\ô^òH[[Y[ù[	À\ÿŒâ’ô[∞ÈÿH[XH€ôH€€H[H[YHõ‹õXY»Ï»‹à[H[[Y[ù…ﬂKàöX⁄à⁄X€€éâ¸'‰¨	Àò[YNâ–õ€€»⁄Z[…À\ÿŒâ’[öHL[ŸY\»›X\ôY\»[»Y\€[»[\…ﬂKàŸY‹ôY◊€€ôMåà⁄X€€éâ¸'‰`{Ó#…Àò[YNâ”€0ËO»RHQUHUT…À\ÿŒâ…ÀŸX‹ô]ùùY_KüN¬õ][õÿ⁄ŸYX⁄Y]ô[Y[ù»Hô]»Ÿ]
+
+N¬ùû^¬à€€ú›ò]»Hÿÿ[›‹òYŸKôŸ]][JP““—VJN¬àYäò] H[õÿ⁄ŸYX⁄Y]ô[Y[ù»Hô]»Ÿ]
+î””ãú\úŸJò] JN¬üXÿ]⁄
+J^ﬂBãÀ»€€ú]Z\›\»H\ùYHUPS
+ôZ[öX⁄XHHÿYHõ›òH\ùYJH8†%0ÍH\‹€»]YHòZHõ»Xÿ\ããÀ»∞Ë€»H€€pÈË€»ö][0ÎX⁄XH[ùZ\òKà»\ôö[€€ù[ùXH\ÿ[ô»[õÿ⁄ŸYX⁄Y]ô[Y[ù»
+ö][0ÎX⁄XJKÇõ]X]⁄X⁄Y]ô[Y[ù»Hô]»Ÿ]
+
+N¬Çõ]€‹úù\Y⁄[€›[ùH¬ùû^»€‹úù\Y⁄[€›[ùH\úŸR[ù
+ÿÿ[›‹òYŸKôŸ]][J	Ÿô\úõ”[òÿP€‹úù\Y⁄[… _	Ã	ÀL
+H»Xÿ]⁄
+J^ﬂBôù[ò›[€àòX⁄–€‹úù\Y⁄[
+
+^¬à€‹úù\Y⁄[€›[ù
+ Œ¬àû^»ÿÿ[›‹òYŸKúŸ]][J	Ÿô\úõ”[òÿP€‹úù\Y⁄[…À›ö[ô €‹úù\Y⁄[€›[ù
+JN»Xÿ]⁄
+J^ﬂBàYä€‹úù\Y⁄[€›[ùèLL
+H[õÿ⁄–X⁄Y]ô[Y[ù
+	ÿ€‹úù\Y⁄[ù\â N¬üBÇã àOOOOOOOOOOOHTëíSOOOOOOOOOOOH
+ã¬ò€€ú›ì—íSW”êSQW“—VHH	Ÿô\úõ”[òÿT^Y\ìò[YIŒ¬ã àOOOOOOOOOOOHP–Tà
+ö\ô\›‹ôJHOOOOOOOOOOOH
+ã¬ò€€ú›R—Q—SïíQT◊“—VHH	Ÿô\úõ”[òÿSZŸY[ùöY\…Œ¬ôù[ò›[€àŸ]ZŸY[ùöY\ 
+^¬àû^»ô]\õàô]»Ÿ]
+î””ãú\úŸJÿÿ[›‹òYŸKôŸ]][JR—Q—SïíQT◊“—VJH	÷◊I JN»Xÿ]⁄
+J^»ô]\õàô]»Ÿ]
+
+N»BüBôù[ò›[€àX\ö—[ùûSZŸY
+Y
+^¬à€€ú›ZŸYHŸ]ZŸY[ùöY\ 
+N¬àZŸYòY
+Y
+N¬àû^»ÿÿ[›‹òYŸKúŸ]][JR—Q—SïíQT◊“—VKî””ãú›ö[ô⁄YûJÀããõZŸYJJN»Xÿ]⁄
+J^ﬂBüBôù[ò›[€àùZ[^UX[T€ò\⁄›
+
+^¬àô]\õàÿöôX›ô[ùöY\ ›€ôY
+KõX\
+
+ÿ⁄[\YõŸ◊JOOû¬à€€ú›YàH“STS”ó––US—÷ÿ⁄[\YN¬àYäYYäHô]\õàù[¬à€€ú›][Sò[Y\»H
+õŸÀö][RYﬂ◊JKôö[\äõ€€X[äKõX\
+ZYOíUSW––US—÷⁄ZYO“USW––US—÷⁄ZYKõò[YNöZY
+N¬àYäõŸÀúô[X“Y	âàUSW––US—÷‹õŸÀúô[X“YJH][Sò[Y\Àú\⁄
+USW––US—÷‹õŸÀúô[X“YKõò[YJ…»
+ô[0Î\]ZXJI N¬àô]\õà»⁄[\Yò[YNôYãõò[YK[[Y[ùôYãô[[Y[ù]ô[úõŸÀõ]ô[K›\úŒúõŸÀú›\úﬂK][\Œö][Sò[Y\»N¬àJKôö[\äõ€€X[äN¬üBò\ﬁ[ò»ù[ò›[€à‹›^Tô\›[
+
+^¬à€€ú››]\—[Hÿ›[Y[ùôŸ][[Y[ùûRY
+	€XY\òõÿ\ô\›]\… N¬àYä]⁄[ô›Àó◊€à]⁄[ô›Àó◊€ãúôXYJ^»›]\—[ù^€€ù[ùH	‘Xÿ\à[ô\‹€∞Î]ô[õ»[€Y[ù»
+Ÿ[H€€ô^0Ë€»€€H»ò[ò€»HY‹ KâŒ»ô]\õé»Bà€€ú›X[HHùZ[^UX[T€ò\⁄›
+
+N¬àYäX[Kõ[ô›OOL
+^»›]\—[ù^€€ù[ùH	’õÿÍàZ[ôH∞Ë€»[Hô[ö[H›X⁄»\Ÿ\àòH‹›\à8†%õŸÿH[XH\ùYHö[YZ\õ»IŒ»ô]\õé»Bà]^Y\ìò[YHH	–[∞Ìö[[…Œ¬àû^»^Y\ìò[YHHÿÿ[›‹òYŸKôŸ]][Jì—íSW”êSQW“—VJH	–[∞Ìö[[…Œ»Xÿ]⁄
+J^ﬂBàYä\^Y\ìò[YKùö[J
+JH^Y\ìò[YHH	–[∞Ìö[[…Œ¬à›]\—[ù^€€ù[ùH	‘‹›[ôÀããâŒ¬àû^¬à€€ú›»ã€€X›[€ãYÿÀŸ\ùô\ï[Y\›[\HH⁄[ô›Àó◊€é¬à€€ú›òYŸ\»HÀããõX]⁄X⁄Y]ô[Y[ù◊Kôö[\äYOêP“QUëSQSï÷⁄YJKõX\
+YOêP“QUëSQSï÷⁄YKöX€€äN¬à]ÿZ]Yÿ €€X›[€äã	€XY\òõÿ\ô	 K¬à^Y\ìò[YNà^Y\ìò[YKú€XŸJç
+KàX^ÿ]ôNà\ú€€ò[ôX€‹ôÀõX^ÿ]ôHàX[KàòYŸ\ÀàZŸ\Œàà‹ôX]Y]àŸ\ùô\ï[Y\›[\
+
+BàJN¬à›]\—[ù^€€ù[ùH	‘‹›Y»H∞ËH\\ôXŸHòH\›HXòZ^ÀâŒ¬àô[ô\ìXY\òõÿ\ô
+
+N¬àXÿ]⁄
+J^¬à›]\—[ù^€€ù[ùH	”∞Ë€»]HòH‹›\àY€‹òH8†%[ùHHõ›õ»\]ZHH›X€ÀâŒ¬à€€ú€€Kô\úõ‹äJN¬àBüBò\ﬁ[ò»ù[ò›[€àZŸQ[ùûJ[ùûRYùë[
+^¬àYä]⁄[ô›Àó◊€à]⁄[ô›Àó◊€ãúôXYJHô]\õé¬à€€ú›ZŸYHŸ]ZŸY[ùöY\ 
+N¬àYäZŸYö\ [ùûRY
+JHô]\õé»À»∞ËH›\ù]H[ù\»ô\‹ŸHò]ôYÿY‹Çàùë[ô\ÿXõYHùYN¬àû^¬à€€ú›»ãÿÀ\]QÿÀ[ò‹ô[Y[ùHH⁄[ô›Àó◊€é¬à]ÿZ]\]Qÿ ÿ ã	€XY\òõÿ\ô	À[ùûRY
+K»ZŸ\Œà[ò‹ô[Y[ù
+JHJN¬àX\ö—[ùûSZŸY
+[ùûRY
+N¬à€€ú›€›[ù[Hùë[ú]Y\ûTŸ[X›‹ä	ÀõZŸKX€›[ù	 N¬àYä€›[ù[
+H€›[ù[ù^€€ù[ùH
+\úŸR[ù
+€›[ù[ù^€€ù[ùL
+_
+H
+»N¬àùë[ò€\‹”\›òY
+	€ZŸY	 N¬àXÿ]⁄
+J^¬àùë[ô\ÿXõYHò[ŸN¬à€€ú€€Kô\úõ‹äJN¬àBüBÇò\ﬁ[ò»ù[ò›[€àô[ô\ìXY\òõÿ\ô
+
+^¬à€€ú›\›[Hÿ›[Y[ùôŸ][[Y[ùûRY
+	€XY\òõÿ\ô[\›	 N¬à€€ú››]\—[Hÿ›[Y[ùôŸ][[Y[ùûRY
+	€XY\òõÿ\ô\›]\… N¬àYä]⁄[ô›Àó◊€à]⁄[ô›Àó◊€ãúôXYJ^¬à›]\—[ù^€€ù[ùH	‘Xÿ\à[ô\‹€∞Î]ô[õ»[€Y[ù»
+Ÿ[H€€ô^0Ë€»€€H»ò[ò€»HY‹ KâŒ¬à\›[ö[õô\íSH	…Œ¬àô]\õé¬àBà›]\—[ù^€€ù[ùH	–ÿ\úôYÿ[ôÀããâŒ¬à\›[ö[õô\íSH	…Œ¬àû^¬à€€ú›»ã€€X›[€ãŸ]ÿ‹À]Y\ûK‹ô\êûK[Z]HH⁄[ô›Àó◊€é¬à€€ú›HH]Y\ûJ€€X›[€äã	€XY\òõÿ\ô	 K‹ô\êûJ	€X^ÿ]ôIÀ	Ÿ\ÿ… K[Z]
+Ã
+JN¬à€€ú›€ò\H]ÿZ]Ÿ]ÿ‹ JN¬à›]\—[ù^€€ù[ùH€ò\ô[\H»	”ö[ô›pÍ[H‹››HZ[ôH8†%ŸZòH»ö[YZ\õ»I»à	…Œ¬à€€ú›ZŸYHŸ]ZŸY[ùöY\ 
+N¬à\›[ö[õô\íSH€ò\ôÿ‹ÀõX\
+Oû¬à€€ú›]HHô]J
+N¬à€€ú›YHöY¬à€€ú›[ôXYSZŸYHZŸYö\ Y
+N¬à€€ú›X[R[H
+]KùX[_◊JKõX\
+OOòà]à›[OHúY[ôŒçú»òX⁄Ÿ‹õ›[ôúôÿòJåäN»õ‹ô\éå\€€YÃÿLŸçŒ»õ‹ô\ã\òY]\Œç»õ€ù\⁄^ôNåL\»èÇà‹[à€\‹œHò⁄[\]Y»[[KI›Kô[[Y[ùHà›[OHõX\ô⁄[ã\öY⁄çú»èâ›Kô[[Y[ùù’\\êÿ\ŸJ
+_O‹‹[èÇà›õ€ôœâ›Kõò[Y_O‹›õ€ôœà8†%	‹›\íX€€ú Kú›\ú _Hùãâ›Kõ]ô[Bà	›Kö][\Àõ[ô›»]à›[OHò€€‹éùò\äKY€€
+N»X\ô⁄[ã]‹åú»èº'„§à	›Kö][\Àöõ⁄[ä	À	 _OŸ]èòà	œ]à›[OHò€€‹éùò\äK\›Y[
+N»X\ô⁄[ã]‹åú»èîŸ[H][úœŸ]èâﬂBà9Ûnt∂âûÀk∫wµÁZ^òHŸ‹»‹»[ö[ZY€‹»‹à\»X	⁄	 N¬àöYŸŸ\îÿ‹ôY[î⁄ZŸJLÃå
+N¬àYä[ŸOOOI‹ôI»	âà\’⁄\J^¬àöYŸŸ\ëö[ö\⁄\îŸ\]Y[òŸJõ€òK
+
+OOû»⁄X⁄’öX›‹ûJ
+N»JN¬àBüBÇõ][ùX€RY€›[ù\àH¬ãÀ»ô\ö][ùõÿÿH[ù0ËX›[‹»\ù»H]Y[H[H\›0ËH]Xÿ[ô»8†%[\»∞Ë€»ŸH[›ô[Kò][H€€H[ÿ[òŸHÀãÀ»0ÍõH›XÿHöYHH[õ»€€ú⁄Y\∞Ë]ô[à]0ÍHHö]õ‹»‹àô^ãÇôù[ò›[€à‹]€ìô\ö][ùX€Jô\ö]
+^¬à€€ú›[]ôU[ùX€\»H[ö]Àôö[\äœOõÀò[]ôH	âàÀö\’[ùX€H	âàÀù[ùX€T\ô[ùYOO[ô\ö]öY
+N¬àYä[]ôU[ùX€\Àõ[ô›èM
+Hô]\õé¬à€€ú›Ÿ[ù\àH‹Nõô\ö]úKéõô\ö]úüN¬à€€ú›ÿÿ»Hÿÿ›\YYX\
+
+N¬à€€ú›ÿ[ôY]\»H[^\Àôö[\äOö^\›[òŸJŸ[ù\äOLà	âàZ\–õÿ⁄ŸY[J
+H	âàÿÿ÷⁄^Ÿ^J
+WOOO][ôYö[ôY
+N¬àYäÿ[ôY]\Àõ[ô›OOL
+Hô]\õé¬à€€ú›‹›Hÿ[ôY]\÷”X]ôõ€‹äX]úò[ô€J
+Jòÿ[ôY]\Àõ[ô›
+WN¬à€€ú››\ì][HH
+»
+ô\ö]ú›\úÀLJJååMN¬à€€ú›YàH€ò[YNâ’[ù0ËX›[…À[[Y[ùâÿY›XIÀìX]úõ›[ô
+é
+ú›\ì][
+K]ŒìX]úõ›[ô
+åäú›\ì][
+Kò[ôŸNåÀ‹YYå_N¬à€€ú››]›ô\úöYHH⁄ôYãö]ŒôYãò]Àò[ôŸNåÀ‹YYåKY‘ôYX›[€éåN¬à€€ú›HXZŸU[ö]
+[ùX€RY€›[ù\ä Àô\ö]ùX[K	›[ùX›[…ÀYãK‹›úK‹›úã›]›ô\úöYKK◊JN¬àö\’[ùX€HHùYN¬àòÿ[ù[›ôHHùYN¬àù[ùX€T\ô[ùYHô\ö]öY¬àú‹]€î‹ù[[ù[H\ôõ‹õX[òŸKõõ› 
+H
+»L»À»Y\€[»YôZ]»H‹ù[\»‹öX]\ò\»€‹úõ€\Y\¬àòX›[€ï[Y\àHL¬à[ö]Àú\⁄
+
+N¬à‹]€êÿ\›YôôX›
+úûúûK	»ÕéYô	 N¬àYä[]ôU[ùX€\Àõ[ô›
+ÃOèM
+H[õÿ⁄–X⁄Y]ô[Y[ù
+	€ô\ö]‹›ÿ\õI N¬üBôù[ò›[€àŸ][ùX€U\ôŸ]
+
+^¬à€€ú›\ô[ùH[ö]Àôö[ô
+OûöYOO]ù[ùX€T\ô[ùY
+N¬àYä]ù[ùX€Qúô[ûûH	âà\ô[ù	âà\ô[ùò[]ôH	âà\ô[ùò]X⁄–[ö[J^¬à€€ú›\ô[ù\ôŸ]H[ö]Àôö[ô
+OûöYOO\\ô[ùò]X⁄–[ö[Kù\ôŸ]Y	âàò[]ôJN¬àYä\ô[ù\ôŸ]	âà^\›[òŸJ\ô[ù\ôŸ]
+O]úò[ôŸJHô]\õà\ô[ù\ôŸ]¬àBà€€ú›[îò[ôŸHH[ö]Àôö[\äœOõÀò[]ôH	âàÀùX[HOO]ùX[H	âà^\›[òŸJ O]úò[ôŸJN¬àYä[îò[ôŸKõ[ô›OOL
+Hô]\õàù[¬àô]\õà[îò[ôŸV”X]ôõ€‹äX]úò[ô€J
+Jö[îò[ôŸKõ[ô›
+WN¬üBÇôù[ò›[€àûP]X⁄”ôX\òûT›ùX›\ôJJ^¬à€€ú›õ›»H\ôõ‹õX[òŸKõõ› 
+N¬à€€ú›[ùöY\»HÿöôX›ô[ùöY\ ôYYÿ\î›ùX›\ô\ Kôö[\ä
+⁄À◊JOOàÀõ›€ô\ïX[HOOHKùX[H	âà^\›[òŸJK HHKúò[ôŸJN¬àYä[ùöY\Àõ[ô›OOL
+Hô]\õàò[ŸN¬à€€ú›⁄Ÿ^K◊HH[ùöY\÷ÃN¬àÀö]’ZŸ[à
+œHN¬à€€ú›H^‘^[
+ÀúKÀúäN¬à‹]€ëõÿ]^
+ûûKLå	‘STàUSë“Q…À	»ÿŒXMLÿI N¬àöYŸŸ\îÿ‹ôY[î⁄ZŸJÀML
+N¬àÀ»Xô\òH[ô\ô⁄XNàõ‹ù[XŸH‹»[\ô\»[XY‹»∞Ïﬁ[[‹»‹à‹¬àÿöôX›ùò[Y\ ôYYÿ\î›ùX›\ô\ Kôõ‹ëXX⁄
+›\èOû¬àYä›\èOO\»›\ãõ›€ô\ïX[HOO\Àõ›€ô\ïX[JHô]\õé¬àYä^\›[òŸJ›\ã HHäH›\ãòõ€‹›[ù[Hõ›»
+»Ã¬àJN¬à€€ú›ôYYYHKö\–õ‹‹»»HàÀö]”ôYYY¬àYäÀö]’ZŸ[àèHôYYY
+^¬à[]HôYYÿ\î›ùX›\ô\÷⁄Ÿ^WN¬àŸ 	’[H[\àHôYYÿ\àõ⁄H\›ùpÎYÀâÀ	‹ﬁ\… N¬àBàô]\õàùYN¬üBôù[ò›[€à–X›[€äJ^¬àÀ»[\ô\»HôYYÿ\àö\ò[H[õ»Hô\ôYH8†%ŸH]ô\à[H‹à\ùÀ[H[XH⁄[òŸHõÿBàÀ»H]Xÿ\à[H[Hô^à»[ö[ZY€»õ‹õX[Ÿ[∞Ë€»[\»ù[òÿH\ò[H\›ùpÎY‹»òH∞Ë]XÿKÇàYä]Kö\’[ùX€H	âàX]úò[ô€J
+HåÕH	âàûP]X⁄”ôX\òûT›ùX›\ôJJJHô]\õé¬à€€ú›\ôŸ]HKö\’[ùX€H»Ÿ][ùX€U\ôŸ]
+JHàôX\ô\›[ô[^JJN¬àYä]\ôŸ]
+^¬àûP]X⁄”ôX\òûT›ùX›\ôJJN¬àô]\õé¬àBà€€ú›\›H^\›[òŸJK\ôŸ]
+N¬àYä\›HKúò[ôŸJ^¬àYäKúò[ôŸOåH	âà\›OOLH	âà]Kòÿ[ù[›ôH	âà\ôõ‹õX[òŸKõõ› 
+HèH
+Kö⁄]P€€€›€ï[ù[
+J^¬àÀ»]\òY‹ô\»[ù[HŸHYò\›\à»€‹ú»H€‹úÀX\»Ï»HÿYH\»
+Ÿ[∞Ë€»öXÿHùY⁄[ô»ŸH‹òJBà€€ú›ÿÿ»Hÿÿ›\YYX\
+
+N¬à€€ú›ô]ôX]‹[€ú»HôZY⁄õ‹ú JKôö[\äèOö[ë‹öY
+äH	âàZ\–õÿ⁄ŸY[JäH	âàÿÿ÷⁄^Ÿ^JäWOOO][ôYö[ôY	âà^\›[òŸJã\ôŸ]
+Hà\›
+N¬àYäô]ôX]‹[€úÀõ[ô›
+^¬à€€ú›\›Hô]ôX]‹[€ú÷”X]ôõ€‹äX]úò[ô€J
+Júô]ôX]‹[€úÀõ[ô›
+WN¬àKúHH\›úN»KúàH\›úé¬à€€ú›H^‘^[
+KúKKúäN¬àKù\ôŸ]ûHû»Kù\ôŸ]ûHHûN¬à⁄X⁄‘‹ù[[\‹ù
+JN¬àKö⁄]P€€€›€ï[ù[H\ôõ‹õX[òŸKõõ› 
+H
+»L¬àô]\õé¬àBàBàYä›\úô[ùŸX]\èOOI›ô[ù◊Ÿõ‹ùI»	âàKúò[ôŸOåH	âàX]úò[ô€J
+OåMJ^¬à‹]€ëõÿ]^
+KúûKúûKLç	—Tîì’H
+ô[ù IÀ	»ÕŸôXI N¬àŸ 	›Kõò[Y_H\úòH»\õ»‹àÿ]\ÿH»ô[ù»õ‹ùKò	‹ﬁ\… N¬àô]\õé¬àBàKò]X⁄–[ö[HH›\ôŸ]Yù\ôŸ]öY›\ùú\ôõ‹õX[òŸKõõ› 
+K\ò][€éåéN¬à]Y»HKò]Œ¬àYäKúò[ôŸOåJ^¬à€€ú›\›õ€ù\»HH
+»X]õX^
+\›LJJåå¬àY»HX]úõ›[ô
+Y ô\›õ€ù\ N¬àBàYäKò⁄[\YOOI‹⁄X‹ûI ^¬à€€ú›Z\‹⁄[ô—úòX»HHH
+Kö›KõX^
+N¬àY»HX]úõ›[ô
+Y äH
+»Z\‹⁄[ô—úòX åKåäJN¬àBÇàYäKú‹X⁄X[OOI€[òÿI ^¬àKö]€›[ù
+ Œ¬àYäKö]€›[ù	LœOOL
+^»YœSX]úõ›[ô
+Y åKé
+N»\Q[XYŸJK\ôŸ]YÀ	¯¶•	 N»‹]€êÿ\›YôôX›
+\ôŸ]úû\ôŸ]úûKKò€€‹äN»öYŸŸ\îÿ‹ôY[î⁄ZŸJKML
+N»ô]\õé»BàBÇàYäKú‹X⁄X[OOI‹\ôù\õ… ^¬àKö]€›[ù
+ Œ¬àYäKö]€›[ù	MOOL
+^»YœSX]úõ›[ô
+Y åKçäN»\Q[XYŸJK\ôŸ]YÀ	¸'„´…ÀùYJN»‹]€êÿ\›YôôX›
+\ôŸ]úû\ôŸ]úûKKò€€‹äN»ô]\õé»BàBÇàYäKú‹X⁄X[OOI‹òZòYI ^¬àKö]€›[ù
+ Œ¬àYäKö]€›[ù	LœOOL
+^¬à\Q[XYŸJK\ôŸ]YÀ	¯¶®I N»‹]€êÿ\›YôôX›
+KúûKúûKKò€€‹äN¬àYä\ôŸ]ò[]ôJH\Q[XYŸJK\ôŸ]YÀ	¯¶®I N¬à‹]€êÿ\›YôôX›
+\ôŸ]úû\ôŸ]úûKKò€€‹äN¬àô]\õé¬àBàBÇàYäKú‹X⁄X[OOIÿ⁄]òI ^¬àKö]€›[ù
+ Œ¬àYäKö]€›[ù	MOOL
+^¬à€€ú››\ú»H[ö]Àôö[\äœOõÀò[]ôH	âàÀùX[HOO]KùX[H	âàÀöYOO]\ôŸ]öY
+N¬àYä›\úÀõ[ô›
+^¬à€€ú›àH›\ú÷”X]ôõ€‹äX]úò[ô€J
+Jõ›\úÀõ[ô›
+WN¬à\Q[XYŸJKãX]úõ›[ô
+Kò] åç K	¯ßÆI N¬à‹]€êÿ\›YôôX›
+ãúûãúûKKò€€‹äN¬àBàBàBÇàYäKú‹X⁄X[OOIŸù\öXI ^¬à€€ú›Z\‹⁄[ô»HKJKö›KõX^
+N¬àY»HX]úõ›[ô
+Y äJ€Z\‹⁄[ô åé
+JN¬à€€ú›[ëúô[ûûHHKôúô[ûûU[ù[	âà\ôõ‹õX[òŸKõõ› 
+HKôúô[ûûU[ù[¬àYä[ëúô[ûûJHY»HX]úõ›[ô
+Y äKçH
+»åL
+ä
+Kú›\úﬂJKLJJJN¬àKö]€›[ù
+ Œ¬àYäKö]€›[ù	MOOL
+^»Y»HX]úõ›[ô
+Y åKçäN»\Q[XYŸJK\ôŸ]YÀ	¸'Â)I N»‹]€êÿ\›YôôX›
+\ôŸ]úû\ôŸ]úûKKò€€‹äN»ô]\õé»BàYäZ\‹⁄[ôœåå»[ëúô[ûûJH‹]€êÿ\›YôôX›
+KúûKúûK[ëúô[ûûH»	»ŸLéLÿI»àKò€€‹äN¬àBÇàYäKú‹X⁄X[OOIÿ€›\òXÿI ^¬àKö]€›[ù
+ Œ¬àYäKö]€›[ù	MOOL
+^¬àY»HX]úõ›[ô
+Y åKçJN¬à\Q[XYŸJK\ôŸ]YÀ	¯¶Ï	 N¬àKöHX]õZ[äKõX^Kö
+»X]úõ›[ô
+KõX^
+ååL
+JN¬à‹]€êÿ\›YôôX›
+KúûKúûKKò€€‹äN¬àöYŸŸ\îÿ‹ôY[î⁄ZŸJãN
+N¬àô]\õé¬àBàBÇàYäKú‹X⁄X[OOI⁄[XI ^¬àKö]€›[ù
+ Œ¬àYäKö]€›[ù	MOOL	âàKö[XU\Ÿ\”Yùå
+^¬àKö[XU\Ÿ\”YùKN¬àKö[XTõÿ–]H\ôõ‹õX[òŸKõõ› 
+N¬àY»HX]úõ›[ô
+Y åKçJN¬à\Q[XYŸJK\ôŸ]YÀ	¸'ÈÏâ N¬àYä\ôŸ]ò[]ôJH[YòXŸ[ù
+K\ôŸ]
+N¬à€€ú››\ú»H[ö]Àôö[\äœOõÀò[]ôH	âàÀùX[HOO]KùX[H	âàÀöYOO]\ôŸ]öY
+N¬à›\úÀôõ‹ëXX⁄
+œOö€õÿ⁄ÿòX⁄’[ö]
+KÀäJN¬à‹]€êÿ\›YôôX›
+\ôŸ]úû\ôŸ]úûKKò€€‹äN¬à‹]€ëõÿ]^
+KúûKúûKM0„Sp‡»
+	›Kö[XU\Ÿ\”YùHô\›[ù\ XKò€€‹äN¬àöYŸŸ\îÿ‹ôY[î⁄ZŸJKML
+N¬àô]\õé¬àBàBÇàYäKú‹X⁄X[OOIÿ€€ôŸ[[Y[ù… ^¬àKö]€›[ù
+ Œ¬à€€ú›úôY^ôR[ù\ùò[HKò⁄[\YOOIŸúõ‹⁄…»»àN¬àYäKö]€›[ù	YúôY^ôR[ù\ùò[OOL
+^¬à€€ú›úôY^ôQY»HKò⁄[\YOOIŸúõ‹⁄…»»X]úõ›[ô
+Y åKå HàYŒ¬à\Q[XYŸJK\ôŸ]úôY^ôQYÀ	¯ßa	 N¬àYä\ôŸ]ò[]ôJ^¬à€€ú››[ì\»HKò⁄[\YOOIŸúõ‹⁄…»»MLàL¬à\P– \ôŸ]›[ì\À	ŸŸ[… N¬à‹]€ëõÿ]^
+\ôŸ]úû\ôŸ]úûKM	–””ë—SQ…ÀKò€€‹äN¬à‹]€êÿ\›YôôX›
+\ôŸ]úû\ôŸ]úûKKò€€‹äN¬àBàô]\õé¬àBàBÇàYäKò⁄[\YOOI›õ€òI ^¬à\Q[XYŸJK\ôŸ]Y N¬àYä\ôŸ]ò[]ôJH\Q[X›öX–⁄Z[äK\ôŸ]ù[KúûKúûJN¬àH[ŸH¬à\Q[XYŸJK\ôŸ]Y N¬àBÇàYä
+Kò⁄[\YOOI‹òZ[…»Kòõ‹úõ›ŸY⁄[\›Ÿ\èOOI‹òZ[… H	âà]Kò€€Xõ–X›]ôJ^¬àKö]€›[ù
+ Œ¬àYäKö]€›[ùèMJ^»öYŸŸ\ê€€Xõ’[[X]JKù[
+N»Kö]€›[ùH»BàBÇàYäKú‹X⁄X[OOIŸ^‹ÿ[… ^¬àKö]€›[ù
+ Œ¬àYäKö]€›[ù	LœOOL
+^¬à€€ú›[ô[ZY\»H[ö]Àôö[\äœOõÀò[]ôH	âàÀùX[HOO]KùX[H	âàÀöYOO]\ôŸ]öY
+N¬à[ô[ZY\Àú€‹ù
+
+KäOOö^\›[òŸJ\ôŸ]JKZ^\›[òŸJ\ôŸ]äJN¬àYä[ô[ZY\÷ÃH	âà^\›[òŸJ\ôŸ][ô[ZY\÷ÃJOLJ^»\Q[XYŸJK[ô[ZY\÷ÃKKò]À	¯ß.I N»‹]€êÿ\›YôôX›
+[ô[ZY\÷ÃKúû[ô[ZY\÷ÃKúûKKò€€‹äN»BàBàBÇàYäKú‹X⁄X[OOIÿ›\òI ^¬àKö]€›[ù
+ Œ¬àYäKö]€›[ù	MOOL
+^¬à€€ú›[Y\»H[ö]Àôö[\äœOõÀò[]ôH	âàÀùX[OOO]KùX[H	âàÀöÀõX^
+N¬à[Y\Àú€‹ù
+
+KäOOäKöÿKõX^
+KJãöÿãõX^
+JN¬àYä[Y\÷ÃJ^»[Y\÷ÃKöHX]õZ[ä[Y\÷ÃKõX^[Y\÷ÃKö
+”X]úõ›[ô
+[Y\÷ÃKõX^
+ååçJJN»‹]€ëõÿ]^
+[Y\÷ÃKúû[Y\÷ÃKúûKLç	 ÿ›\òIÀ	»ÕÿòôçòI N»‹]€êÿ\›YôôX›
+[Y\÷ÃKúû[Y\÷ÃKúûKKò€€‹äN»Ÿ 	›Kõò[Y_H›\òH	ÿ[Y\÷ÃKõò[Y_Kò	⁄	 N»BàBàBàH[ŸH¬àYäKòÿ[ù[›ôJHô]\õé»À»[ù0ËX›[‹»∞Ë€»ŸH[›ô[KÏ»]Xÿ[HŸH»[õ»[ùò\àõ»[ÿ[òŸBàYäKòò\úöY\ï[ù[	âà\ôõ‹õX[òŸKõõ› 
+HKòò\úöY\ï[ù[
+Hô]\õé»À»[pÏ›ô[\ò[ùHHò\úôZ\òBàûS[›ôU›ÿ\ô
+K\ôŸ]
+N¬àBüBÇôù[ò›[€à\]Pò]SŸ⁄X 
+^¬àYäö[ö\⁄\êX›]ôJHô]\õé»À»]\ÿHH∞Î\⁄XÿHõ‹õX[[ú]X[ù»H⁄[ô[pË]XÿH»€€Hö[ò[õŸBà€€ú›õ›»H\ôõ‹õX[òŸKõõ› 
+N¬à[ö]Àôõ‹ëXX⁄
+OOû¬àYä]Kò[]ôJHô]\õé¬ÇàYäKùõ€òQ]€ò][ô»	âàõ›»èHKùõ€òQ]€ò]U[ù[
+^¬àKùõ€òQ]€ò][ô»Hò[ŸN¬àKöH»Kò[]ôHHò[ŸN¬àŸ 	›Kõò[Y_HÿZ]H[H€€Xò]Kò	‹ﬁ\… N¬àYäKùX[OOOI‹^Y\â ^»õ›[ôX]Àú\⁄
+Kõò[YJN»[ú›\ôSX]⁄›] Kò⁄[\Y
+KôX]  Œ»BàöYŸŸ\ë[X›öX‘⁄ÿ⁄›ÿ]ôJKJN¬àô]\õé¬àBÇàYäKô⁄‹›[ù[
+^¬àYäõ›»èHKô⁄‹›[ù[
+^¬à€€ú›\ôŸ]H[ö]Àôö[ô
+OûöYOO]Kô⁄‹›\ôŸ]Y
+N¬àYä\ôŸ]	âà]\ôŸ]ò[]ôJ^¬àKúHH\ôŸ]úN»KúàH\ôŸ]úé¬à€€ú›H^‘^[
+KúKKúäN¬àKúû\û»KúûO\ûN»Kù\ôŸ]û\û»Kù\ôŸ]ûO\ûN¬àKöHX]õZ[äKõX^X]úõ›[ô
+KõX^
+åçå
+ú\‹⁄]ôP[\
+JJJN¬àKô⁄‹›[ù[H»Kô⁄‹›\ôŸ]YHù[¬àYäKò⁄[\YOOIŸŸ[YI ^¬àYä›€ôY…ŸŸ[YI◊JH›€ôY…ŸŸ[YI◊KôŸ[YTô]ö]ô\’\ŸYH
+›€ôY…ŸŸ[YI◊KôŸ[YTô]ö]ô\’\ŸY
+H
+»N¬à€€ú›\ŸYõ›»H›€ôY…ŸŸ[YI◊H»›€ôY…ŸŸ[YI◊KôŸ[YTô]ö]ô\’\ŸYàN¬àKôŸ[YQY–ùYôï[ù[Hõ›»
+»NNNNNN»À»\òH]0ÍH»ö[HH€ôH
+[öYYH0ÍHôX‹öXYH»ô\õ»òH∞Ïﬁ[XJBà‹]€ëõÿ]^
+KúûKúûKMã	—∞ÊîíPH”P“PSIÀ	»ŒôN	 N¬à€€ú›YùHX]õX^
+ã]\ŸYõ› N¬àŸ 	›Kõò[Y_Hõ€H€€H]Z]»XZ\»õ‹∞ÈÿH]0ÍH»ö[HH€ôHH
+	€YùHô[ò\ÿ⁄[Y[ù…€YùOOLO……Œâ‹…ﬂHô\›[ùI€YùOOLO……Œâ‹…ﬂJX	⁄	 N¬àBà‹]€êÿ\›YôôX›
+KúûKúûK	»ŒôN	 N¬à‹]€ëõÿ]^
+KúûKúûKLÕ	‘ëSêT–—UHIÀ	»ŒôN	 N¬àYäKò⁄[\YOOIŸŸ[YI ^¬à€€ú›Ÿ[YTô]ö]ôTò\ŸHHò[ô€Tò\ŸJ	ŸŸ[YW‹ô]ö]ôI N¬à‹]€ëõÿ]^
+KúûKúûKMNŸ[YTô]ö]ôTò\ŸK	»ŒôN	À	Ÿò[X]X… N¬àŸ 	›Kõò[Y_NàâŸŸ[YTô]ö]ôTò\Ÿ_Hò	⁄	 N¬àBàŸ 	›Kõò[Y_H€XH»Yÿ\à»[ö[ZY€»Hõ€H0Ëò][HX	⁄	 N¬àH[ŸH¬àKöH»Kò[]ôHHò[ŸN»Kô⁄‹›[ù[H¬àŸ 	›Kõò[Y_H∞Ë€»ô\⁄\›]HHÿZ]HHô^ãò	‹ﬁ\… N¬àYäKùX[OOOI‹^Y\â ^»õ›[ôX]Àú\⁄
+Kõò[YJN»[ú›\ôSX]⁄›] Kò⁄[\Y
+KôX]  Œ»Bàô]\õé¬àBàH[ŸH¬àô]\õé»À»[H\‹X›õŒà∞Ë€»YŸHô[H€ŸúôH[õ»
+[][öYYHò]YH[H\Q[XYŸJBàBàBÇàYäKò⁄[\YOOI‹òZ[…»	âà]Kò€€Xõ“\õYY	âàKö›KõX^ååçJ^¬àKò€€Xõ“\õYYHùYN¬àBÇàYäKò⁄[\YOOIŸô\úöI»	âàKòò\úöY\ï\ŸY	âàKòò\úöY\ï[ù[	âàõ›œè]Kòò\úöY\ï[ù[	âà]Kòò\úöY\ëõ€››\€ôJ^¬àKòò\úöY\ëõ€››\€ôHHùYN¬à€€ú›ôX\òûHH[ö]Àôö[\äœOõÀò[]ôH	âàÀùX[HOO]KùX[H	âà^\›[òŸJK OMJN¬àYäôX\òûKõ[ô›
+^¬àôX\òûKôõ‹ëXX⁄
+œOû¬à[YòXŸ[ù
+K N¬à\P– ÀMå	€Y][	 N¬àJN¬à‹]€êÿ\›YôôX›
+KúûKúûKKò€€‹äN¬à‹]€ëõÿ]^
+KúûKúûKM	–Uêp·‡”»IÀKò€€‹äN¬à€€ú›ô\úöT[ò\ŸHHò[ô€Tò\ŸJ	Ÿô\úöW‹[	 N¬à‹]€ëõÿ]^
+KúûKúûKMçô\úöT[ò\ŸKKò€€‹ã	Ÿò[X]X… N¬àŸ 	›Kõò[Y_NàâŸô\úöT[ò\Ÿ_Hò	⁄	 N¬àŸ 	›Kõò[Y_H^H‹»[ö[ZY€‹»Hõ€HòH\ù»H‹»]‹ôÿHX	⁄	 N¬àöYŸŸ\îÿ‹ôY[î⁄ZŸJÀå
+N¬àBàBÇàYäKò[]ôH	âàKöKõX^	âà\“][JK	›öY€‹óÿXú€€]… H	âàõ›œè]KùöY€‹îôYŸ[ê]
+^¬àKùöY€‹îôYŸ[ê]Hõ›»
+»Ã¬à€€ú›X[[]HX]úõ›[ô
+KõX^
+ååäN¬àKöHX]õZ[äKõX^Kö
+⁄X[[]
+N¬à‹]€ëõÿ]^
+KúûKúûKLç
+…⁄X[[]X	»ÕÿòôçòI N¬àBÇàYäKö\’ÿ]ôMåõ‹‹»	âàKò[]ôJ^¬àYäõ›»èHKôX€–õ\›]
+^¬àKôX€–õ\›]Hõ›»
+»L¬à€€ú›\ôŸ]»H[ö]Àôö[\äœOõÀò[]ôH	âàÀùX[OOOI‹^Y\â»	âà^\›[òŸJK OL N¬à€€ú›õ\›€›\òŸHHŸ[[Y[ùâÿ€‹úù\Y	ÀX[NâŸ[ô[^IÀ⁄[\YâŸX€◊‹òX⁄Y\òIÀò[YNùKõò[Y_N¬à‹]€î⁄ÿ⁄›ÿ]ôTö[ô KúûKúûKåå	»ŒXçôIÀ
+N¬à‹]€ëõÿ]^
+KúûKúûKM	‘êRêQHHSëTë“PHIÀ	»ŒXçôI N¬àŸ 	›Kõò[Y_H€€H[XHòZòYHH[ô\ô⁄XHX	⁄	 N¬àöYŸŸ\îÿ‹ôY[î⁄ZŸJLÃ
+N¬àŸ][Y[›]
+
+
+OOû¬à\ôŸ]Àôõ‹ëXX⁄
+œOû»YäÀò[]ôJH\Q[XYŸJõ\›€›\òŸKÀX]úõ›[ô
+Kò] åKé
+K	¸'‰©IÀùYJN»JN¬àKÕL
+N¬àBàYäõ›»èHKôX€‘›[[[€ê]
+^¬àKôX€‘›[[[€ê]Hõ›»
+»L¬à€€ú›ÿÿ»Hÿÿ›\YYX\
+
+N¬à€€ú›ôX\òûHHôZY⁄õ‹ú JKôö[\äèOö[ë‹öY
+äH	âàZ\–õÿ⁄ŸY[JäH	âàÿÿ÷⁄^Ÿ^JäWOOO][ôYö[ôY
+N¬à€€ú›‹]€ê€›[ùHX]õZ[äÀôX\òûKõ[ô›
+N¬àõ‹ä]OL⁄O‹]€ê€›[ù⁄J  ^¬à€€ú›‹›HôX\òûV⁄WN¬à€€ú›ÿ]ôTÿÿ[Qõ‹î‹]€àHH
+»X]õX^
+ÿ]ôKLMJJååé¬à€€ú››]›ô\úöYHH»àX]úõ›[ô
+Ã
+ùÿ]ôTÿÿ[Qõ‹î‹]€äK]ŒàX]úõ›[ô
+å
+ùÿ]ôTÿÿ[Qõ‹î‹]€äKò[ôŸNåK‹YYåKåKY‘ôYX›[€éåN¬à€€ú›YåàH€ò[YNâ—úòY€Y[ù»€‹úõ€\Y…À[[Y[ùâÿ€‹úù\Y	Àú›]›ô\úöYKö]Œú›]›ô\úöYKò]Àò[ôŸNåK‹YYåKå_N¬à€€ú›ô]’HHXZŸU[ö]
+€‹úù\YY€›[ù\ä À	Ÿ[ô[^IÀ	Ÿ]õ‹òY‹âÀYåãK‹›úK‹›úã›]›ô\úöYKK◊JN¬àô]’Kú‹]€î‹ù[[ù[Hõ› ŒL¬àô]’KòX›[€ï[Y\àHL¬àÿÿ÷⁄^Ÿ^J‹›
+WHHô]’KöY¬à[ö]Àú\⁄
+ô]’JN¬àBàYä‹]€ê€›[ùå
+^¬à‹]€ëõÿ]^
+KúûKúûKML	“Sïì––Së»îêQ”QSï‘»IÀ	»ŒXçôI N¬àŸ 	›Kõò[Y_H[ùõÿÿHúòY€Y[ù‹»€‹úõ€\Y‹»òHZùY\àòH]HX	⁄	 N¬àBàBàBÇàYäKò⁄[\YOOI€ô\ö]	»	âàKò[]ôJ^¬à€€ú›[]ôU[ùX€P€›[ùH[ö]Àôö[\äœOõÀò[]ôH	âàÀö\’[ùX€H	âàÀù[ùX€T\ô[ùYOO]KöY
+Kõ[ô›¬àYä[]ôU[ùX€P€›[ù
+^¬àKù[ùX€P€€€›€àOH¬àYäKù[ùX€P€€€›€èL
+^¬à‹]€ìô\ö][ùX€JJN¬à€€ú›ô]–€›[ùH[ö]Àôö[\äœOõÀò[]ôH	âàÀö\’[ùX€H	âàÀù[ùX€T\ô[ùYOO]KöY
+Kõ[ô›¬àKù[ùX€P€€€›€àHçL
+»ô]–€›[ù
+çL»À»pÆéåãç\À∞Æéå‹ÀÆéåÀç\À0Æéç¬àBàBàBÇàYäKò⁄[\YOOI‹⁄]òI»	âàKò[]ôJ^¬àKú⁄]òR⁄X⁄–€€€›€àOH¬àYäKú⁄]òR⁄X⁄–€€€›€èL
+^¬à€€ú›[ô[ZY\»H[ö]Àôö[\äœOõÀò[]ôH	âàÀùX[HOO]KùX[JN¬à€€ú›[îò[ôŸHH[ô[ZY\Àôö[\äœOû»€€ú›Z^\›[òŸJK N»ô]\õàèL»	âàMN»JN¬àYä[îò[ôŸKõ[ô›
+^¬à[îò[ôŸKú€‹ù
+
+KäOOòãöXKö
+N»À»ö[‹ö^òH]Y[H[HXZ\»öYBà€€ú›⁄X⁄’\ôŸ]H[îò[ôŸVÃN¬àKú⁄]òR⁄X⁄–€€€›€àHL¬ÇàÀ»]ò[∞ÈÿH]0ÍH\ù»»[õ»8†%€‹úöYHö\›X[
+∞Ë€»[\‹ùH[ú›[ù0Ëõô[ KH‹⁄pÈË€¬àÀ»0ÏŸ⁄XÿH∞ËH]YHòH‹òH
+õ»€€Xò]HŸ\àù\› KX\»»ö\›X[ò€‹úôHà]0ÍH0ËKÇà€€ú›ÿÿ»Hÿÿ›\YYX\
+
+N¬à€€ú›YòXŸ[ùúôYHHôZY⁄õ‹ú ⁄X⁄’\ôŸ]
+Kôö[\äèOö[ë‹öY
+äH	âàZ\–õÿ⁄ŸY[JäH	âàÿÿ÷⁄^Ÿ^JäWOOO][ôYö[ôY
+N¬à][ô[ô÷HKúû[ô[ô÷HHKúûN¬àYäYòXŸ[ùúôYKõ[ô›
+^¬àYòXŸ[ùúôYKú€‹ù
+
+KäOOö^\›[òŸJKJKZ^\›[òŸJãJJN¬àKúHHYòXŸ[ùúôYVÃKúN»KúàHYòXŸ[ùúôYVÃKúé¬à€€ú›H^‘^[
+KúKKúäN¬à[ô[ô÷Hû»[ô[ô÷HHûN¬àKú⁄]òQ\⁄úõ€TûHKúû»Kú⁄]òQ\⁄úõ€TûHHKúûN¬àKú⁄]òQ\⁄‘ûHû»Kú⁄]òQ\⁄‘ûHHûN¬àKú⁄]òQ\⁄›\ù]Hõ›Œ¬àKú⁄]òQ\⁄\ò][€àHåå¬àKù\ôŸ]ûHû»Kù\ôŸ]ûHHûN¬à⁄X⁄‘‹ù[[\‹ù
+JN¬àBà‹]€ëõÿ]^
+[ô[ô÷[ô[ô÷KM	—€€HpÍ\ô[…À	»ÿŒYYN	À	Ÿò[X]X… N¬àŸ 	›Kõò[Y_Nàë€€HpÍ\ô[»ò	⁄	 N¬à‹]€î⁄ÿ⁄›ÿ]ôTö[ô [ô[ô÷[ô[ô÷Kå	»ÿŒYYN	À
+N»À»€ôHHô[ù»õ»[\X›À\›[»õ€òBàöYŸŸ\îÿ‹ôY[î⁄ZŸJKN
+N¬ÇàYä⁄X⁄’\ôŸ]öå	âà⁄X⁄’\ôŸ]ö⁄⁄X⁄’\ôŸ]õX^åL
+^¬àÀ»^X›pÈË€»òH‹òBà⁄X⁄’\ôŸ]öH»⁄X⁄’\ôŸ]ò[]ôHHò[ŸN¬à‹]€ëõÿ]^
+[ô[ô÷[ô[ô÷KMN	—€€HpÍ\ô[Œà0Óõ[[»€‹õ…À	»ÿŒYYN	À	Ÿò[X]X… N¬àŸ 	›Kõò[Y_Nàë€€HpÍ\ô[Œà0Óõ[[»€‹õ»ò	⁄	 N¬àŸ 	›Kõò[Y_H^X›]H	⁄⁄X⁄’\ôŸ]õò[Y_HX	⁄	 N¬àYä⁄X⁄’\ôŸ]ùX[OOOI‹^Y\â ^»õ›[ôX]Àú\⁄
+⁄X⁄’\ôŸ]õò[YJN»[ú›\ôSX]⁄›] ⁄X⁄’\ôŸ]ò⁄[\Y
+KôX]  Œ»Bà‹]€êÿ\›YôôX›
+⁄X⁄’\ôŸ]úû⁄X⁄’\ôŸ]úûK	»ÿŒYYN	 N¬àÀ»\úô[Y\‹ÿH»€‹ú»[H›]õ»[ö[ZY€»∞Ïﬁ[[»8†%]‹ôÿKŸ[Hÿ]\ÿ\à[õ¬à€€ú››\ú»H[ö]Àôö[\äœOõÀò[]ôH	âàÀùX[OOOZ⁄X⁄’\ôŸ]ùX[H	âàÀöYOOZ⁄X⁄’\ôŸ]öY	âà^\›[òŸJ⁄X⁄’\ôŸ] OLäN¬àYä›\úÀõ[ô›
+^¬à€€ú›õ›€àH›\ú÷”X]ôõ€‹äX]úò[ô€J
+Jõ›\úÀõ[ô›
+WN¬à\P– õ›€ãåKô[[Y[ù
+N¬àõ›€ãú⁄]òUŸXZŸ[ï[ù[Hõ›»
+»L¬à‹]€ëõÿ]^
+õ›€ãúûõ›€ãúûKLÃ	–USë“Q»S»”‘î…À	»ÿŒYYN	 N¬àŸ »€‹ú»H	⁄⁄X⁄’\ôŸ]õò[Y_HXŸ\ùH	›õ›€ãõò[Y_H8†%]‹ôÿYÀ€€H[õ»ôY^öY»‹à\Àò	⁄	 N¬àBàYä[ŸOOOI‹ôI»	âà⁄X⁄’\ôŸ]ùX[OOOIŸ[ô[^I»	âà][ö]Àú€€YJœOõÀò[]ôH	âàÀùX[OOOIŸ[ô[^I J^¬àöYŸŸ\ëö[ö\⁄\îŸ\]Y[òŸJK
+
+OOû»⁄X⁄’öX›‹ûJ
+N»JN¬àBàH[ŸH¬àÀ»ô\[Ë€»8†%[õ»ÿúòYÀHŸHò]\à[H[€À]‹ôÿH
+»ôY^à\õXY\òBà‹]€ëõÿ]^
+[ô[ô÷[ô[ô÷KMN	—€€HpÍ\ô[Œà€ôHH\âÀ	»ÿŒYYN	À	Ÿò[X]X… N¬àŸ 	›Kõò[Y_Nàë€€HpÍ\ô[Œà€ôHH\àò	⁄	 N¬à\Q[XYŸJK⁄X⁄’\ôŸ]Kò] åã	¸'‰™	Àò[ŸJN¬àYä⁄X⁄’\ôŸ]ò[]ôJ^¬à€€ú›ôYõ‹ôTHH⁄X⁄’\ôŸ]úKôYõ‹ôTàH⁄X⁄’\ôŸ]úé¬à€õÿ⁄ÿòX⁄’[ö]
+K⁄X⁄’\ôŸ]JN¬à€€ú›ò]ô[YH^\›[òŸJ‹NòôYõ‹ôTKéòôYõ‹ôTüK⁄X⁄’\ôŸ]
+N¬àYäò]ô[YJ^¬àÀ»∞Ë€»\ò€‹úô]HH\›0Ëõò⁄XH[ùZ\òH8†%ò]]H[Hÿú›0ËX›[À‹\ôYKŸ\›ù]\òKŸô[ôBà\P– ⁄X⁄’\ôŸ]Kô[[Y[ù
+N¬à⁄X⁄’\ôŸ]ú⁄]òP\õ[‹ëXùYôï[ù[Hõ›»
+»Ã¬à‹]€ëõÿ]^
+⁄X⁄’\ôŸ]úû⁄X⁄’\ôŸ]úûKLÃ	–êUUHêHTëQHIÀ	»ÿŒYYN	 N¬àŸ 	⁄⁄X⁄’\ôŸ]õò[Y_Hò]H€€ùòH[Hÿú›0ËX›[»8†%]‹ôÿYÀ€€H\õXY\òHôY^öYH‹à‹Àò	⁄	 N¬àöYŸŸ\îÿ‹ôY[î⁄ZŸJãå
+N¬àBàBàBàBàBàBÇàYäKò⁄[\YOOI⁄ôYYÿ\â»	âàKò[]ôJ^¬àKöôYYÿ\î[\ï[Y\àOH¬àYäKöôYYÿ\î[\ï[Y\èL
+^¬àKöôYYÿ\î[\ï[Y\àHÃL¬à€€ú›X›]ôP€›[ùHÿöôX›ùò[Y\ ôYYÿ\î›ùX›\ô\ Kôö[\äœOúÀõ›€ô\íYOO]KöY
+Kõ[ô›¬àÀ»Z\òHõ»[XY»PRT»T’SïH[H
+∞Ë€»ô[HY\€XJH8†%\‹⁄[H‹»[\ô\»ŸH\‹[[H[¬àÀ»[YH[Hô^àH[\[\àY»\ù»[H]X[ô»[H]ò[∞ÈÿH€ﬁö[öH€ôŸHHŸ»][ôÀÇà€€ú›[Y\»H[ö]Àôö[\äœOõÀò[]ôH	âàÀùX[OOO]KùX[H	âàÀöYOO]KöY
+N¬à]\ôŸ][ö]HN¬àYä[Y\Àõ[ô›
+^¬à[Y\Àú€‹ù
+
+KäOOà^\›[òŸJKäHH^\›[òŸJKJJN¬à\ôŸ][ö]H[Y\÷ÃN¬àBà€€ú›ÿÿ»Hÿÿ›\YYX\
+
+N¬à€€ú›úôYSôZY⁄õ‹ú»HX›]ôP€›[ùH»ôZY⁄õ‹ú \ôŸ][ö]
+Kôö[\äèOà[ë‹öY
+äH	âàZ\–õÿ⁄ŸY[JäH	âàÿÿ÷⁄^Ÿ^JäWOOO][ôYö[ôY
+Hà◊N¬àÀ»ù[òÿH€€ú›∞Ï⁄Hõ»0Óõ[[»^]úôH[»ôY‹àH]Y[H0ËHôXŸXô[ô»»[\à8†%Ÿ[\ôBàÀ»ôX⁄\ÿH€ÿúò\à[»Y[õ‹»HÿpÎYKŸ[∞Ë€»ô[ôHH[öYYH
+[H›H»[XY»[õ KÇàYäúôYSôZY⁄õ‹úÀõ[ô›åJ^¬à€€ú›⁄‹Ÿ[àHúôYSôZY⁄õ‹ú÷ÃN¬àôYYÿ\î›ùX›\ô\÷⁄^Ÿ^J⁄‹Ÿ[äWHH‹Nò⁄‹Ÿ[ãúKéò⁄‹Ÿ[ãúã›€ô\íYùKöY›€ô\ïX[NùKùX[K]’ZŸ[éå]”ôYYYåãõ€‹›[ù[å‹ôX]Y]õõ›ﬂN¬à€€ú›⁄‹Ÿ[î^[H^‘^[
+⁄‹Ÿ[ãúK⁄‹Ÿ[ãúäN¬à‹]€êÿ\›YôôX›
+⁄‹Ÿ[î^[û⁄‹Ÿ[î^[ûK	»ŒMòMI N¬à€€ú›õŸ»HŸ]ôYYÿ\îõŸ‹ô\‹ JN¬àõŸÀú[\ú–ùZ[
+ Œ¬àYä\õŸÀôö\ú›[\ê[õõ›[òŸY
+^¬àõŸÀôö\ú›[\ê[õõ›[òŸYHùYN¬à‹]€ëõÿ]^
+KúûKúûKM	–\ÿŸ[úË€»»X€»Ÿ[\›IÀ	»ÿŒXMLÿI N¬àŸ 	›Kõò[Y_Nàê\ÿŸ[úË€»»X€»Ÿ[\›Hò	⁄	 N¬àBàYäõŸÀú[\ú–ùZ[èMH	âà\õŸÀõZ[\›€ôTôXX⁄Y
+^¬àõŸÀõZ[\›€ôTôXX⁄YHùYN¬à‹]€ëõÿ]^
+KúûKúûKMMã	—\›[[‹»H[H\‹€»»\òpÎ\€»IÀ	»ŸNÃçL	 N¬àŸ 	›Kõò[Y_Nàë\›[[‹»H[H\‹€»»\òpÎ\€»Hà8†%‹»[\ô\»[HöXÿ[H\õX[ô[ù[Y[ùH]Z]»XZ\»õ‹ù\»X	⁄	 N¬àöYŸŸ\îÿ‹ôY[î⁄ZŸJãÃ
+N¬àBàBàBàBÇàYäKôúõ‹›ù\õêX›]ôH	âàKò[]ôJ^¬àKôúõ‹›ù\õï[Y\àOH¬àYäKôúõ‹›ù\õï[Y\èL
+^¬à€€ú›úõ‹›€›\òŸHHŸ[[Y[ùâŸŸ[…ÀX[NàKùX[OOOI‹^Y\âœ…Ÿ[ô[^IŒâ‹^Y\âÀ⁄[\Yâ‹]YZ[XY\òWŸŸ[YIÀò[YNâ‘]YZ[XY\òHŸ[YIﬂN¬à\Q[XYŸJúõ‹›€›\òŸKKÀ	¯ßa	ÀùYJN¬àKôúõ‹›ù\õï[Y\àHL¬àBàBÇà€€ú›»H^Ÿ^JJN¬àYä^ò\ô^\Àö\  Hõ⁄Y^\Àö\  J^¬àKö^ò\ô[Y\àOH¬àYäKö^ò\ô[Y\èL
+^¬à€€ú›[ïõ⁄YHõ⁄Y^\Àö\  N¬à€€ú›Y–[]H[ïõ⁄Y»X]õX^
+KX]úõ›[ô
+KõX^
+åå
+JHàé¬à€€ú›[ùî€›\òŸHHŸ[[Y[ùâ›\úòIÀX[NàKùX[OOOI‹^Y\âœ…Ÿ[ô[^IŒâ‹^Y\âÀ⁄[\Yâÿ\ô[òIÀò[YNà[ïõ⁄Y…÷õ€òH[ú›0Ë]ô[	Œâ”]òIﬂN¬à\Q[XYŸJ[ùî€›\òŸKKY–[][ïõ⁄Y…¯¶®	Œâ¸'„"…ÀùYJN¬àKö^ò\ô[Y\àHL¬àBàH[ŸH¬àKö^ò\ô[Y\àH¬àBÇàYä›\P‹ò]H	âà\›\P‹ò]Kò€Z[YY	âàKò[]ôH	âàKúOOO\›\P‹ò]KúH	âàKúèOO\›\P‹ò]Kúä^¬à›\P‹ò]Kò€Z[YYHùYN¬àKöHX]õZ[äKõX^Kö
+»X]úõ›[ô
+KõX^
+ååÃ
+JN¬àKò‹ò]T⁄Y[[ù[Hõ›»
+»L¬à‹]€ëõÿ]^
+KúûKúûKM	‘’TíSQSï»IÀ	»ŸNÃçL	 N¬à‹]€êÿ\›YôôX›
+KúûKúûK	»ŸNÃçL	 N¬àŸ 	›Kõò[Y_HY€›HHÿZ^HH›\ö[Y[ù»X	⁄	 N¬àBÇàYä\“][JK	ÿúò\ÿI J^¬àKô[Xô\ê€€€›€àOH¬àYäKô[Xô\ê€€€›€àH
+HöYŸŸ\ë[Xô\í][JJN¬àBàKòX›[€ï[Y\àOH¬àYäKòX›[€ï[Y\àH	âàKò[]ôH	âà]Kò€€Xõ–X›]ôH	âà]Kùõ€òQ]€ò][ô ^¬à–X›[€äJN¬à€€ú›[ëúô[ûûHHKôúô[ûûU[ù[	âàõ›»Kôúô[ûûU[ù[¬à]Yôî‹YYH[ëúô[ûûH»
+Kú‹YYJJåKéà
+Kú‹YYJN¬àYäKú⁄ÿ⁄ŸY[ù[	âàõ›»Kú⁄ÿ⁄ŸY[ù[
+HYôî‹YY
+èHé¬àYäKô[X›õ‘€›’[ù[	âàõ›»Kô[X›õ‘€›’[ù[
+HYôî‹YY
+èH
+HHKô[X›õ‘€›‘›
+N¬àYäKù[ùX€Qúô[ûûJHYôî‹YY
+èHKçé¬àYäKõ›ô\õÿY[ù[	âàõ›»Kõ›ô\õÿY[ù[
+HYôî‹YY
+èHKåŒ¬àYäKöôYYÿ\ëX]ùYôï[ù[	âàõ›»KöôYYÿ\ëX]ùYôï[ù[
+HYôî‹YY
+èHKåçN¬à€€ú›ôX\òûT⁄X‹ûHH[ö]Àôö[ô
+œOõÀò[]ôH	âàÀò⁄[\YOOI‹⁄X‹ûI»	âàÀùX[HOO]KùX[H	âàÀú⁄X‹ûU[[ù[	âàõ›œÀú⁄X‹ûU[[ù[	âà^\›[òŸJÀJOLäN¬àYäôX\òûT⁄X‹ûJ^¬à€€ú››[\àHå
+ú\‹⁄]ôP[\
+ôX\òûT⁄X‹ûJN¬à€€ú›[\ŸYHõ›»HôX\òûT⁄X‹ûKú⁄X‹ûU[›\ù]¬à€€ú››ô[ô›HX]õX^
+HH[\ŸY››[\äN¬àYôî‹YY
+èH
+HHåÃ
+ú›ô[ô›
+N¬àBàKòX›[€ï[Y\à
+œHLŸYôî‹YY¬àBàJN¬àYäYö[ö\⁄\êX›]ôJH⁄X⁄’öX›‹ûJ
+N¬üBÇôù[ò›[€à⁄X⁄’öX›‹ûJ
+^¬àYäXò]PX›]ôJHô]\õé¬à€€ú›^Y\ê[]ôHH[ö]Àú€€YJOOùKùX[OOOI‹^Y\â…âùKò[]ôJN¬à€€ú›[ô[^P[]ôHH[ö]Àú€€YJOOùKùX[OOOIŸ[ô[^I…âùKò[]ôJN¬àYä\^Y\ê[]ôHY[ô[^P[]ôJ^¬àò]PX›]ôHHò[ŸN¬à€€ú›ò[õô\ë[Hÿ›[Y[ùôŸ][[Y[ùûRY
+	ÿò[õô\â N¬àò[õô\ë[ú›[Kô\‹^OIÿõÿ⁄…Œ¬àYä[ŸOOOI‹ôI ^¬àYä[ô[^P[]ôOOOYò[ŸJ^¬àò[õô\ë[ò€\‹”ò[YOI›⁄[âŒ»ò[õô\ë[ù^€€ù[ùX€ôH	›ÿ]ô_H€€ò€pÎYHX¬à€€ú›[]ôU[ö]»H[ö]Àôö[\äOOùKùX[OOOI‹^Y\â»	âàKò[]ôJN¬à]€⁄[ëÿZ[àHLà
+»ÿ]ôJçé¬àYäÿ]ôOOOLJH€⁄[ëÿZ[à
+œHé»À»Zù\›HòHôX⁄\àMH›\õ»Ÿ\ù[ö»òHö[YZ\òHõŸYBàYäÿ]ôOMJH€⁄[ëÿZ[à
+œHL»À»ôYõ‹∞È€»]0ÍHH€ôHKòHòX⁄[]\à⁄Yÿ\àô\\òY»õ»ö[YZ\õ»⁄YôBà[ŸH€⁄[ëÿZ[à
+œHMH
+»
+ÿ]ôKMJJé»À»ôYõ‹∞È€»XZ[‹à\⁄\»H€ôHK‹ô\ÿŸ[ô»€€HHYöX›[YBà]€⁄[êõ€ù\”\Ÿ»H	…Œ¬àYäÿ]ôOçJ^¬à€€ú›[]ôPõ€ù\»H[]ôU[ö]Àõ[ô›
+åŒ¬à€⁄[ëÿZ[à
+œH[]ôPõ€ù\Œ¬à€⁄[êõ€ù\”\Ÿ»H	»
+
+…»
+»[]ôPõ€ù\»
+»	»‹à	»
+»[]ôU[ö]Àõ[ô›
+»	»’Hö]õ…»
+»
+[]ôU[ö]Àõ[ô›åO…‹…Œâ… H
+»	 IŒ¬àYäX[TKõ[ô›åH	âà[]ôU[ö]Àõ[ô›OOLJ^¬à€⁄[ëÿZ[à
+œHå¬à€⁄[êõ€ù\”\Ÿ»
+œH	»
+
+Ãå∞Ìù\»H€ÿúô]ö]ô[ùH€€ IŒ¬àBàBàYäÿ]ôOåÃ
+^¬à€€ú›[ò[HH€€\]P€€\][€î[ò[J
+N¬àYä[ò[HéN
+^¬à€⁄[ëÿZ[àHX]úõ›[ô
+€⁄[ëÿZ[äú[ò[JN¬à€⁄[êõ€ù\”\Ÿ»
+œH
+I”X]úõ›[ô
+
+K\[ò[JJåL
+_IH‹à[YH∞ËH]Z]»€€\] X¬àBàBà€⁄[ú»
+œH€⁄[ëÿZ[é»›[€⁄[ú’\‘ù[à
+œH€⁄[ëÿZ[é»\]P€⁄[êòYŸJ
+N¬àYäX[TKõ[ô›å	âàÿ]ôV€€å
+^¬à€€ú›ò\ŸT⁄\ôHHÿ]ôV€€»X[TKõ[ô›¬àX[TKôõ‹ëXX⁄
+YOû¬àYä›€ôY⁄YJH]ÿ\ô
+YX]úõ›[ô
+ò\ŸT⁄\ôJòÿ]⁄\][\Y\äY
+JåL
+KÃL
+N¬àJN¬àŸ 	Ÿõ‹õX]
+X]úõ›[ô
+ÿ]ôV€€
+åL
+KÃL
+_HHXò]H]öYY»Y›X[Y[ùH[ùôH»[YHX	‹ﬁ\… N¬àBà[]ôU[ö]Àôõ‹ëXX⁄
+OOû¬àYä›€ôY›Kò⁄[\YJH]ÿ\ô
+Kò⁄[\YX]úõ›[ô
+ òÿ]⁄\][\Y\äKò⁄[\Y
+JåL
+KÃL
+N¬àJN¬àYäX[TKõ[ô›àH	âà[]ôU[ö]Àõ[ô›OOHJ^¬à€€ú››\ùö]õ‹àH[]ôU[ö]÷ÃN¬à€€ú›õ€ù\–[]H›\ùö]õ‹ñ[[›[ù
+›\ùö]õ‹ãò⁄[\Y
+N¬à]ÿ\ô
+›\ùö]õ‹ãò⁄[\Yõ€ù\–[]
+N¬àõ›[ô›\ùö]õ‹ê⁄[\YH›\ùö]õ‹ãò⁄[\Y¬à[ô[ô÷XùYôê⁄[\H›\ùö]õ‹ãò⁄[\Y¬àŸ 	‹›\ùö]õ‹ãõò[Y_Hõ⁄H»0ÓõöX€»€ÿúô]ö]ô[ùHHÿ[ö›H
+…Ÿõ‹õX]
+õ€ù\–[]
+_H∞Ìù\»X	⁄	 N¬àYäÿ]ôOèLL
+H[õÿ⁄–X⁄Y]ô[Y[ù
+	‹€€◊‹›\ùö]õ‹â N¬àBàYä[]ôU[ö]Àõ[ô›OOHX[TKõ[ô›
+H[õÿ⁄–X⁄Y]ô[Y[ù
+	‹\ôôX››ÿ]ôI N¬àYäÿ]ôOèLL
+H[õÿ⁄–X⁄Y]ô[Y[ù
+	›ÿ]ôLL	 N¬àYäÿ]ôOèLå
+H[õÿ⁄–X⁄Y]ô[Y[ù
+	›ÿ]ôLå	 N¬àYäÿ]ôOèLÃ
+H[õÿ⁄–X⁄Y]ô[Y[ù
+	›ÿ]ôLÃ	 N¬àYäÿ]ôOèM
+H[õÿ⁄–X⁄Y]ô[Y[ù
+	›ÿ]ôM	 N¬àYäÿ]ôOèML
+H[õÿ⁄–X⁄Y]ô[Y[ù
+	›ÿ]ôML	 N¬àYäÿ]ôOèLå	âàÿöôX›ùò[Y\ X]⁄›] Kô]ô\ûJœOàJÀôX]œå
+JJH[õÿ⁄–X⁄Y]ô[Y[ù
+	€õ◊ŸX]◊Ãå	 N¬àYäX[TKõ[ô›å
+^¬à€€ú›[[Y[ù»HX[TKõX\
+YOê“STS”ó––US—÷⁄YKô[[Y[ù
+N¬àYä[[Y[ùÀô]ô\ûJOOôOOOY[[Y[ù÷ÃJJH[õÿ⁄–X⁄Y]ô[Y[ù
+	€[€õ◊Ÿ[[Y[ù	 N¬àBàYä[]ôU[ö]Àõ[ô›OOL
+HŸ ö[ô›pÍ[H€ÿúô]ö]ô]KX\»»[YH[ö[ZY€»ÿZ]Hù[ù»8†%H€ôH	›ÿ]ô_HZ[ôH€€ùH€€[»ô[ò⁄YHX	⁄	 N¬àŸ €ôH	›ÿ]ô_Hô[ò⁄YHH
+…ÿ€⁄[ëÿZ[üH[ŸY\…ÿ€⁄[êõ€ù\”\ŸﬂKò	‹ﬁ\… N¬àŸûöX›‹ûJ
+N¬àYä[ô[ô–õ\‹⁄[ô–⁄⁄XŸJH⁄›–õ\‹⁄[ô–⁄⁄XŸJ›\ùô\[Y\äN¬à[ŸH›\ùô\[Y\ä
+N¬àH[ŸH¬àò[õô\ë[ò€\‹”ò[YOI€‹ŸIŒ»ò[õô\ë[ù^€€ù[ùX\úõ›HòH€ôH	›ÿ]ô_X¬àŸ [YH\úõ›Y»òH€ôH	›ÿ]ô_Kà›[ÿ[ö»òHù[éà	››[€⁄[ú’\‘ù[üH[ŸY\Àò	‹ﬁ\… N¬àŸûYôX]
+
+N¬àYäÿ]ôHàô\›ÿ]ôQ]ô\ä^»ô\›ÿ]ôQ]ô\àHÿ]ôN»\]Pô\›ÿ]ôQ\‹^J
+N»Bà⁄X⁄’ÿ]ôTôX€‹ô
+ÿ]ôJN¬àÿ›[Y[ùôŸ][[Y[ùûRY
+	‹]Z]Xò]KXùâ Kú›[Kô\‹^HH	ÿõÿ⁄…Œ¬àÿ›[Y[ùôŸ][[Y[ùûRY
+	›öY]À\›[[X\ûKXùâ Kú›[Kô\‹^HH	ÿõÿ⁄…Œ¬àBàH[ŸH¬àYä^Y\ê[]ôH	âàY[ô[^P[]ôJ^¬àò[õô\ë[ò€\‹”ò[YOI›⁄[âŒ»ò[õô\ë[ù^€€ù[ùXõŸÿY‹àHô[òŸHHõŸYH	‹úõ›[ôHX¬àŸ õŸÿY‹àHô[òŸ]HHõŸYH	‹úõ›[ôKò	‹ﬁ\… N¬àH[ŸHYä\^Y\ê[]ôH	âà[ô[^P[]ôJ^¬àò[õô\ë[ò€\‹”ò[YOI›⁄[âŒ»ò[õô\ë[ù^€€ù[ùXõŸÿY‹ààô[òŸHHõŸYH	‹úõ›[ôHX¬àŸ õŸÿY‹ààô[òŸ]HHõŸYH	‹úõ›[ôKò	‹ﬁ\… N¬àH[ŸH¬àò[õô\ë[ò€\‹”ò[YOI€‹ŸIŒ»ò[õô\ë[ù^€€ù[ùXõŸYH	‹úõ›[ôH[\]›HX¬àŸ HõŸYH	‹úõ›[ôH\õZ[õ›H[\]YKò	‹ﬁ\… N¬àBà[ôúõ›[ô[ô€€ù[ùYJ
+N¬àBàBüBÇôù[ò›[€àô[ô\îô\›] 
+^¬à€€ú›[Hÿ›[Y[ùôŸ][[Y[ùûRY
+	‹ô\\›]… N¬à][H	…Œ¬à€€ú›[ùöY\»HÿöôX›ô[ùöY\ õ›[ôÿZ[äN¬àYä[ùöY\Àõ[ô›
+^¬à[
+œH]èè›õ€ô»›[OHò€€‹éùò\äK[[€[äN»èñÿ[ö»òHõŸYNè‹›õ€ôœèúèò¬à[ùöY\Àôõ‹ëXX⁄
+
+ÿ⁄Y[]JOOû¬à[
+œH	–“STS”ó––US—÷ÿ⁄YKõò[Y_Nà
+…Ÿõ‹õX]
+[]
+_Húèò¬àJN¬à[
+œHŸ]èò¬àBàYäõ›[ô]ô[\Àõ[ô›
+^¬à[
+œH]à›[OHõX\ô⁄[ã]‹é»èè›õ€ô»›[OHò€€‹éùò\äKY€€
+N»èî›Xö\ò[HH∞Î]ô[è‹›õ€ôœèúèò¬àõ›[ô]ô[\Àôõ‹ëXX⁄
+⁄YOû¬à[
+œH‹[à›[OHù^\⁄Y›Œåúò\äKY€€
+N»è∏ß)à	–“STS”ó––US—÷ÿ⁄YKõò[Y_H8†%ùãâ€›€ôYÿ⁄YKõ]ô[O‹‹[èèúèò¬àJN¬à[
+œHŸ]èò¬àBàYäõ›[ôX]Àõ[ô›
+^¬à[
+œH]à›[OHõX\ô⁄[ã]‹é»èè›õ€ô»›[OHò€€‹éùò\äKZXòY
+N»èêÿpÎ\ò[H[H€€Xò]Nè‹›õ€ôœèúèâ‹õ›[ôX]Àöõ⁄[ä	À	 _OŸ]èò¬àBàYäõ›[ô›\ùö]õ‹ê⁄[\Y
+^¬à[
+œH]à›[OHõX\ô⁄[ã]‹é»èè›õ€ô»›[OHò€€‹éùò\äKYúõ‹›
+N»è∞Êõ[[»H0ÍNè‹›õ€ôœà	–“STS”ó––US—÷‹õ›[ô›\ùö]õ‹ê⁄[\YKõò[Y_H
+òZHÿ[ö\àY[õ‹»òH∞Ïﬁ[XHõŸYJOŸ]èò¬àBà[ö[õô\íSH[	œ]à›[OHõ‹X⁄]Nãçé»èîŸ[H]ô[ù‹»ô\›HõŸYKèŸ]èâŒ¬üBÇôù[ò›[€à\]Q€ÿò[ô\[Y\ä
+^¬à€€ú›òYŸHHÿ›[Y[ùôŸ][[Y[ùûRY
+	Ÿ€ÿò[\ô\][Y\â N¬àYäXòYŸJHô]\õé¬àòYŸKú›[Kô\‹^HH	⁄[õ[ôKXõÿ⁄…Œ¬àòYŸKù^€€ù[ùH8£ÏH∞Ïﬁ[XH€ôNà	›\ÿ¬àYäLL
+^¬àòYŸKò€\‹”\›òY
+	Ÿ[ôŸ\â N¬à€€ú›[ù[ú⁄]HHX]õX^
+X]õZ[äK
+L]
+KÃL
+JN¬à€€ú››Y[HÃLŒKMKMå◊KôYHÃåÃãMÀÕN¬à€€ú›Z^H›Y[õX\
+
+ÀJOOàX]úõ›[ô
+»
+»
+ôY⁄WKX Jö[ù[ú⁄]JJN¬àòYŸKú›[Kò€€‹àHôÿä	€Z^öõ⁄[ä	À	 _JX¬àòYŸKú›[Kòõ‹ô\ê€€‹àHôÿä	€Z^öõ⁄[ä	À	 _JX¬àòYŸKú›[KúŸ]õ‹\ùJ	ÀKY[ôŸ\ãY€›…À
+åà
+»[ù[ú⁄]Jåç Kù—ö^Y
+äJN¬àòYŸKú›[Kò[ö[X][€ë\ò][€àHX]õX^
+åé
+ÃL
+JKù—ö^Y
+äJ…‹…Œ¬àH[ŸH¬àòYŸKò€\‹”\›úô[[›ôJ	Ÿ[ôŸ\â N¬àòYŸKú›[Kò€€‹àH	…Œ¬àòYŸKú›[Kòõ‹ô\ê€€‹àH	…Œ¬àBüBôù[ò›[€àYQ€ÿò[ô\[Y\ä
+^¬à€€ú›òYŸHHÿ›[Y[ùôŸ][[Y[ùûRY
+	Ÿ€ÿò[\ô\][Y\â N¬àYäòYŸJ^»òYŸKú›[Kô\‹^HH	€õ€ôIŒ»òYŸKò€\‹”\›úô[[›ôJ	Ÿ[ôŸ\â N»BüBôù[ò›[€à›\ùô\[Y\ä
+^¬à€€ú››ô\õ^HHÿ›[Y[ùôŸ][[Y[ùûRY
+	‹ô\[›ô\õ^I N¬à€€ú›[Y\ë[Hÿ›[Y[ùôŸ][[Y[ùûRY
+	‹ô\][Y\â N¬àÿ›[Y[ùú]Y\ûTŸ[X›‹ä	»‹ô\[›ô\õ^H… Kù^€€ù[ùH	‘∞Ïﬁ[XHõŸYH[IŒ¬àô[ô\îô\›] 
+N¬à›ô\õ^Kú›[Kô\‹^HH	Ÿõ^	Œ¬à⁄›’X[T›YŸŸ\›[€äX[TJN¬à]Hÿ]ôOèMH»àå¬à[Y\ë[ù^€€ù[ùH¬à\]Q€ÿò[ô\[Y\ä
+N¬à]]\ŸYHò[ŸN¬à€€ú›ôXYŸ–ùàHÿ›[Y[ùôŸ][[Y[ùûRY
+	‹ôXY[ŸÀXùâ N¬àôXYŸ–ùãù^€€ù[ùH	”\àôY⁄\›õ…Œ¬àù[ò›[€àX⁄ 
+^¬àYä]\ŸY
+Hô]\õé¬àKN¬à[Y\ë[ù^€€ù[ùH¬à\]Q€ÿò[ô\[Y\ä
+N¬àYäL
+^»ö[ö\⁄ô\
+
+N»ô]\õé»Bàô\[Y\í[ôHHŸ][Y[›]
+X⁄ÀL
+N¬àBàô\[Y\í[ôHHŸ][Y[›]
+X⁄ÀL
+N¬àÿ›[Y[ùôŸ][[Y[ùûRY
+	‹⁄⁄\\ô\Xùâ Kõ€ò€X⁄»H
+
+OOû»€X\ï[Y[›]
+ô\[Y\í[ôJN»ö[ö\⁄ô\
+
+N»N¬àôXYŸ–ùãõ€ò€X⁄»H
+
+OOû¬à]\ŸYH\]\ŸY¬àYä]\ŸY
+^¬à€X\ï[Y[›]
+ô\[Y\í[ôJN¬àôXYŸ–ùãù^€€ù[ùH	–€€ù[ùX\àô\\õ…Œ¬àH[ŸH¬àôXYŸ–ùãù^€€ù[ùH	”\àôY⁄\›õ…Œ¬àô\[Y\í[ôHHŸ][Y[›]
+X⁄ÀL
+N¬àBàN¬üBôù[ò›[€àö[ö\⁄ô\
+
+^¬àÿ›[Y[ùôŸ][[Y[ùûRY
+	‹ô\[›ô\õ^I Kú›[Kô\‹^OI€õ€ôIŒ¬àYQ€ÿò[ô\[Y\ä
+N¬àX›]ôVXùYôú»H[ô[ô÷XùYôê⁄[\»‹[ô[ô÷XùYôê⁄[\Hà◊N¬à[ô[ô÷XùYôê⁄[\Hù[¬àôX€€\]Sô]ÿ€€Y\êùYôú 
+N¬àô\Ÿ]õ›[ôòX⁄⁄[ô 
+N¬àÿ]ôJ Œ¬àYäÿ]ôOOOMå
+H[õÿ⁄–X⁄Y]ô[Y[ù
+	‹ŸY‹ôY◊€€ôMå	 N¬àŸ]\\ô[òQõ‹îõ›[ô
+ÿ]ôJN¬àÿ⁄Y[Sô^úòX›\ôJ\ôõ‹õX[òŸKõõ› 
+JN¬àÿ›[Y[ùôŸ][[Y[ùûRY
+	‹õ›[ô[ôõ… Kù^€€ù[ùH€ôH	›ÿ]ô_H8†%	–íS”QW”PëS÷ÿ›\úô[ùö[€YW_H8†%	’—PUTó”PëS÷ÿ›\úô[ùŸX]\ó_X¬Çà€€ú›Yò][€›»HŸ]^Y\ñõ€ôT€› 
+N¬à‹[î‹⁄][€îŸ[X›
+X[TK	€Yù	ÀYò][€›Àô[‹ôÿ[ö^ôHŸ]H[YH
+€ôH	›ÿ]ô_JX
+‹⁄][€ú OOû¬àX[TT‹⁄][€ú»H‹⁄][€úŒ¬àö[ö\⁄ô\€€ù[ùYJ
+N¬àKLX[TT‹⁄][€ú N¬üBÇôù[ò›[€àö[ö\⁄ô\€€ù[ùYJ
+^¬àŸ]Y[ùSÿ⁄ŸY
+ùYJN¬à€€ú›òYHHÿ›[Y[ùôŸ][[Y[ùûRY
+	›ÿ]ôK]ò[ú⁄][€ãYòYI N¬àòYKú›[Kõ‹X⁄]HH	ÃIŒ¬àŸ][Y[›]
+
+
+OOû¬àÿ›[Y[ùôŸ][[Y[ùûRY
+	‹]Z]Xò]KXùâ Kú›[Kô\‹^HH	€õ€ôIŒ¬àÿ›[Y[ùôŸ][[Y[ùûRY
+	›öY]À\›[[X\ûKXùâ Kú›[Kô\‹^HH	€õ€ôIŒ¬àÿ›[Y[ùôŸ][[Y[ùûRY
+	‹›YŸŸ\›[€ã\‹\	 Kò€\‹”\›úô[[›ôJ	‹⁄›… N¬àõ‹‹–€›[ùY\’ÿ]ôHHò[ŸN¬à[ù\òX›[€ëö\ôY\‘õ›[ôHò[ŸN¬à€€ú›ÿ]ôTX⁄‹»Hò[ô€Q[ô[^Uÿ]ôJÿ]ôJN¬à›\ùô]’ÿ]ôSŸ ÿ]ôJN¬àùZ[X[\ X[TKÿ]ôTX⁄‹ÀõX\
+œOùÀöŸ^JKò[ŸJN¬à\U[\[ô[^T›] ÿ]ôTX⁄‹ N¬à‹]€ê€‹úù\Y‹ôX]\ô\ ÿ]ôJN¬àÀ»ù[X[\[ú»ò]\ò[H⁄[òŸHùZ[X[\»ôX‹ôX]\»[ö]»]X^àÿ›[Y[ùôŸ][[Y[ùûRY
+	ÿò[õô\â Kú›[Kô\‹^OI€õ€ôIŒ¬àŸ €ôH	›ÿ]ô_H[öX⁄XYKà[YH›[Y[ùHôX›\\òYÀò	‹ﬁ\… N¬àŸ‘ôZ[ôõ‹òŸ[Y[ù ÿ]ôTX⁄‹Àÿ]ôJN¬à⁄X⁄—[–ò[ù\äX[TKò[ù\ìô^õ›[ôôKÿ]ôJN¬àò]PX›]ôHHùYN¬à⁄›‘ÿ‹ôY[ä	ÿò]I N¬àÿ]ôQÿ[YT€ò\⁄›
+
+N¬àŸ][Y[›]
+
+
+OOû»òYKú›[Kõ‹X⁄]HH	Ã	Œ»Kå
+N¬àKŒ
+N¬üBÇã àOOOOOOOOOOOHëSëTà”‘OOOOOOOOOOOH
+ã¬ôù[ò›[€à\]P[ö[X][€ú 
+^¬à[ö]Àôõ‹ëXX⁄
+OOû¬àKúû
+œH
+Kù\ôŸ]ûHKúû
+H
+àX]õZ[äK
+ååäN¬àKúûH
+œH
+Kù\ôŸ]ûHHKúûJH
+àX]õZ[äK
+ååäN¬àJN¬àõÿ][ô’^Àôõ‹ëXX⁄
+èOôãòYŸH
+œH
+N¬àõÿ][ô’^»Hõÿ][ô’^Àôö[\äèOôãòYŸHãõYôJN¬àÿ\›YôôX›Àôõ‹ëXX⁄
+œOòÀòYŸH
+œH
+N¬àÿ\›YôôX›»Hÿ\›YôôX›Àôö[\äœOòÀòYŸHÀõYôJN¬àY⁄ö[ô–õ€Àôõ‹ëXX⁄
+èOòãòYŸH
+œH
+N¬àY⁄ö[ô–õ€»HY⁄ö[ô–õ€Àôö[\äèOòãòYŸHãõYôJN¬à⁄ÿ⁄›ÿ]ôTö[ô‹Àôõ‹ëXX⁄
+œOúÀòYŸH
+œH
+N¬à⁄ÿ⁄›ÿ]ôTö[ô‹»H⁄ÿ⁄›ÿ]ôTö[ô‹Àôö[\äœOúÀòYŸHÀõYôJN¬à⁄ö[ö⁄[ô‘ö[ô‹Àôõ‹ëXX⁄
+œOúÀòYŸH
+œH
+N¬à⁄ö[ö⁄[ô‘ö[ô‹»H⁄ö[ö⁄[ô‘ö[ô‹Àôö[\äœOúÀòYŸHÀõYôJN¬üBÇôù[ò›[€àô[ô\ëúò[YJ
+^¬à›ôÀö[õô\íSH	…Œ¬à€€ú›õ›ÃH\ôõ‹õX[òŸKõõ› 
+N¬à]⁄ZŸVH⁄ZŸVHH¬àYäõ›Ã⁄ZŸU[ù[
+^¬à€€ú›ô[XZ[ö[ô»HX]õX^
+
+⁄ZŸU[ù[[õ›Ã
+K‹⁄ZŸU›[\ò][€äN¬à⁄ZŸVH
+X]úò[ô€J
+JåãLJJú⁄ZŸR[ù[ú⁄]Júô[XZ[ö[ôŒ¬à⁄ZŸVHH
+X]úò[ô€J
+JåãLJJú⁄ZŸR[ù[ú⁄]Júô[XZ[ö[ôŒ¬àBà›ôÀúŸ]]öXù]J	›öY]–õﬁ	À	 ÿ[UöY]–õﬁû
+‹⁄ZŸV
+Kù—ö^Y
+J_H	 ÿ[UöY]–õﬁûJ‹⁄ZŸVJKù—ö^Y
+J_H	ÿÿ[UöY]–õﬁùÀù—ö^Y
+J_H	ÿÿ[UöY]–õﬁöù—ö^Y
+J_X
+N¬Çà[^\Àôõ‹ëXX⁄
+Oû¬à€€ú›H^‘^[
+úKúäN¬à€€ú›»H^Ÿ^J
+N¬à€€ú›\—úôYR^H[ÿú›X€R^\Àö\  H	âà]õ⁄Y^\Àö\  H	âàZ^ò\ô^\Àö\  N¬Çà€€ú›ö[€YQö[H›\úô[ùö[€YOOOI‹òX⁄Y\òI»»	‹ôÿòJNÃãÕçMJI»à	‹ôÿòJéNÕçMJIŒ¬à€€ú›ö[€YPò\ŸHHÿ›[Y[ùò‹ôX]Q[[Y[ùî 	⁄ãÀ›››ÀùÃÀõ‹ôÀÃå‹›ô…À	‹€Y€€â N¬àö[€YPò\ŸKúŸ]]öXù]J	‹⁄[ù…À^⁄[ù ûûJJN¬àö[€YPò\ŸKúŸ]]öXù]J	Ÿö[	Àö[€YQö[
+N¬àö[€YPò\ŸKúŸ]]öXù]J	Ÿ]K]\úòZ[ãXò\ŸIÀ	›ùYI N¬à›ôÀò\[ô⁄[
+ö[€YPò\ŸJN¬Çà]õ€ôHHúO»	‹ôÿòJåÀLçÀMéåäI»àúOå»	‹ôÿòJåKÃãÃKåäI»à	‹ôÿòJçMKçMKçMKå IŒ¬à]›õ⁄ŸHH›\úô[ùö[€YOOOI‹òX⁄Y\òI»»	»ÕXLÿMŒ	»à	»ÃŸòçIŒ¬àYäÿú›X€R^\Àö\  J^»õ€ôHH	‹ôÿòJLåLåLÃåÕJIŒ»›õ⁄ŸHH	»ŒNéNIŒ»Bà[ŸHYäõ⁄Y^\Àö\  J^»õ€ôHH	‹ôÿòJMLåé
+IŒ»›õ⁄ŸHH	»ÕÿLòLòIŒ»Bà[ŸHYä^ò\ô^\Àö\  J^»õ€ôHH	‹ôÿòJåçLKNåçJIŒ»›õ⁄ŸHH	»ŸLéLÿIŒ»Bà€€ú›€HHÿ›[Y[ùò‹ôX]Q[[Y[ùî 	⁄ãÀ›››ÀùÃÀõ‹ôÀÃå‹›ô…À	‹€Y€€â N¬à€KúŸ]]öXù]J	Ÿ]KY‹öY][IÀ	⁄ú_K	⁄úüX
+N¬à€KúŸ]]öXù]J	Ÿ]KYúôYK][IÀ\—úôYR^
+N¬à€KúŸ]]öXù]J	‹⁄[ù…À^⁄[ù ûûJJN¬à€KúŸ]]öXù]J	Ÿö[	Àõ€ôJN¬à€KúŸ]]öXù]J	‹›õ⁄ŸIÀ›õ⁄ŸJN¬à€KúŸ]]öXù]J	‹›õ⁄ŸK]⁄Y	À	ÃI N¬à›ôÀò\[ô⁄[
+€JN¬ÇàYä\—úôYR^	âà›\úô[ùö[€YOOOIŸ‹ò[XI»	âà]⁄[ô›Àê\ô[òL—ÀúôXYJ^¬àõ‹ä]OL⁄OŒ⁄J  ^¬à€€ú›ûH^õ⁄\ŸJúKúãJç ÃJKûHH^õ⁄\ŸJúKúãJç ÃäN¬à€€ú›ûHû
+»
+ûLçJJåNûHHûH
+»
+ûKLçJJåN¬à€€ú›õYHHÿ›[Y[ùò‹ôX]Q[[Y[ùî 	⁄ãÀ›››ÀùÃÀõ‹ôÀÃå‹›ô…À	€[ôI N¬àõYKúŸ]]öXù]J	ﬁIÀû
+N»õYKúŸ]]öXù]J	ﬁLIÀûJÃ N¬àõYKúŸ]]öXù]J	ﬁâÀû
+»
+^õ⁄\ŸJúKúãJç Ã KLçJJå N»õYKúŸ]]öXù]J	ﬁLâÀûKL N¬àõYKúŸ]]öXù]J	‹›õ⁄ŸIÀ	»ÃMåéXI N¬àõYKúŸ]]öXù]J	‹›õ⁄ŸK]⁄Y	À	ÃKåâ N¬àõYKúŸ]]öXù]J	‹›õ⁄ŸK[[ôXÿ\	À	‹õ›[ô	 N¬à›ôÀò\[ô⁄[
+õYJN¬àBàYä^õ⁄\ŸJúKúãNJHàéä^¬à€€ú›Hû
+»
+^õ⁄\ŸJúKúãN
+KLçJJåLHHûH
+»
+^õ⁄\ŸJúKúãM KLçJJåL¬à€€ú›ù[ö»Hÿ›[Y[ùò‹ôX]Q[[Y[ùî 	⁄ãÀ›››ÀùÃÀõ‹ôÀÃå‹›ô…À	‹ôX›	 N¬àù[öÀúŸ]]öXù]J	ﬁ	ÀLKçJN»ù[öÀúŸ]]öXù]J	ﬁIÀKLäN¬àù[öÀúŸ]]öXù]J	›⁄Y	À	Ã… N»ù[öÀúŸ]]öXù]J	⁄ZY⁄	À	ŒI N¬àù[öÀúŸ]]öXù]J	Ÿö[	À	»ÕLÕåå… N¬à›ôÀò\[ô⁄[
+ù[ö N¬à€€ú›ÿ[õ‹HHÿ›[Y[ùò‹ôX]Q[[Y[ùî 	⁄ãÀ›››ÀùÃÀõ‹ôÀÃå‹›ô…À	ÿ⁄\ò€I N¬àÿ[õ‹KúŸ]]öXù]J	ÿﬁ	À
+N»ÿ[õ‹KúŸ]]öXù]J	ÿﬁIÀKMäN¬àÿ[õ‹KúŸ]]öXù]J	‹âÀ	Õ… N¬àÿ[õ‹KúŸ]]öXù]J	Ÿö[	À	»ÃôXLÕ	 N¬àÿ[õ‹KúŸ]]öXù]J	‹›õ⁄ŸIÀ	»ÃXLÿLå	 N¬à›ôÀò\[ô⁄[
+ÿ[õ‹JN¬àBàH[ŸHYä\—úôYR^	âà]⁄[ô›Àê\ô[òL—ÀúôXYH	âà›\úô[ùö[€YOOOI‹òX⁄Y\òI»	âà^õ⁄\ŸJúKúãMJHàçJ^¬à€€ú›ôZ[î[ŸHHåÕH
+»åçJìX]ú⁄[äõ›ÃÃçå
+»
+úJå ⁄úäJN¬à€€ú›[ô»H^õ⁄\ŸJúKúãMäJìX]îJåé¬à€€ú›ôZ[àHÿ›[Y[ùò‹ôX]Q[[Y[ùî 	⁄ãÀ›››ÀùÃÀõ‹ôÀÃå‹›ô…À	€[ôI N¬àôZ[ãúŸ]]öXù]J	ﬁIÀûHX]ò€‹ [ô Jç N»ôZ[ãúŸ]]öXù]J	ﬁLIÀûHHX]ú⁄[ä[ô Jç N¬àôZ[ãúŸ]]öXù]J	ﬁâÀû
+»X]ò€‹ [ô Jç N»ôZ[ãúŸ]]öXù]J	ﬁLâÀûH
+»X]ú⁄[ä[ô Jç N¬àôZ[ãúŸ]]öXù]J	‹›õ⁄ŸIÀ	»ÿéNŸå	 N¬àôZ[ãúŸ]]öXù]J	‹›õ⁄ŸK]⁄Y	À	ÃI N¬àôZ[ãúŸ]]öXù]J	‹›õ⁄ŸK[‹X⁄]IÀôZ[î[ŸKù—ö^Y
+äJN¬à›ôÀò\[ô⁄[
+ôZ[äN¬àBÇà€€ú›€€‹ôXô[Hÿ›[Y[ùò‹ôX]Q[[Y[ùî 	⁄ãÀ›››ÀùÃÀõ‹ôÀÃå‹›ô…À	›^	 N¬à€€‹ôXô[úŸ]]öXù]J	ﬁ	Àû
+N»€€‹ôXô[úŸ]]öXù]J	ﬁIÀûJÃ N¬à€€‹ôXô[úŸ]]öXù]J	›^X[ò⁄‹âÀ	€ZYI N¬à€€‹ôXô[úŸ]]öXù]J	Ÿõ€ùYò[Z[IÀâ“ô]úòZ[ú»[€õ…À[€õ‹‹XŸHäN¬à€€‹ôXô[úŸ]]öXù]J	Ÿõ€ù\⁄^ôIÀ	Õ… N¬à€€‹ôXô[úŸ]]öXù]J	Ÿö[	À	‹ôÿòJçMKçMKçMKåLäI N¬à€€‹ôXô[úŸ]]öXù]J	‹⁄[ù\ãY]ô[ù…À	€õ€ôI N¬à€€‹ôXô[ù^€€ù[ùH^Xô[
+
+N¬à›ôÀò\[ô⁄[
+€€‹ôXô[
+N¬ÇàYäÿú›X€R^\Àö\  J^¬à€€ú››Ÿ\àHÿ›[Y[ùò‹ôX]Q[[Y[ùî 	⁄ãÀ›››ÀùÃÀõ‹ôÀÃå‹›ô…À	‹ôX›	 N¬à›Ÿ\ãúŸ]]öXù]J	ﬁ	ÀûN
+N»›Ÿ\ãúŸ]]öXù]J	ﬁIÀûKLL
+N¬à›Ÿ\ãúŸ]]öXù]J	›⁄Y	ÀMäN»›Ÿ\ãúŸ]]öXù]J	⁄ZY⁄	Àå
+N¬à›Ÿ\ãúŸ]]öXù]J	‹û	ÀäN¬à›Ÿ\ãúŸ]]öXù]J	Ÿö[	À	»ÕXMYçé	 N¬à›Ÿ\ãúŸ]]öXù]J	‹›õ⁄ŸIÀ	»ŒNéNI N¬à›ôÀò\[ô⁄[
+›Ÿ\äN¬àBàYäôYYÿ\î›ùX›\ô\÷⁄◊J^¬à€€ú›»HôYYÿ\î›ùX›\ô\÷⁄◊N¬à€€ú›õ€‹›YHÀòõ€‹›[ù[	âà\ôõ‹õX[òŸKõõ› 
+HÀòõ€‹›[ù[¬à€€ú›Y—úòX»HÀö]’ZŸ[à»Àö]”ôYYY»À»H[ùX›ÀŸH\õﬁ[XHHHH]X\ŸHÿZ[ô¬à€€ú›\ŸHH
+Àò‹ôX]Y]
+N¬à€€ú›[ŸHHçH
+»çJìX]ú⁄[äõ›ÃÕL
+»\ŸJN¬à€€ú››ÿ^VHHX]ú⁄[äõ›ÃÕå
+»\ŸJH
+àKç¬Çà€€ú›€›–ô»Hÿ›[Y[ùò‹ôX]Q[[Y[ùî 	⁄ãÀ›››ÀùÃÀõ‹ôÀÃå‹›ô…À	ÿ⁄\ò€I N¬à€›–ôÀúŸ]]öXù]J	ÿﬁ	Àû
+N»€›–ôÀúŸ]]öXù]J	ÿﬁIÀûJÃäN¬à€›–ôÀúŸ]]öXù]J	‹âÀ
+Lä‹[ŸJå Kù—ö^Y
+JJN¬à€›–ôÀúŸ]]öXù]J	Ÿö[	Àõ€‹›Y»	‹ôÿòJåÃãNMåé
+I»à	‹ôÿòJLŒLãÕåå
+I N¬à›ôÀò\[ô⁄[
+€›–ô N¬Çà€€ú›[\àHÿ›[Y[ùò‹ôX]Q[[Y[ùî 	⁄ãÀ›››ÀùÃÀõ‹ôÀÃå‹›ô…À	‹€Y€€â N¬à€€ú›‹HH
+ûKLMã\›ÿ^VJKù—ö^Y
+JKZYHH
+ûKNK\›ÿ^VJåç
+Kù—ö^Y
+JN¬à[\ãúŸ]]öXù]J	‹⁄[ù…À	‹ûMﬂK	‹ûJÃL_H	‹ûN_K	€ZY_H	‹ûK	›‹_H	‹û
+Œ_K	€ZY_H	‹û
+ÕﬂK	‹ûJÃL_X
+N¬à[\ãúŸ]]öXù]J	Ÿö[	Àõ€‹›Y»	»ÿŒXMLÿI»à	»ŒMòMI N¬à[\ãúŸ]]öXù]J	‹›õ⁄ŸIÀõ€‹›Y»	»ŸNÃçL	»à	»ÕXMLÃ	 N¬à[\ãúŸ]]öXù]J	‹›õ⁄ŸK]⁄Y	À	ÃKçI N¬à[\ãúŸ]]öXù]J	€‹X⁄]IÀ
+
+HHY—úòX ååÕJH
+à
+éJ‹[ŸJååMJJKù—ö^Y
+äJN¬à€€ú›€›‘›ô[ô›Hõ€‹›Y»
+ä‹[ŸJç
+Hà
+ä‹[ŸJåäN¬à[\ãú›[Kôö[\àHõ‹\⁄Y› 	Ÿ€›‘›ô[ô›ù—ö^Y
+J_\ôÿòJ	ÿõ€‹›Y…ÃåÃãNM	ŒâÃåKMçKN	ﬂKç JX¬à›ôÀò\[ô⁄[
+[\äN¬àBàYä^ò\ô^\Àö\  J^¬à€€ú›[ŸHHçH
+»å ìX]ú⁄[äõ›ÃÃå
+N¬à€€ú›]òHHÿ›[Y[ùò‹ôX]Q[[Y[ùî 	⁄ãÀ›››ÀùÃÀõ‹ôÀÃå‹›ô…À	ÿ⁄\ò€I N¬à]òKúŸ]]öXù]J	ÿﬁ	Àû
+N»]òKúŸ]]öXù]J	ÿﬁIÀûJN»]òKúŸ]]öXù]J	‹âÀL
+N¬à]òKúŸ]]öXù]J	Ÿö[	À	»ŸLéLÿI N¬à]òKúŸ]]öXù]J	€‹X⁄]IÀ[ŸKù—ö^Y
+äJN¬à›ôÀò\[ô⁄[
+]òJN¬àBàYäúòX›\ôR^\Àö\  J^¬à€€ú›‹òX⁄‘[ŸHHçMH
+»å ìX]ú⁄[äõ›ÃÃLL
+N¬à€€ú›‹òX⁄—ö[Hÿ›[Y[ùò‹ôX]Q[[Y[ùî 	⁄ãÀ›››ÀùÃÀõ‹ôÀÃå‹›ô…À	‹€Y€€â N¬à‹òX⁄—ö[úŸ]]öXù]J	‹⁄[ù…À^⁄[ù ûûJJN¬à‹òX⁄—ö[úŸ]]öXù]J	Ÿö[	À	‹ôÿòJçççMKåN
+I N¬à‹òX⁄—ö[úŸ]]öXù]J	‹›õ⁄ŸIÀ	»ŸNLôâ N¬à‹òX⁄—ö[úŸ]]öXù]J	‹›õ⁄ŸK]⁄Y	À	ÃKçI N¬à‹òX⁄—ö[úŸ]]öXù]J	‹›õ⁄ŸK[‹X⁄]IÀ‹òX⁄‘[ŸKù—ö^Y
+äJN¬à›ôÀò\[ô⁄[
+‹òX⁄—ö[
+N¬à€€ú›‹òX⁄”[ôHHÿ›[Y[ùò‹ôX]Q[[Y[ùî 	⁄ãÀ›››ÀùÃÀõ‹ôÀÃå‹›ô…À	€[ôI N¬à‹òX⁄”[ôKúŸ]]öXù]J	ﬁIÀûNJN»‹òX⁄”[ôKúŸ]]öXù]J	ﬁLIÀûKMäN¬à‹òX⁄”[ôKúŸ]]öXù]J	ﬁâÀû
+ŒJN»‹òX⁄”[ôKúŸ]]öXù]J	ﬁLâÀûJÕäN¬à‹òX⁄”[ôKúŸ]]öXù]J	‹›õ⁄ŸIÀ	»Ÿôôôôôâ N»‹òX⁄”[ôKúŸ]]öXù]J	‹›õ⁄ŸK]⁄Y	À	ÃKçI N¬à‹òX⁄”[ôKúŸ]]öXù]J	‹›õ⁄ŸK[‹X⁄]IÀ‹òX⁄‘[ŸKù—ö^Y
+äJN¬à›ôÀò\[ô⁄[
+‹òX⁄”[ôJN¬àBàJN¬ÇàXŸTö\€€í^\»HXŸTö\€€í^\Àôö[\ä\Oõõ›Ã\ù[ù[
+N¬àXŸTö\€€í^\Àôõ‹ëXX⁄
+\Oû¬à€€ú›H^‘^[
+\úK\úäN¬à€€ú›YôHHX]õX^
+
+\ù[ù[[õ›Ã
+KÃÃ
+N¬à€€ú›[ŸHHçH
+»åÕJìX]ú⁄[äõ›ÃÃL
+N¬à€€ú›⁄\ôHÿ›[Y[ùò‹ôX]Q[[Y[ùî 	⁄ãÀ›››ÀùÃÀõ‹ôÀÃå‹›ô…À	‹€Y€€â N¬à⁄\ôúŸ]]öXù]J	‹⁄[ù…À^⁄[ù ûûJJN¬à⁄\ôúŸ]]öXù]J	Ÿö[	À	‹ôÿòJMÀåLãåÃãååäI N¬à⁄\ôúŸ]]öXù]J	‹›õ⁄ŸIÀ	»ŒôN	 N¬à⁄\ôúŸ]]öXù]J	‹›õ⁄ŸK]⁄Y	À	ÃKçI N¬à⁄\ôúŸ]]öXù]J	‹›õ⁄ŸK[‹X⁄]IÀ
+[ŸJõYôJKù—ö^Y
+äJN¬à›ôÀò\[ô⁄[
+⁄\ô
+N¬à€€ú›[\àHÿ›[Y[ùò‹ôX]Q[[Y[ùî 	⁄ãÀ›››ÀùÃÀõ‹ôÀÃå‹›ô…À	‹€Y€€â N¬à€€ú›œMãLN¬à[\ãúŸ]]öXù]J	‹⁄[ù…À	‹û\ﬂK	‹ûJ‹ÃüH	‹û\ åçK	‹ûK\ÃüH	‹û
+‹ åçK	‹ûK\ÃüH	‹û
+‹ﬂK	‹ûJ‹ÃüX
+N¬à[\ãúŸ]]öXù]J	Ÿö[	À	‹ôÿòJååÕKçKçMJI N¬à[\ãúŸ]]öXù]J	‹›õ⁄ŸIÀ	»ŸNçôôâ N¬à[\ãúŸ]]öXù]J	‹›õ⁄ŸK]⁄Y	À	ÃI N¬à[\ãúŸ]]öXù]J	€‹X⁄]IÀYôKù—ö^Y
+äJN¬à›ôÀò\[ô⁄[
+[\äN¬àJN¬Çà‹ù[Z\úÀôõ‹ëXX⁄
+
+ÿKóJOOû¬àÿKóKôõ‹ëXX⁄
+Oû¬à€€ú›H^‘^[
+úKúäN¬à€€ú›[ŸHHçH
+»åÕJìX]ú⁄[äõ›ÃÃML
+N¬à€€ú›ö[ô»Hÿ›[Y[ùò‹ôX]Q[[Y[ùî 	⁄ãÀ›››ÀùÃÀõ‹ôÀÃå‹›ô…À	ÿ⁄\ò€I N¬àö[ôÀúŸ]]öXù]J	ÿﬁ	Àû
+N»ö[ôÀúŸ]]öXù]J	ÿﬁIÀûJN»ö[ôÀúŸ]]öXù]J	‹âÀLJN¬àö[ôÀúŸ]]öXù]J	Ÿö[	À	€õ€ôI N¬àö[ôÀúŸ]]öXù]J	‹›õ⁄ŸIÀ	»ŒXçòôI N¬àö[ôÀúŸ]]öXù]J	‹›õ⁄ŸK]⁄Y	À	ÃãçI N¬àö[ôÀúŸ]]öXù]J	€‹X⁄]IÀ[ŸKù—ö^Y
+äJN¬à›ôÀò\[ô⁄[
+ö[ô N¬àJN¬àJN¬ÇàúòX›\ôT‹ù[Z\úÀôõ‹ëXX⁄
+
+ÿKóJOOû¬àÿKóKôõ‹ëXX⁄
+Oû¬à€€ú›H^‘^[
+úKúäN¬à€€ú›[ŸHHçH
+»ç
+ìX]ú⁄[äõ›ÃÃLL
+N¬à€€ú›ö[ô»Hÿ›[Y[ùò‹ôX]Q[[Y[ùî 	⁄ãÀ›››ÀùÃÀõ‹ôÀÃå‹›ô…À	ÿ⁄\ò€I N¬àö[ôÀúŸ]]öXù]J	ÿﬁ	Àû
+N»ö[ôÀúŸ]]öXù]J	ÿﬁIÀûJN»ö[ôÀúŸ]]öXù]J	‹âÀLäN¬àö[ôÀúŸ]]öXù]J	Ÿö[	À	€õ€ôI N¬àö[ôÀúŸ]]öXù]J	‹›õ⁄ŸIÀ	»ŸNLôâ N¬àö[ôÀúŸ]]öXù]J	‹›õ⁄ŸK]⁄Y	À	Ã… N¬àö[ôÀúŸ]]öXù]J	‹›õ⁄ŸKY\⁄\úò^IÀ	Ã»â N¬àö[ôÀúŸ]]öXù]J	€‹X⁄]IÀ[ŸKù—ö^Y
+äJN¬à›ôÀò\[ô⁄[
+ö[ô N¬àJN¬àJN¬ÇàYä›\P‹ò]H	âà\›\P‹ò]Kò€Z[YY
+^¬à€€ú›H^‘^[
+›\P‹ò]KúK›\P‹ò]KúäN¬à€€ú›[ŸHHçà
+»å ìX]ú⁄[äõ›ÃÃN
+N¬à€€ú›‹ò]HHÿ›[Y[ùò‹ôX]Q[[Y[ùî 	⁄ãÀ›››ÀùÃÀõ‹ôÀÃå‹›ô…À	‹ôX›	 N¬à‹ò]KúŸ]]öXù]J	ﬁ	ÀûN
+N»‹ò]KúŸ]]öXù]J	ﬁIÀûKN
+N¬à‹ò]KúŸ]]öXù]J	›⁄Y	ÀMäN»‹ò]KúŸ]]öXù]J	⁄ZY⁄	ÀMäN¬à‹ò]KúŸ]]öXù]J	‹û	ÀäN¬à‹ò]KúŸ]]öXù]J	Ÿö[	À	»ŸNÃçL	 N¬à‹ò]KúŸ]]öXù]J	‹›õ⁄ŸIÀ	»ŸôôåôMâ N¬à‹ò]KúŸ]]öXù]J	€‹X⁄]IÀ[ŸKù—ö^Y
+äJN¬à›ôÀò\[ô⁄[
+‹ò]JN¬àBÇà€€ú›õ›»H\ôõ‹õX[òŸKõõ› 
+N¬à[ö]Àôö[\äOOùKò[]ôJKôõ‹ëXX⁄
+OOû¬à]ò]÷HKúûò]÷HHKúûN¬àYäKò⁄[\YOOI‹⁄]òI»	âàKú⁄]òQ\⁄›\ù]	âàõ›»HKú⁄]òQ\⁄›\ù]Kú⁄]òQ\⁄\ò][€ä^¬à€€ú›\⁄HX]õZ[äK
+õ›»HKú⁄]òQ\⁄›\ù]
+H»Kú⁄]òQ\⁄\ò][€äN¬àò]÷HKú⁄]òQ\⁄úõ€Tû
+»
+Kú⁄]òQ\⁄‘ûHKú⁄]òQ\⁄úõ€Tû
+H
+à\⁄¬àò]÷HHKú⁄]òQ\⁄úõ€TûH
+»
+Kú⁄]òQ\⁄‘ûHHKú⁄]òQ\⁄úõ€TûJH
+à\⁄¬àYä]Kú⁄]òS\›òZ[]õ›»HKú⁄]òS\›òZ[]àÕJ^¬àKú⁄]òS\›òZ[]Hõ›Œ¬à‹]€êÿ\›YôôX›
+ò]÷ò]÷K	»ÿŒYYN	 N»À»ò\›õ»Hô[ù»]∞Ë\»[H\ò[ùHH€‹úöYBàBàBàYäKò]X⁄–[ö[J^¬à€€ú›[\ŸYHõ›»HKò]X⁄–[ö[Kú›\ù¬àYä[\ŸYKò]X⁄–[ö[Kô\ò][€ä^¬à€€ú›\ôŸ]H[ö]Àôö[ô
+œOõÀöYOO]Kò]X⁄–[ö[Kù\ôŸ]Y
+N¬àYä\ôŸ]
+^¬à€€ú›H[\ŸY›Kò]X⁄–[ö[Kô\ò][€é¬à€€ú›[ôŸHHX]ú⁄[ä
+ìX]îJJéN¬à€€ú›H\ôŸ]úû]KúûHH\ôŸ]úûK]KúûN¬à€€ú›\›HX]ö\›
+J_N¬àò]÷
+œH
+Ÿ\›
+Jõ[ôŸN»ò]÷H
+œH
+KŸ\›
+Jõ[ôŸN¬àBàH[ŸH»Kò]X⁄–[ö[HHù[»BàBà€€ú›õ\⁄[ô»Hõ›»Kôõ\⁄[ù[¬à€€ú›»Hÿ›[Y[ùò‹ôX]Q[[Y[ùî 	⁄ãÀ›››ÀùÃÀõ‹ôÀÃå‹›ô…À	Ÿ… N¬àÀúŸ]]öXù]J	Ÿ]K][ö]ZY	ÀKöY
+N¬ÇàYäKù][ù
+^¬à€€ú›ö[ô»Hÿ›[Y[ùò‹ôX]Q[[Y[ùî 	⁄ãÀ›››ÀùÃÀõ‹ôÀÃå‹›ô…À	ÿ⁄\ò€I N¬àö[ôÀúŸ]]öXù]J	ÿﬁ	Àò]÷
+N»ö[ôÀúŸ]]öXù]J	ÿﬁIÀò]÷JN»ö[ôÀúŸ]]öXù]J	‹âÀå
+N¬àö[ôÀúŸ]]öXù]J	Ÿö[	À	€õ€ôI N»ö[ôÀúŸ]]öXù]J	‹›õ⁄ŸIÀKò€€‹äN»ö[ôÀúŸ]]öXù]J	‹›õ⁄ŸK[‹X⁄]IÀ	Ãå… N»ö[ôÀúŸ]]öXù]J	‹›õ⁄ŸK]⁄Y	À	Ãâ N¬àÀò\[ô⁄[
+ö[ô N¬àBÇàYäõ›[ô]ô[\Àö[ò€Y\ Kò⁄[\Y
+J^¬à€€ú›[ŸHHç
+»å ìX]ú⁄[äõ›ÀÃåå
+N¬à€€ú›€›»Hÿ›[Y[ùò‹ôX]Q[[Y[ùî 	⁄ãÀ›››ÀùÃÀõ‹ôÀÃå‹›ô…À	ÿ⁄\ò€I N¬à€›ÀúŸ]]öXù]J	ÿﬁ	Àò]÷
+N»€›ÀúŸ]]öXù]J	ÿﬁIÀò]÷JN»€›ÀúŸ]]öXù]J	‹âÀN
+N¬à€›ÀúŸ]]öXù]J	Ÿö[	À	€õ€ôI N»€›ÀúŸ]]öXù]J	‹›õ⁄ŸIÀ	»ŸNÃçL	 N¬à€›ÀúŸ]]öXù]J	‹›õ⁄ŸK[‹X⁄]IÀ[ŸKù—ö^Y
+äJN»€›ÀúŸ]]öXù]J	‹›õ⁄ŸK]⁄Y	À	Ã… N¬àÀò\[ô⁄[
+€› N¬àBÇàYäKò⁄[\YOOI‹⁄]òI»	âàKò[]ôJ^¬à€€ú›⁄\ôŸTõŸ‹ô\‹»HX]õX^
+X]õZ[äKHH
+Kú⁄]òR⁄X⁄–€€€›€ãÃL
+JJN¬àYä⁄\ôŸTõŸ‹ô\‹»àåLä^¬à€€ú›ö[ô–€›[ùHH
+»X]ôõ€‹ä⁄\ôŸTõŸ‹ô\‹ å N»À»HH[∞ÍZ\»€€ôõ‹õYHÿ\úôYÿBàõ‹ä]öOL»öOö[ô–€›[ù»öJ  ^¬à€€ú›‹[àH
+õ›À çå\öJåÃ
+JH
+à
+öILèOOL»HàLJH
+à¬à€€ú›ö[ô»Hÿ›[Y[ùò‹ôX]Q[[Y[ùî 	⁄ãÀ›››ÀùÃÀõ‹ôÀÃå‹›ô…À	ÿ⁄\ò€I N¬àö[ôÀúŸ]]öXù]J	ÿﬁ	Àò]÷
+N»ö[ôÀúŸ]]öXù]J	ÿﬁIÀò]÷JN»ö[ôÀúŸ]]öXù]J	‹âÀMJ‹öJçJN¬àö[ôÀúŸ]]öXù]J	Ÿö[	À	€õ€ôI N»ö[ôÀúŸ]]öXù]J	‹›õ⁄ŸIÀ	»ÿŒYYN	 N¬àö[ôÀúŸ]]öXù]J	‹›õ⁄ŸK]⁄Y	À	ÃKçâ N¬àö[ôÀúŸ]]öXù]J	‹›õ⁄ŸKY\⁄\úò^IÀ	Õ»LI N¬àö[ôÀúŸ]]öXù]J	‹›õ⁄ŸKY\⁄ŸôúŸ]	À‹[ãù—ö^Y
+JJN¬àö[ôÀúŸ]]öXù]J	‹›õ⁄ŸK[‹X⁄]IÀ
+⁄\ôŸTõŸ‹ô\‹ åçÕJKù—ö^Y
+äJN¬àÀò\[ô⁄[
+ö[ô N¬àBàYä⁄\ôŸTõŸ‹ô\‹»àéJ^¬àÀ»]X\ŸHõ€ùHõ»⁄]H8†%[Húö[»^òHòH]ö\ÿ\à]YH0ËH]X\ŸH]]ò[ô¬à€€ú›ôXYT[ŸHHçH
+»çJìX]ú⁄[äõ›ÀŒL
+N¬à€€ú›ôXYQ€›»Hÿ›[Y[ùò‹ôX]Q[[Y[ùî 	⁄ãÀ›››ÀùÃÀõ‹ôÀÃå‹›ô…À	ÿ⁄\ò€I N¬àôXYQ€›ÀúŸ]]öXù]J	ÿﬁ	Àò]÷
+N»ôXYQ€›ÀúŸ]]öXù]J	ÿﬁIÀò]÷JN»ôXYQ€›ÀúŸ]]öXù]J	‹âÀL N¬àôXYQ€›ÀúŸ]]öXù]J	Ÿö[	À	€õ€ôI N»ôXYQ€›ÀúŸ]]öXù]J	‹›õ⁄ŸIÀ	»ŸXYåôé	 N¬àôXYQ€›ÀúŸ]]öXù]J	‹›õ⁄ŸK[‹X⁄]IÀôXYT[ŸKù—ö^Y
+äJN»ôXYQ€›ÀúŸ]]öXù]J	‹›õ⁄ŸK]⁄Y	À	ÃãçI N¬àÀò\[ô⁄[
+ôXYQ€› N¬àBàBàBÇàYäKôúô[ûûU[ù[	âàõ›»Kôúô[ûûU[ù[
+^¬à€€ú›[ŸHHçH
+»ç
+ìX]ú⁄[äõ›ÀÃL
+N¬à€€ú›€›»Hÿ›[Y[ùò‹ôX]Q[[Y[ùî 	⁄ãÀ›››ÀùÃÀõ‹ôÀÃå‹›ô…À	ÿ⁄\ò€I N¬à€›ÀúŸ]]öXù]J	ÿﬁ	Àò]÷
+N»€›ÀúŸ]]öXù]J	ÿﬁIÀò]÷JN»€›ÀúŸ]]öXù]J	‹âÀåäN¬à€›ÀúŸ]]öXù]J	Ÿö[	À	€õ€ôI N»€›ÀúŸ]]öXù]J	‹›õ⁄ŸIÀ	»ŸLéLÿI N¬à€›ÀúŸ]]öXù]J	‹›õ⁄ŸK[‹X⁄]IÀ[ŸKù—ö^Y
+äJN»€›ÀúŸ]]öXù]J	‹›õ⁄ŸK]⁄Y	À	ÃÀçI N¬àÀò\[ô⁄[
+€› N¬àBÇàYäKòò\úöY\ï[ù[	âàõ›»Kòò\úöY\ï[ù[
+^¬à€€ú›[ŸHHçH
+»åÕJìX]ú⁄[äõ›ÀÃLÃ
+N¬à€€ú›€›»Hÿ›[Y[ùò‹ôX]Q[[Y[ùî 	⁄ãÀ›››ÀùÃÀõ‹ôÀÃå‹›ô…À	ÿ⁄\ò€I N¬à€›ÀúŸ]]öXù]J	ÿﬁ	Àò]÷
+N»€›ÀúŸ]]öXù]J	ÿﬁIÀò]÷JN»€›ÀúŸ]]öXù]J	‹âÀç
+N¬à€›ÀúŸ]]öXù]J	Ÿö[	À	€õ€ôI N»€›ÀúŸ]]öXù]J	‹›õ⁄ŸIÀ	»ÿÕÿŸôI N¬à€›ÀúŸ]]öXù]J	‹›õ⁄ŸK[‹X⁄]IÀ[ŸKù—ö^Y
+äJN»€›ÀúŸ]]öXù]J	‹›õ⁄ŸK]⁄Y	À	Õ	 N¬à€›ÀúŸ]]öXù]J	‹›õ⁄ŸKY\⁄\úò^IÀ	Õ… N¬àÀò\[ô⁄[
+€› N¬àBÇàYäKô⁄‹›[ù[	âàõ›»Kô⁄‹›[ù[
+^¬à€€ú›[ŸHHåÕH
+»åçJìX]ú⁄[äõ›ÀÃMå
+N¬à€€ú›€›»Hÿ›[Y[ùò‹ôX]Q[[Y[ùî 	⁄ãÀ›››ÀùÃÀõ‹ôÀÃå‹›ô…À	ÿ⁄\ò€I N¬à€›ÀúŸ]]öXù]J	ÿﬁ	Àò]÷
+N»€›ÀúŸ]]öXù]J	ÿﬁIÀò]÷JN»€›ÀúŸ]]öXù]J	‹âÀN
+N¬à€›ÀúŸ]]öXù]J	Ÿö[	À	»ŒôN	 N»€›ÀúŸ]]öXù]J	Ÿö[[‹X⁄]IÀ
+[ŸJåç
+Kù—ö^Y
+äJN¬à€›ÀúŸ]]öXù]J	‹›õ⁄ŸIÀ	»ŒôN	 N»€›ÀúŸ]]öXù]J	‹›õ⁄ŸK[‹X⁄]IÀ[ŸKù—ö^Y
+äJN»€›ÀúŸ]]öXù]J	‹›õ⁄ŸK]⁄Y	À	ÃãçI N¬àÀò\[ô⁄[
+€› N¬àBÇàYäKò€€Xõ–X›]ôJ^¬à€€ú›õX⁄Ÿ\àHX]úò[ô€J
+Oåç»éHàåŒ¬à€€ú›€›»Hÿ›[Y[ùò‹ôX]Q[[Y[ùî 	⁄ãÀ›››ÀùÃÀõ‹ôÀÃå‹›ô…À	ÿ⁄\ò€I N¬à€›ÀúŸ]]öXù]J	ÿﬁ	Àò]÷
+N»€›ÀúŸ]]öXù]J	ÿﬁIÀò]÷JN»€›ÀúŸ]]öXù]J	‹âÀNJN¬à€›ÀúŸ]]öXù]J	Ÿö[	À	€õ€ôI N»€›ÀúŸ]]öXù]J	‹›õ⁄ŸIÀ	»ŸçYMçå… N¬à€›ÀúŸ]]öXù]J	‹›õ⁄ŸK[‹X⁄]IÀõX⁄Ÿ\ãù—ö^Y
+äJN»€›ÀúŸ]]öXù]J	‹›õ⁄ŸK]⁄Y	À	Ã… N¬àÀò\[ô⁄[
+€› N¬àBÇàYäKú⁄X‹ûU[[ù[	âàõ›»Kú⁄X‹ûU[[ù[
+^¬à€€ú››[\àHå
+ú\‹⁄]ôP[\
+JN¬à€€ú›[\ŸYHõ›»HKú⁄X‹ûU[›\ù]¬à€€ú››ô[ô›HX]õX^
+HH[\ŸY››[\äN¬à€€ú›€›»Hÿ›[Y[ùò‹ôX]Q[[Y[ùî 	⁄ãÀ›››ÀùÃÀõ‹ôÀÃå‹›ô…À	ÿ⁄\ò€I N¬à€›ÀúŸ]]öXù]J	ÿﬁ	Àò]÷
+N»€›ÀúŸ]]öXù]J	ÿﬁIÀò]÷JN»€›ÀúŸ]]öXù]J	‹âÀç
+N¬à€›ÀúŸ]]öXù]J	Ÿö[	À	€õ€ôI N»€›ÀúŸ]]öXù]J	‹›õ⁄ŸIÀ	»ŒôN	 N¬à€›ÀúŸ]]öXù]J	‹›õ⁄ŸK[‹X⁄]IÀ
+›ô[ô›
+åéJKù—ö^Y
+äJN»€›ÀúŸ]]öXù]J	‹›õ⁄ŸK]⁄Y	À	Õ	 N¬à€›ÀúŸ]]öXù]J	‹›õ⁄ŸKY\⁄\úò^IÀ	ÕH… N¬àÀò\[ô⁄[
+€› N¬àBÇàYäKú‹]€î‹ù[[ù[	âàõ›»Kú‹]€î‹ù[[ù[
+^¬à€€ú›‹]€ë\àHL¬à€€ú›‹]€ë[\ŸYH‹]€ë\àH
+Kú‹]€î‹ù[[ù[Hõ› N¬à€€ú›‹[àH
+‹]€ë[\ŸYÃL
+H
+àÕå¬à€€ú›‹ù[€€‹àHKö\’[ùX€H»	»ÕéYô	»à	»ŒXçôIŒ¬àõ‹ä]ö[ôœL»ö[ôœé»ö[ô   ^¬à€€ú›î⁄^ôHHçàHö[ô çŒ¬à€€ú›‹ù[ö[ô»Hÿ›[Y[ùò‹ôX]Q[[Y[ùî 	⁄ãÀ›››ÀùÃÀõ‹ôÀÃå‹›ô…À	ÿ⁄\ò€I N¬à‹ù[ö[ôÀúŸ]]öXù]J	ÿﬁ	Àò]÷
+N»‹ù[ö[ôÀúŸ]]öXù]J	ÿﬁIÀò]÷JN»‹ù[ö[ôÀúŸ]]öXù]J	‹âÀî⁄^ôJN¬à‹ù[ö[ôÀúŸ]]öXù]J	Ÿö[	À	€õ€ôI N»‹ù[ö[ôÀúŸ]]öXù]J	‹›õ⁄ŸIÀ‹ù[€€‹äN¬à‹ù[ö[ôÀúŸ]]öXù]J	‹›õ⁄ŸK]⁄Y	À	Ã… N¬à‹ù[ö[ôÀúŸ]]öXù]J	‹›õ⁄ŸKY\⁄\úò^IÀ	Õ»I N¬à‹ù[ö[ôÀúŸ]]öXù]J	‹›õ⁄ŸKY\⁄ŸôúŸ]	À
+ö[ôœOOL‹‹[éã\‹[äKù—ö^Y
+JJN¬à‹ù[ö[ôÀúŸ]]öXù]J	€‹X⁄]IÀ	ÃéI N¬àÀò\[ô⁄[
+‹ù[ö[ô N¬àBàBÇàYäò[X]X–X›]ôH	âàKöYOOYò[X]X’[ö]Y
+^¬à€€ú›[ŸHHçMH
+»ç
+ìX]ú⁄[äõ›ÀŒL
+N¬à€€ú›€›»Hÿ›[Y[ùò‹ôX]Q[[Y[ùî 	⁄ãÀ›››ÀùÃÀõ‹ôÀÃå‹›ô…À	ÿ⁄\ò€I N¬à€›ÀúŸ]]öXù]J	ÿﬁ	Àò]÷
+N»€›ÀúŸ]]öXù]J	ÿﬁIÀò]÷JN»€›ÀúŸ]]öXù]J	‹âÀå
+N¬à€›ÀúŸ]]öXù]J	Ÿö[	À	€õ€ôI N»€›ÀúŸ]]öXù]J	‹›õ⁄ŸIÀ	»ÿŒMŸ	 N¬à€›ÀúŸ]]öXù]J	‹›õ⁄ŸK[‹X⁄]IÀ[ŸKù—ö^Y
+äJN»€›ÀúŸ]]öXù]J	‹›õ⁄ŸK]⁄Y	À	Ã… N¬àÀò\[ô⁄[
+€› N¬àBÇàYäKö\–õ‹‹ ^¬à€€ú›[ŸHHçH
+»åÕJìX]ú⁄[äõ›ÀÃMå
+N¬à€€ú›õ‹‹—€›»Hÿ›[Y[ùò‹ôX]Q[[Y[ùî 	⁄ãÀ›››ÀùÃÀõ‹ôÀÃå‹›ô…À	ÿ⁄\ò€I N¬àõ‹‹—€›ÀúŸ]]öXù]J	ÿﬁ	Àò]÷
+N»õ‹‹—€›ÀúŸ]]öXù]J	ÿﬁIÀò]÷JN»õ‹‹—€›ÀúŸ]]öXù]J	‹âÀç N¬àõ‹‹—€›ÀúŸ]]öXù]J	Ÿö[	À	€õ€ôI N»õ‹‹—€›ÀúŸ]]öXù]J	‹›õ⁄ŸIÀ	»ŸNÃçL	 N¬àõ‹‹—€›ÀúŸ]]öXù]J	‹›õ⁄ŸK[‹X⁄]IÀ[ŸKù—ö^Y
+äJN»õ‹‹—€›ÀúŸ]]öXù]J	‹›õ⁄ŸK]⁄Y	À	Ã… N¬àÀò\[ô⁄[
+õ‹‹—€› N¬àBÇà]⁄\òŒ¬àYäKö\’[ùX€J^¬à⁄\ò»Hÿ›[Y[ùò‹ôX]Q[[Y[ùî 	⁄ãÀ›››ÀùÃÀõ‹ôÀÃå‹›ô…À	‹ôX›	 N¬à⁄\òÀúŸ]]öXù]J	ﬁ	Àò]÷NJN»⁄\òÀúŸ]]öXù]J	ﬁIÀò]÷KLLJN¬à⁄\òÀúŸ]]öXù]J	›⁄Y	ÀN
+N»⁄\òÀúŸ]]öXù]J	⁄ZY⁄	ÀåäN¬à⁄\òÀúŸ]]öXù]J	‹û	À N¬à⁄\òÀúŸ]]öXù]J	Ÿö[	Àõ\⁄[ô»»	»Ÿôôôôôâ»à
+Kù[ùX€Qúô[ûûH»	»ÕŸôŒ	»à	»Ãôçôéâ JN¬à⁄\òÀúŸ]]öXù]J	‹›õ⁄ŸIÀ’Tó–ì‘ëTó–””‘î÷›Kú›\ú◊H’Tó–ì‘ëTó–””‘î÷ÃWJN¬à⁄\òÀúŸ]]öXù]J	‹›õ⁄ŸK]⁄Y	ÀäN¬à⁄\òÀúŸ]]öXù]J	€‹X⁄]IÀ	Ãçé	 N¬àH[ŸH¬à⁄\ò»Hÿ›[Y[ùò‹ôX]Q[[Y[ùî 	⁄ãÀ›››ÀùÃÀõ‹ôÀÃå‹›ô…À	ÿ⁄\ò€I N¬à⁄\òÀúŸ]]öXù]J	ÿﬁ	Àò]÷
+N»⁄\òÀúŸ]]öXù]J	ÿﬁIÀò]÷JN»⁄\òÀúŸ]]öXù]J	‹âÀKö\–õ‹‹»»åàM
+N¬à⁄\òÀúŸ]]öXù]J	Ÿö[	Àõ\⁄[ô»»	»Ÿôôôôôâ»àKò€€‹äN¬à⁄\òÀúŸ]]öXù]J	‹›õ⁄ŸIÀ’Tó–ì‘ëTó–””‘î÷›Kú›\ú◊H’Tó–ì‘ëTó–””‘î÷ÃWJN¬à⁄\òÀúŸ]]öXù]J	‹›õ⁄ŸK]⁄Y	ÀKùX[OOOI‹^Y\â»»»àäN¬àBàYäKú‹]€î‹ù[[ù[	âàõ›»Kú‹]€î‹ù[[ù[
+^¬à€€ú›‹]€ëúòX»HHHX]õX^
+
+Kú‹]€î‹ù[[ù[[õ› JKŒL¬à€€ú›ò\ŸS‹X⁄]HHKö\’[ùX€H»çéàN¬à⁄\òÀúŸ]]öXù]J	€‹X⁄]IÀ
+X]õX^
+åMK‹]€ëúòX Jòò\ŸS‹X⁄]JKù—ö^Y
+äJN¬àBàÀò\[ô⁄[
+⁄\ò N¬Çà€€ú›Xô[Hÿ›[Y[ùò‹ôX]Q[[Y[ùî 	⁄ãÀ›››ÀùÃÀõ‹ôÀÃå‹›ô…À	›^	 N¬àXô[úŸ]]öXù]J	ﬁ	Àò]÷
+N»Xô[úŸ]]öXù]J	ﬁIÀKö\–õ‹‹»»ò]÷KLç»àò]÷KLå
+N¬àXô[úŸ]]öXù]J	ÿ€\‹…À	⁄^[Xô[	 N¬àXô[ù^€€ù[ùHKö\–õ‹‹»»	¯¶!H	 ›Kõò[YHàKõò[YN¬àÀò\[ô⁄[
+Xô[
+N¬ÇàYäKùX[OOOI‹^Y\â»	âà
+Kö][RYﬂ◊JKú€€YJZYOíUSW––US—÷⁄ZYH	âàUSW––US—÷⁄ZYKö\‘ô[X J^¬à€€ú›ô[X”X\ö»Hÿ›[Y[ùò‹ôX]Q[[Y[ùî 	⁄ãÀ›››ÀùÃÀõ‹ôÀÃå‹›ô…À	›^	 N¬àô[X”X\öÀúŸ]]öXù]J	ﬁ	Àò]÷
+ÃLäN»ô[X”X\öÀúŸ]]öXù]J	ﬁIÀKö\–õ‹‹»»ò]÷KLÕàò]÷KLç N¬àô[X”X\öÀúŸ]]öXù]J	Ÿõ€ù\⁄^ôIÀ	ÃLI N»ô[X”X\öÀúŸ]]öXù]J	›^X[ò⁄‹âÀ	€ZYI N¬àô[X”X\öÀù^€€ù[ùH	¯ß*	Œ¬àÀò\[ô⁄[
+ô[X”X\ö N¬àBÇà€€ú›ò\ï»HKö\–õ‹‹»»àÃò\íM¬à€€ú›ò\ñSŸôúŸ]HKö\–õ‹‹»»çàN¬à€€ú›òX⁄»Hÿ›[Y[ùò‹ôX]Q[[Y[ùî 	⁄ãÀ›››ÀùÃÀõ‹ôÀÃå‹›ô…À	‹ôX›	 N¬àòX⁄ÀúŸ]]öXù]J	ﬁ	Àò]÷Xò\ïÀÃäN»òX⁄ÀúŸ]]öXù]J	ﬁIÀò]÷Jÿò\ñSŸôúŸ]
+N¬àòX⁄ÀúŸ]]öXù]J	›⁄Y	Àò\ï N»òX⁄ÀúŸ]]öXù]J	⁄ZY⁄	Àò\í
+N»òX⁄ÀúŸ]]öXù]J	Ÿö[	À	»ÃLLI N¬àÀò\[ô⁄[
+òX⁄ N¬à€€ú›ö[»HX]õX^
+ò\ï äKö›KõX^
+JN¬à€€ú›ö[Hÿ›[Y[ùò‹ôX]Q[[Y[ùî 	⁄ãÀ›››ÀùÃÀõ‹ôÀÃå‹›ô…À	‹ôX›	 N¬àö[úŸ]]öXù]J	ﬁ	Àò]÷Xò\ïÀÃäN»ö[úŸ]]öXù]J	ﬁIÀò]÷Jÿò\ñSŸôúŸ]
+N¬àö[úŸ]]öXù]J	›⁄Y	Àö[ N»ö[úŸ]]öXù]J	⁄ZY⁄	Àò\í
+N¬àö[úŸ]]öXù]J	Ÿö[	ÀKö›KõX^ååÕH»	»ÕÿòôçòI»à	»ÿŒMŸ	 N¬àÀò\[ô⁄[
+ö[
+N¬Çà€€ú›X[òUô\⁄H‘P“PS–“Të—W’ëT“”›Kú‹X⁄X[N¬àYäX[òUô\⁄
+^¬à€€ú›X[òVHHò]÷Jÿò\ñSŸôúŸ]
+ÿò\í
+Ãé¬à€€ú›X[òTõŸ‹ô\‹»H
+Kö]€›[ù	HX[òUô\⁄
+H»X[òUô\⁄¬à€€ú›X[òUòX⁄»Hÿ›[Y[ùò‹ôX]Q[[Y[ùî 	⁄ãÀ›››ÀùÃÀõ‹ôÀÃå‹›ô…À	‹ôX›	 N¬àX[òUòX⁄ÀúŸ]]öXù]J	ﬁ	Àò]÷Xò\ïÀÃäN»X[òUòX⁄ÀúŸ]]öXù]J	ﬁIÀX[òVJN¬àX[òUòX⁄ÀúŸ]]öXù]J	›⁄Y	Àò\ï N»X[òUòX⁄ÀúŸ]]öXù]J	⁄ZY⁄	À N»X[òUòX⁄ÀúŸ]]öXù]J	Ÿö[	À	»ÃLLI N¬àÀò\[ô⁄[
+X[òUòX⁄ N¬à€€ú›X[òQö[Hÿ›[Y[ùò‹ôX]Q[[Y[ùî 	⁄ãÀ›››ÀùÃÀõ‹ôÀÃå‹›ô…À	‹ôX›	 N¬àX[òQö[úŸ]]öXù]J	ﬁ	Àò]÷Xò\ïÀÃäN»X[òQö[úŸ]]öXù]J	ﬁIÀX[òVJN¬àX[òQö[úŸ]]öXù]J	›⁄Y	ÀX]õX^
+ò\ï õX[òTõŸ‹ô\‹ JN»X[òQö[úŸ]]öXù]J	⁄ZY⁄	À N¬àX[òQö[úŸ]]öXù]J	Ÿö[	À	»ÃŸçŸòN	 N¬àÀò\[ô⁄[
+X[òQö[
+N¬àBÇàYäKò⁄[\YOOI›õ€òI ^¬à€€ú›⁄\ôŸVHHò]÷Jÿò\ñSŸôúŸ]
+ÿò\í
+Ãé¬à€€ú››ô\ò⁄\ô⁄[ô»HKõ›ô\ò⁄\ôŸU[ù[	âàõ›»Kõ›ô\ò⁄\ôŸU[ù[¬à€€ú›⁄\ôŸTõŸ‹ô\‹»H›ô\ò⁄\ô⁄[ô»»HàX]õZ[äK
+Kò⁄Z[ê⁄\ôŸ_
+KÃL
+N¬à€€ú›⁄\ôŸUòX⁄»Hÿ›[Y[ùò‹ôX]Q[[Y[ùî 	⁄ãÀ›››ÀùÃÀõ‹ôÀÃå‹›ô…À	‹ôX›	 N¬à⁄\ôŸUòX⁄ÀúŸ]]öXù]J	ﬁ	Àò]÷Xò\ïÀÃäN»⁄\ôŸUòX⁄ÀúŸ]]öXù]J	ﬁIÀ⁄\ôŸVJN¬à⁄\ôŸUòX⁄ÀúŸ]]öXù]J	›⁄Y	Àò\ï N»⁄\ôŸUòX⁄ÀúŸ]]öXù]J	⁄ZY⁄	À N»⁄\ôŸUòX⁄ÀúŸ]]öXù]J	Ÿö[	À	»ÃLLI N¬àÀò\[ô⁄[
+⁄\ôŸUòX⁄ N¬à€€ú›⁄\ôŸQö[Hÿ›[Y[ùò‹ôX]Q[[Y[ùî 	⁄ãÀ›››ÀùÃÀõ‹ôÀÃå‹›ô…À	‹ôX›	 N¬à⁄\ôŸQö[úŸ]]öXù]J	ﬁ	Àò]÷Xò\ïÀÃäN»⁄\ôŸQö[úŸ]]öXù]J	ﬁIÀ⁄\ôŸVJN¬à⁄\ôŸQö[úŸ]]öXù]J	›⁄Y	ÀX]õX^
+ò\ï ò⁄\ôŸTõŸ‹ô\‹ JN»⁄\ôŸQö[úŸ]]öXù]J	⁄ZY⁄	À N¬à⁄\ôŸQö[úŸ]]öXù]J	Ÿö[	À›ô\ò⁄\ô⁄[ô»»	»ŸôôåòN	»à	»ŸçYMçå… N¬àYä›ô\ò⁄\ô⁄[ô ^¬à€€ú›[ŸHHçäÃç
+ìX]ú⁄[äõ›ÀÕÃ
+N¬à⁄\ôŸQö[úŸ]]öXù]J	€‹X⁄]IÀ[ŸKù—ö^Y
+äJN¬àBàÀò\[ô⁄[
+⁄\ôŸQö[
+N¬àBÇà›ôÀò\[ô⁄[
+ N¬àJN¬Çàõÿ][ô’^Àôõ‹ëXX⁄
+èOû¬à€€ú›Hÿ›[Y[ùò‹ôX]Q[[Y[ùî 	⁄ãÀ›››ÀùÃÀõ‹ôÀÃå‹›ô…À	›^	 N¬à€€ú›ö\ŸVHHãòöY»»ãûHH
+ãòYŸKŸãõYôJJçààãûHH
+ãòYŸKŸãõYôJJåçé¬à€€ú›⁄ZŸVHãú⁄ZŸH»
+X]úò[ô€J
+KLçJJçà¬à€€ú›‹X⁄]HHHH
+ãòYŸKŸãõYôJN¬àúŸ]]öXù]J	ﬁ	Àãû
+‹⁄ZŸV
+N»úŸ]]öXù]J	ﬁIÀö\ŸVJN¬àúŸ]]öXù]J	›^X[ò⁄‹âÀ	€ZYI N¬àYäãòöY ^¬àúŸ]]öXù]J	Ÿõ€ùYò[Z[IÀì‹›ÿ[ÿ[úÀ\Ÿ\öYàäN¬àúŸ]]öXù]J	Ÿõ€ù\⁄^ôIÀãú⁄ZŸH»	ÃM…»à	ÃL… N¬àúŸ]]öXù]J	Ÿõ€ù]ŸZY⁄	À	ÕÃ	 N¬àúŸ]]öXù]J	€]\ã\‹X⁄[ô…À	ÃçI N¬àúŸ]]öXù]J	‹›õ⁄ŸIÀ	»ÃL… N¬àúŸ]]öXù]J	‹›õ⁄ŸK]⁄Y	Àãú⁄ZŸH»	Ã…»à	ÃãçI N¬àúŸ]]öXù]J	‹Z[ù[‹ô\âÀ	‹›õ⁄ŸI N¬àH[ŸH¬àúŸ]]öXù]J	Ÿõ€ùYò[Z[IÀ	“ô]úòZ[ú»[€õÀ[€õ‹‹XŸI N¬àúŸ]]öXù]J	Ÿõ€ù\⁄^ôIÀ	ÃLâ N¬àúŸ]]öXù]J	Ÿõ€ù]ŸZY⁄	À	ÕÃ	 N¬àBàúŸ]]öXù]J	Ÿö[	Àãò€€‹äN¬àúŸ]]öXù]J	€‹X⁄]IÀ‹X⁄]Kù—ö^Y
+äJN¬àù^€€ù[ùHãù^¬à›ôÀò\[ô⁄[
+
+N¬àJN¬Çàÿ\›YôôX›Àôõ‹ëXX⁄
+œOû¬à€€ú›HÀòYŸH»ÀõYôN¬à€€ú›ö[ô»Hÿ›[Y[ùò‹ôX]Q[[Y[ùî 	⁄ãÀ›››ÀùÃÀõ‹ôÀÃå‹›ô…À	ÿ⁄\ò€I N¬àö[ôÀúŸ]]öXù]J	ÿﬁ	ÀÀû
+N»ö[ôÀúŸ]]öXù]J	ÿﬁIÀÀûJN¬àö[ôÀúŸ]]öXù]J	‹âÀà
+»
+ååäN¬àö[ôÀúŸ]]öXù]J	Ÿö[	À	€õ€ôI N¬àö[ôÀúŸ]]öXù]J	‹›õ⁄ŸIÀÀò€€‹äN¬àö[ôÀúŸ]]öXù]J	‹›õ⁄ŸK]⁄Y	À	ÃãçI N¬àö[ôÀúŸ]]öXù]J	€‹X⁄]IÀ
+K]
+Kù—ö^Y
+äJN¬à›ôÀò\[ô⁄[
+ö[ô N¬àJN¬ÇàY⁄ö[ô–õ€Àôõ‹ëXX⁄
+èOû¬à€€ú›HãòYŸH»ãõYôN¬à€€ú›HãûãXãûKHHãûLãXãûLN¬à€€ú›ŸY€Y[ù»HN¬à]HH	ÿãû_H	ÿãûL_H¬àõ‹ä]OLN⁄OŸY€Y[ùŒ⁄J  ^¬à€€ú›úòX»HK‹ŸY€Y[ùŒ¬à€€ú›HãûH
+»
+ôúòX»
+»
+X]úò[ô€J
+KLçJJåL¬à€€ú›HHãûLH
+»JôúòX»
+»
+X]úò[ô€J
+KLçJJåL¬à
+œH	‹H	‹_H¬àBà
+œH	ÿãûüH	ÿãûLüX¬à€€ú›õ€Hÿ›[Y[ùò‹ôX]Q[[Y[ùî 	⁄ãÀ›››ÀùÃÀõ‹ôÀÃå‹›ô…À	‹]	 N¬àõ€úŸ]]öXù]J	Ÿ	À
+N¬àõ€úŸ]]öXù]J	Ÿö[	À	€õ€ôI N¬àõ€úŸ]]öXù]J	‹›õ⁄ŸIÀ	»ŸôôåòN	 N¬àõ€úŸ]]öXù]J	‹›õ⁄ŸK]⁄Y	À
+ äK]
+JÃçJKù—ö^Y
+JJN¬àõ€úŸ]]öXù]J	€‹X⁄]IÀ
+K]
+Kù—ö^Y
+äJN¬à›ôÀò\[ô⁄[
+õ€
+N¬à€€ú›õ€€›»Hÿ›[Y[ùò‹ôX]Q[[Y[ùî 	⁄ãÀ›››ÀùÃÀõ‹ôÀÃå‹›ô…À	‹]	 N¬àõ€€›ÀúŸ]]öXù]J	Ÿ	À
+N¬àõ€€›ÀúŸ]]öXù]J	Ÿö[	À	€õ€ôI N¬àõ€€›ÀúŸ]]öXù]J	‹›õ⁄ŸIÀ	»ŸçYMçå… N¬àõ€€›ÀúŸ]]öXù]J	‹›õ⁄ŸK]⁄Y	À
+ äK]
+JKù—ö^Y
+JJN¬àõ€€›ÀúŸ]]öXù]J	€‹X⁄]IÀ
+åÕJäK]
+JKù—ö^Y
+äJN¬à›ôÀò\[ô⁄[
+õ€€› N¬àJN¬Çà⁄ÿ⁄›ÿ]ôTö[ô‹Àôõ‹ëXX⁄
+œOû¬àYäÀòYŸO
+Hô]\õé»À»Z[ôHõ»]ò\€À∞Ë€»\Ÿ[öBà€€ú›HX]õZ[äKÀòYŸH»ÀõYôJN¬à€€ú›òY]\»HÀõX^òY]\»
+à¬à€€ú›‹X⁄]HH
+K]
+H
+àéN¬à€€ú›ö[ô»Hÿ›[Y[ùò‹ôX]Q[[Y[ùî 	⁄ãÀ›››ÀùÃÀõ‹ôÀÃå‹›ô…À	ÿ⁄\ò€I N¬àö[ôÀúŸ]]öXù]J	ÿﬁ	ÀÀû
+N»ö[ôÀúŸ]]öXù]J	ÿﬁIÀÀûJN¬àö[ôÀúŸ]]öXù]J	‹âÀòY]\Àù—ö^Y
+JJN¬àö[ôÀúŸ]]öXù]J	Ÿö[	À	€õ€ôI N»ö[ôÀúŸ]]öXù]J	‹›õ⁄ŸIÀÀò€€‹äN¬àö[ôÀúŸ]]öXù]J	‹›õ⁄ŸK]⁄Y	À
+JäK]
+JÃKçJKù—ö^Y
+JJN¬àö[ôÀúŸ]]öXù]J	‹›õ⁄ŸKY\⁄\úò^IÀ	ŒHI N¬àö[ôÀúŸ]]öXù]J	€‹X⁄]IÀ‹X⁄]Kù—ö^Y
+äJN¬à›ôÀò\[ô⁄[
+ö[ô N¬à€€ú›ö[ô—€›»Hÿ›[Y[ùò‹ôX]Q[[Y[ùî 	⁄ãÀ›››ÀùÃÀõ‹ôÀÃå‹›ô…À	ÿ⁄\ò€I N¬àö[ô—€›ÀúŸ]]öXù]J	ÿﬁ	ÀÀû
+N»ö[ô—€›ÀúŸ]]öXù]J	ÿﬁIÀÀûJN¬àö[ô—€›ÀúŸ]]öXù]J	‹âÀòY]\Àù—ö^Y
+JJN¬àö[ô—€›ÀúŸ]]öXù]J	Ÿö[	À	€õ€ôI N»ö[ô—€›ÀúŸ]]öXù]J	‹›õ⁄ŸIÀÀò€€‹äN¬àö[ô—€›ÀúŸ]]öXù]J	‹›õ⁄ŸK]⁄Y	À
+M
+äK]
+JKù—ö^Y
+JJN¬àö[ô—€›ÀúŸ]]öXù]J	€‹X⁄]IÀ
+‹X⁄]Jåå Kù—ö^Y
+äJN¬à›ôÀò\[ô⁄[
+ö[ô—€› N¬àJN¬Çà⁄ö[ö⁄[ô‘ö[ô‹Àôõ‹ëXX⁄
+œOû¬à€€ú›HX]õZ[äKÀòYŸH»ÀõYôJN¬à€€ú›òY]\»HX]õX^
+ãÀú›\ùòY]\»
+à
+K]
+JN¬à€€ú›‹X⁄]HHåçH
+»
+åççN»À»òZHöXÿ[ô»XZ\»[ù[ú€»€€ôõ‹õYH[ò€€Bà€€ú›ö[ô»Hÿ›[Y[ùò‹ôX]Q[[Y[ùî 	⁄ãÀ›››ÀùÃÀõ‹ôÀÃå‹›ô…À	ÿ⁄\ò€I N¬àö[ôÀúŸ]]öXù]J	ÿﬁ	ÀÀû
+N»ö[ôÀúŸ]]öXù]J	ÿﬁIÀÀûJN¬àö[ôÀúŸ]]öXù]J	‹âÀòY]\Àù—ö^Y
+JJN¬àö[ôÀúŸ]]öXù]J	Ÿö[	À	€õ€ôI N»ö[ôÀúŸ]]öXù]J	‹›õ⁄ŸIÀÀò€€‹äN¬àö[ôÀúŸ]]öXù]J	‹›õ⁄ŸK]⁄Y	À
+äÕ
+ù
+Kù—ö^Y
+JJN¬àö[ôÀúŸ]]öXù]J	‹›õ⁄ŸKY\⁄\úò^IÀ	ŒHI N¬àö[ôÀúŸ]]öXù]J	€‹X⁄]IÀ‹X⁄]Kù—ö^Y
+äJN¬à›ôÀò\[ô⁄[
+ö[ô N¬à€€ú›ö[ô—€›ÃàHÿ›[Y[ùò‹ôX]Q[[Y[ùî 	⁄ãÀ›››ÀùÃÀõ‹ôÀÃå‹›ô…À	ÿ⁄\ò€I N¬àö[ô—€›ÃãúŸ]]öXù]J	ÿﬁ	ÀÀû
+N»ö[ô—€›ÃãúŸ]]öXù]J	ÿﬁIÀÀûJN¬àö[ô—€›ÃãúŸ]]öXù]J	‹âÀòY]\Àù—ö^Y
+JJN¬àö[ô—€›ÃãúŸ]]öXù]J	Ÿö[	À	€õ€ôI N»ö[ô—€›ÃãúŸ]]öXù]J	‹›õ⁄ŸIÀÀò€€‹äN¬àö[ô—€›ÃãúŸ]]öXù]J	‹›õ⁄ŸK]⁄Y	À
+L
+ù
+Kù—ö^Y
+JJN¬àö[ô—€›ÃãúŸ]]öXù]J	€‹X⁄]IÀ
+‹X⁄]Jåå Kù—ö^Y
+äJN¬à›ôÀò\[ô⁄[
+ö[ô—€›ÃäN¬àJN¬àô[ô\ïŸX]\ëYôôX› õ›Ã
+N¬üBÇã àOOOOOOOOOOOHQëRU‘»íT’PRT»H”SPHOOOOOOOOOOOH
+ã¬ãÀ»\Ÿ[öY‹»‹à⁄[XHHYÀõ»ö[H»]XYõÀàô\\òY»òHõÿÿ\àH€[XHõ»QRS»BãÀ»ò][H€€H[XHò[ú⁄pÈË€»›X]ôH
+òYJK[úÿ[ô»ù[Hù]\õ»\ú€€òYŸ[H]YH€€ùõ€H»€[XKÇõ]\›ô[ô\ôYŸX]\àHù[¬õ]ŸX]\ïò[ú⁄][€î›\ùH¬ò€€ú›—PUTó’êSî“US”ó”T»HML¬ôù[ò›[€àô[ô\ïŸX]\ëYôôX› õ›Ã
+^¬àYä›\úô[ùŸX]\àOOH\›ô[ô\ôYŸX]\ä^¬àŸX]\ïò[ú⁄][€î›\ùHõ›Ã¬à\›ô[ô\ôYŸX]\àH›\úô[ùŸX]\é¬àBà€€ú›òYR[àHX]õZ[äK
+õ›ÃHŸX]\ïò[ú⁄][€î›\ù
+H»—PUTó’êSî“US”ó”T N¬à€€ú›»H›\úô[ùŸX]\é¬à€€ú›ûHÿ[UöY]–õﬁûûHHÿ[UöY]–õﬁûKù»Hÿ[UöY]–õﬁùÀöHÿ[UöY]–õﬁö¬ÇàYäœOOI€[\…»] ^¬à€€ú›€›»Hÿ›[Y[ùò‹ôX]Q[[Y[ùî 	⁄ãÀ›››ÀùÃÀõ‹ôÀÃå‹›ô…À	‹ôX›	 N¬à€›ÀúŸ]]öXù]J	ﬁ	Àû
+N»€›ÀúŸ]]öXù]J	ﬁIÀûJN»€›ÀúŸ]]öXù]J	›⁄Y	Àù N»€›ÀúŸ]]öXù]J	⁄ZY⁄	Àö
+N¬à€›ÀúŸ]]öXù]J	Ÿö[	À	‹ôÿòJåÃãNMå I N»€›ÀúŸ]]öXù]J	‹⁄[ù\ãY]ô[ù…À	€õ€ôI N¬à›ôÀò\[ô⁄[
+€› N¬àô]\õé¬àBÇà€€ú›Sï»H¬à⁄]òNâ‹ôÿòJLLMLå IÀô]ò\ÿÿNâ‹ôÿòJMLNåLå
+IÀà[\\›YWÿ\ôZXNâ‹ôÿòJåMLåJIÀô[ù◊Ÿõ‹ùNõù[àN¬àYäSï÷›◊J^¬à€€ú›[ùHÿ›[Y[ùò‹ôX]Q[[Y[ùî 	⁄ãÀ›››ÀùÃÀõ‹ôÀÃå‹›ô…À	‹ôX›	 N¬à[ùúŸ]]öXù]J	ﬁ	Àû
+N»[ùúŸ]]öXù]J	ﬁIÀûJN»[ùúŸ]]öXù]J	›⁄Y	Àù N»[ùúŸ]]öXù]J	⁄ZY⁄	Àö
+N¬à[ùúŸ]]öXù]J	Ÿö[	ÀSï÷›◊JN»[ùúŸ]]öXù]J	€‹X⁄]IÀòYR[ãù—ö^Y
+äJN»[ùúŸ]]öXù]J	‹⁄[ù\ãY]ô[ù…À	€õ€ôI N¬à›ôÀò\[ô⁄[
+[ù
+N¬àBÇàYäœOOIÿ⁄]òI ^¬àõ‹ä]OL⁄ON⁄J  ^¬à€€ú›ŸYYHû
+»
+
+JçLÀç H	Hù N¬à€€ú›HHûH
+»
+
+
+õ›ÃÕà
+»JéL
+H	H
+ö
+Õ
+JHHå
+N¬à€€ú›[ôHHÿ›[Y[ùò‹ôX]Q[[Y[ùî 	⁄ãÀ›››ÀùÃÀõ‹ôÀÃå‹›ô…À	€[ôI N¬à[ôKúŸ]]öXù]J	ﬁIÀŸYYù—ö^Y
+JJN»[ôKúŸ]]öXù]J	ﬁLIÀKù—ö^Y
+JJN¬à[ôKúŸ]]öXù]J	ﬁâÀ
+ŸYYM
+Kù—ö^Y
+JJN»[ôKúŸ]]öXù]J	ﬁLâÀ
+JÃM
+Kù—ö^Y
+JJN¬à[ôKúŸ]]öXù]J	‹›õ⁄ŸIÀ	‹ôÿòJMLNååçMJI N»[ôKúŸ]]öXù]J	‹›õ⁄ŸK]⁄Y	À	ÃKå… N¬à[ôKúŸ]]öXù]J	€‹X⁄]IÀòYR[ãù—ö^Y
+äJN»[ôKúŸ]]öXù]J	‹⁄[ù\ãY]ô[ù…À	€õ€ôI N¬à›ôÀò\[ô⁄[
+[ôJN¬àBàH[ŸHYäœOOI€ô]ò\ÿÿI ^¬àõ‹ä]OL⁄OMN⁄J  ^¬à€€ú›ŸYYHû
+»
+
+JçåKå H	Hù N¬à€€ú›HHûH
+»
+
+
+õ›ÃÃM
+»JçÃ
+H	H
+ö
+ÃÃ
+JHHMJN¬à€€ú›HŸYY
+»X]ú⁄[äõ›ÃÕÃ
+⁄JJåLé¬à€€ú›õZŸHHÿ›[Y[ùò‹ôX]Q[[Y[ùî 	⁄ãÀ›››ÀùÃÀõ‹ôÀÃå‹›ô…À	ÿ⁄\ò€I N¬àõZŸKúŸ]]öXù]J	ÿﬁ	Àù—ö^Y
+JJN»õZŸKúŸ]]öXù]J	ÿﬁIÀKù—ö^Y
+JJN¬àõZŸKúŸ]]öXù]J	‹âÀ
+Kçä IL JåçJKù—ö^Y
+JJN¬àõZŸKúŸ]]öXù]J	Ÿö[	À	‹ôÿòJçMKçMKçMKé
+I N¬àõZŸKúŸ]]öXù]J	€‹X⁄]IÀòYR[ãù—ö^Y
+äJN»õZŸKúŸ]]öXù]J	‹⁄[ù\ãY]ô[ù…À	€õ€ôI N¬à›ôÀò\[ô⁄[
+õZŸJN¬àBàH[ŸHYäœOOI›[\\›YWÿ\ôZXI ^¬àõ‹ä]OL⁄OMN⁄J  ^¬à€€ú›ŸYYHHûH
+»
+
+JåéKå H	Hö
+N¬à€€ú›Hû
+»
+
+
+õ›ÃÕH
+»Jé
+H	H
+ù Õ
+JHHå
+N¬à€€ú›\›Hÿ›[Y[ùò‹ôX]Q[[Y[ùî 	⁄ãÀ›››ÀùÃÀõ‹ôÀÃå‹›ô…À	ÿ⁄\ò€I N¬à\›úŸ]]öXù]J	ÿﬁ	Àù—ö^Y
+JJN»\›úŸ]]öXù]J	ÿﬁIÀ
+ŸYYJ”X]ú⁄[äõ›ÃÕL
+⁄JJçäKù—ö^Y
+JJN¬à\›úŸ]]öXù]J	‹âÀ
+Kåä IL JåçäKù—ö^Y
+JJN¬à\›úŸ]]öXù]J	Ÿö[	À	‹ôÿòJåçNLLçäI N¬à\›úŸ]]öXù]J	€‹X⁄]IÀòYR[ãù—ö^Y
+äJN»\›úŸ]]öXù]J	‹⁄[ù\ãY]ô[ù…À	€õ€ôI N¬à›ôÀò\[ô⁄[
+\›
+N¬àBàH[ŸHYäœOOI›ô[ù◊Ÿõ‹ùI ^¬àõ‹ä]OL⁄O⁄J  ^¬à€€ú›ﬁX€HHåå¬à€€ú›H
+
+õ›Ã
+»Jåé
+H	HﬁX€JH»ﬁX€N¬à€€ú›HHûH
+»
+
+Jç H	Hö
+N¬à€€ú›HûHÃ
+»
+äù Õå
+N¬à€€ú››ôXZ”‹X⁄]HHX]ú⁄[ä
+ìX]îJH
+àòYR[é¬à€€ú››ôXZ»Hÿ›[Y[ùò‹ôX]Q[[Y[ùî 	⁄ãÀ›››ÀùÃÀõ‹ôÀÃå‹›ô…À	‹]	 N¬à›ôXZÀúŸ]]öXù]J	Ÿ	ÀI LN
+Kù—ö^Y
+J_K	ﬁKù—ö^Y
+J_HI NJKù—ö^Y
+J_K	 KM
+Kù—ö^Y
+J_H	ﬁù—ö^Y
+J_K	ﬁKù—ö^Y
+J_X
+N¬à›ôXZÀúŸ]]öXù]J	‹›õ⁄ŸIÀ	‹ôÿòJåååÃççMJI N»›ôXZÀúŸ]]öXù]J	‹›õ⁄ŸK]⁄Y	À	ÃKçâ N»›ôXZÀúŸ]]öXù]J	Ÿö[	À	€õ€ôI N¬à›ôXZÀúŸ]]öXù]J	€‹X⁄]IÀ›ôXZ”‹X⁄]Kù—ö^Y
+äJN»›ôXZÀúŸ]]öXù]J	‹⁄[ù\ãY]ô[ù…À	€õ€ôI N¬à›ôÀò\[ô⁄[
+›ôXZ N¬àBàBüBÇõ]òYîù[õö[ô»Hò[ŸN¬õ]ò[X]X–X›]ôHHò[ŸN¬õ]ò[X]X’[ö]YHù[¬õ]ÿ[UöY]–õﬁHﬁåNåŒçLçåN¬õ]ö[ö\⁄\êX›]ôHHò[ŸN»À»]\ÿHH0ÏŸ⁄XÿHHò][H[ú]X[ù»H⁄[ô[pË]XÿH»€€Hö[ò[õŸBÇãÀ»Ï»€€ú⁄Y\òHô€€Hö[ò[à]X[ô»»Xò]Hô[HH[XH\‹⁄]òK⁄Xö[YYH\‹X⁄X[[H[ô[Y[ù»8†%ãÀ»∞Ë€»H[H]\]YH∞Ë\⁄X€»]X[]Y\ãÇãÀ»∞Ë\ö[‹»YôZ]‹»\‹X⁄XZ\»
+€€Xõ»»òZ[À€‹úô[ùHHõ€òK] H\Xÿ[H[õ»\ÿ[ô»[Hÿöô]¬ãÀ»Ÿ[∞Í\öX€»Ï»òHôY⁄\›ò\àH‹öYŸ[K[Hô^àH[öYYHHô\ôYH8†%\‹€»ô\€€ôHòH[öYYHôX[ãÀ»òH⁄Xÿ\à\»õY‹»H\‹⁄]òHŸ\ù[ö»HòHYÿ\àH€‹àŸ\ùHõ»ô]ò]»»€€Hö[ò[Çôù[ò›[€àô\€€ôTôX[]X⁄Ÿ\ä]X⁄Ÿ\ä^¬àYä]X⁄Ÿ\à	âà]X⁄Ÿ\ãöYOO][ôYö[ôY
+Hô]\õà]X⁄Ÿ\é¬àYäX]X⁄Ÿ\äHô]\õàù[¬àô]\õà[ö]Àôö[ô
+OOùKò[]ôH	âàKò⁄[\YOOX]X⁄Ÿ\ãò⁄[\Y	âàKùX[OOOX]X⁄Ÿ\ãùX[JHù[¬üBôù[ò›[€à\‘\‹⁄]ôS[€Y[ù
+ò]–]X⁄Ÿ\ä^¬à€€ú›]X⁄Ÿ\àHô\€€ôTôX[]X⁄Ÿ\äò]–]X⁄Ÿ\äN¬àYäX]X⁄Ÿ\äHô]\õàò[ŸN¬à€€ú›õ›»H\ôõ‹õX[òŸKõõ› 
+N¬àô]\õàHJà
+]X⁄Ÿ\ãôúô[ûûU[ù[	âàõ›»]X⁄Ÿ\ãôúô[ûûU[ù[
+H]X⁄Ÿ\ãò€€Xõ–X›]ôHà]X⁄Ÿ\ãù[ùX€Qúô[ûûH]X⁄Ÿ\ãö\’[ùX€Hà
+]X⁄Ÿ\ãô⁄‹›[ù[	âàõ›»]X⁄Ÿ\ãô⁄‹›[ù[
+Hà
+]X⁄Ÿ\ãõ›ô\ò⁄\ôŸU[ù[	âàõ›»]X⁄Ÿ\ãõ›ô\ò⁄\ôŸU[ù[
+Hà]X⁄Ÿ\ãùõ€òQ]€ò][ô»à
+]X⁄Ÿ\ãòò\úöY\ï[ù[	âàõ›»]X⁄Ÿ\ãòò\úöY\ï[ù[
+Hà
+]X⁄Ÿ\ãú⁄X‹ûU[[ù[	âàõ›»]X⁄Ÿ\ãú⁄X‹ûU[[ù[
+Hà
+]X⁄Ÿ\ãö[XTõÿ–]	âàõ›»H]X⁄Ÿ\ãö[XTõÿ–]Ã
+Bà
+N¬üBÇãÀ»\‹\òHH⁄[ô[pË]XÿHHô€€Hö[ò[ã\›[»õŸ€»H]Nàö[ö]HôX⁄[ôÀô]ò]»¬ãÀ»\ú€€òYŸ[Hõ»Ÿ[ùõÀËõY\òHò[pË]XÿHô[Kõ\⁄H[\X›ÀHÏ»[ù0Ë€»Xô\òH»ô\›[YÀÇôù[ò›[€àöYŸŸ\ëö[ö\⁄\îŸ\]Y[òŸJ⁄[\ã€ë€ôJ^¬àö[ö\⁄\êX›]ôHHùYN¬àò[X]X–X›]ôHHùYN¬àò[X]X’[ö]YH⁄[\ãöY¬à€€ú››ô\õ^HHÿ›[Y[ùôŸ][[Y[ùûRY
+	Ÿö[ö\⁄\ã[›ô\õ^I N¬à€€ú›‹ùòZ]Hÿ›[Y[ùôŸ][[Y[ùûRY
+	Ÿö[ö\⁄\ã\‹ùòZ]	 N¬à€€ú›ò[YQ[Hÿ›[Y[ùôŸ][[Y[ùûRY
+	Ÿö[ö\⁄\ã[ò[YI N¬à€€ú›õ\⁄Hÿ›[Y[ùôŸ][[Y[ùûRY
+	Ÿö[ö\⁄\ãYõ\⁄	 N¬à‹ùòZ]ú›[KòòX⁄Ÿ‹õ›[ôH⁄[\ãò€€‹é¬à‹ùòZ]ú›[Kò€€‹àH⁄[\ãò€€‹é¬àò[YQ[ù^€€ù[ùH⁄[\ãõò[YN¬à›ô\õ^Kò€\‹”\›òY
+	‹⁄›… N¬àöYŸŸ\îÿ‹ôY[î⁄ZŸJãÃ
+N¬à€€ú›[ŸQõ\⁄H
+⁄ZŸT›ô[ô›⁄ZŸQ\ãöY OOû¬àõ\⁄ò€\‹”\›úô[[›ôJ	‹[ŸIÀ	‹[ŸKXöY… N»õ⁄Yõ\⁄õŸôúŸ]⁄Y»õ\⁄ò€\‹”\›òY
+öYœ…‹[ŸKXöY…Œâ‹[ŸI N¬àöYŸŸ\îÿ‹ôY[î⁄ZŸJ⁄ZŸT›ô[ô›⁄ZŸQ\äN¬àN¬àÀ»Ÿ\]pÍõò⁄XHHõ\⁄\»\»òZ[ÀŸ\›õÿõ‹ÿÏ‹[À‹ô\ÿŸ[ô»]0ÍH»€€Hö[ò[àŸ][Y[›]
+
+
+OOà[ŸQõ\⁄
+ãML
+KL
+N¬àŸ][Y[›]
+
+
+OOà[ŸQõ\⁄
+N
+KLå
+N¬àŸ][Y[›]
+
+
+OOà[ŸQõ\⁄
+Låå
+KMML
+N¬àŸ][Y[›]
+
+
+OOà[ŸQõ\⁄
+åLùYJKåL
+N»À»»õ\⁄‹ò[ôH»€€Hö[ò[àŸ][Y[›]
+
+
+OOû¬à›ô\õ^Kò€\‹”\›úô[[›ôJ	‹⁄›… N¬àö[ö\⁄\êX›]ôHHò[ŸN¬àò[X]X–X›]ôHHò[ŸN¬àò[X]X’[ö]YHù[¬à€ë€ôJ
+N¬àKÕ
+N¬üBÇôù[ò›[€à\]Qò[X]X–⁄X⁄ 
+^¬àYäö[ö\⁄\êX›]ôJHô]\õé»À»H⁄[ô[pË]XÿH»€€Hö[ò[∞ËH€€ùõ€HHËõY\òH€ﬁö[öBàYäXò]PX›]ôJ^¬àYäò[X]X–X›]ôJ^»ò[X]X–X›]ôOYò[ŸN»ò[X]X’[ö]Y[ù[»Bàô]\õé¬àBàYäò[X]X–X›]ôJ^¬à€€ú›HH[ö]Àôö[ô
+OûöYOOYò[X]X’[ö]Y
+N¬à€€ú››[[€ôHHH	âàKò[]ôH	âà[ö]Àôö[\äœOõÀùX[OOO]KùX[H	âàÀò[]ôJKõ[ô›OOLN¬àYä]H]Kò[]ôH\›[[€ôHKö›KõX^àåçJ^¬àò[X]X–X›]ôHHò[ŸN¬àò[X]X’[ö]YHù[¬àBàô]\õé¬àBàõ‹ä€€ú›Ÿà…‹^Y\âÀ	Ÿ[ô[^I◊J^¬à€€ú›[]ôSŸïX[HH[ö]Àôö[\äœOõÀùX[OOO]	âàÀò[]ôJN¬àYä[]ôSŸïX[Kõ[ô›OOLH	âà[]ôSŸïX[VÃKöÿ[]ôSŸïX[VÃKõX^HåMJ^¬àò[X]X–X›]ôHHùYN¬àò[X]X’[ö]YH[]ôSŸïX[VÃKöY¬àúôXZŒ¬àBàBüBÇãÀ»\õﬁ[XKÿYò\›HHËõY\òH[‹»›X€‹»[Hô^àH€‹ù\àHô\[ùHõ»õ€€KÇãÀ»ËõY\òH[∞ËõZXÿNà[Hô^àH[‹›ò\àŸ[\ôHH\ô[òH[ùZ\òH
+»]YHZ^H]Z]»ò^ö[»]X[ô»H]BãÀ»0ËH€€òŸ[ùòYHù[Hÿ[ù K[HŸHZù\›H€ﬁö[öHòH[ú]XYò\à€ôH\»[öYY\»ö]ò\»ôX[Y[ùH\›0Ë€ÀÇôù[ò›[€à€€\]Q[ò[ZX’öY]’\ôŸ]
+
+^¬à€€ú›[]ôU[ö]»H[ö]Àôö[\äOOùKò[]ôJN¬àYä[]ôU[ö]Àõ[ô›OOL
+Hô]\õàù[öY]–õﬁ¬à]Z[ñR[ôö[ö]KZ[ñOR[ôö[ö]KX^KR[ôö[ö]KX^OKR[ôö[ö]N¬à[]ôU[ö]Àôõ‹ëXX⁄
+OOû¬àYäKúûZ[ñ
+HZ[ñ]Kúû»YäKúûõX^
+HX^]Kúû¬àYäKúûOZ[ñJHZ[ñO]KúûN»YäKúûOõX^JHX^O]KúûN¬àJN¬à€€ú›YHMN¬à]HZ[ñ\YHHZ[ñK\Y»H
+X^[Z[ñ
+J‹Y
+åãH
+X^K[Z[ñJJ‹Y
+åé¬à€€ú›Z[î⁄^ôHHåÃ»À»∞Ë€»Z^H\\ù\à[XZ\»]X[ô»€ÿúòHKLà[öYY\»ô[H∞Ïﬁ[X\¬àYäœZ[î⁄^ôJ^»€€ú›ﬁ^
+›ÀÃé»œ[Z[î⁄^ôN»Xﬁ]ÀÃé»BàYäZ[î⁄^ôJ^»€€ú›ﬁO^J⁄Ãé»[Z[î⁄^ôN»OXﬁKZÃé»Bà»HX]õZ[äÀù[öY]–õﬁù N¬àHX]õZ[äù[öY]–õﬁö
+N¬àô]\õàﬁKÀN¬üBÇôù[ò›[€à\]Pÿ[Y\òJò]—
+^¬à]\ôŸ]\ôŸ]K\ôŸ]À\ôŸ]¬àYäò[X]X–X›]ôJ^¬à€€ú›HH[ö]Àôö[ô
+OûöYOOYò[X]X’[ö]Y
+N¬àYäJ^¬à€€ú›õ€€T⁄^ôHHNL¬à\ôŸ]»Hõ€€T⁄^ôN»\ôŸ]Hõ€€T⁄^ôN¬à\ôŸ]HKúûHõ€€T⁄^ôKÃé¬à\ôŸ]HHKúûHHõ€€T⁄^ôKÃé¬àH[ŸH¬à€€ú›H€€\]Q[ò[ZX’öY]’\ôŸ]
+
+N¬à\ôŸ]]û»\ôŸ]O]ûN»\ôŸ]œ]ùŒ»\ôŸ]]ö¬àBàH[ŸH¬à€€ú›H€€\]Q[ò[ZX’öY]’\ôŸ]
+
+N¬à\ôŸ]]û»\ôŸ]O]ûN»\ôŸ]œ]ùŒ»\ôŸ]]ö¬àBà€€ú›X\ŸHHX]õZ[äKò]—
+ååÕJN¬àÿ[UöY]–õﬁû
+œH
+\ôŸ]Xÿ[UöY]–õﬁû
+JôX\ŸN¬àÿ[UöY]–õﬁûH
+œH
+\ôŸ]KXÿ[UöY]–õﬁûJJôX\ŸN¬àÿ[UöY]–õﬁù»
+œH
+\ôŸ]ÀXÿ[UöY]–õﬁù JôX\ŸN¬àÿ[UöY]–õﬁö
+œH
+\ôŸ]Xÿ[UöY]–õﬁö
+JôX\ŸN¬üBÇôù[ò›[€à›\ùò]S€‹YìôYYY
+
+^¬àYäòYîù[õö[ô Hô]\õé¬àòYîù[õö[ô»HùYN¬à\›»Hù[»úò[YP€›[ùL»ú’[Y\èL¬àô\]Y\›[ö[X][€ëúò[YJ€‹
+N¬üBôù[ò›[€à€‹
+ ^¬àYä\›œOO[ù[
+H\›»HŒ¬à€€ú›ò]—H»H\›Œ¬à\›»HŒ¬àúò[YP€›[ù
+ Œ»ú’[Y\à
+œHò]—¬àYäú’[Y\àèHL
+^»ÿ›[Y[ùôŸ][[Y[ùûRY
+	Ÿú… Kù^€€ù[ùH	—îŒà	 Ÿúò[YP€›[ù»úò[YP€›[ùL»ú’[Y\èL»Bà\]Qò[X]X–⁄X⁄ 
+N¬à\]Pÿ[Y\òJò]—
+N¬à€€ú›Hò[X]X–X›]ôH»ò]—
+åçàò]—»À»ËõY\òH[ùH\ÿ‹ô]Hõ»[€Y[ù»ò[pË]X€¬àYäò]PX›]ôJ^¬à\]Pò]SŸ⁄X 
+N¬àYäúòX›\ôT›]OOOI⁄YI»	âàœèYúòX›\ôSô^]
+HöYŸŸ\ëúòX›\ôJ N¬à[ŸHYäúòX›\ôT›]OOOIÿX›]ôI»	âàœèYúòX›\ôQ[ô]
+HX[úòX›\ôJ N¬àBà\]P[ö[X][€ú 
+N¬à\]Q[Xô\ë]ô[ù 
+N¬à\]P€€Xõ‘›]J
+N¬àô[ô\ëúò[YJ
+N¬à⁄[ô›Àê\ô[òL—Àôúò[YJ[ö] N¬àô\]Y\›[ö[X][€ëúò[YJ€‹
+N¬üB

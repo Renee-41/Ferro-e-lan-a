@@ -12,15 +12,12 @@
 
 #arena-3d-layer{
   position:absolute;
-  left:0;
-  top:0;
-  width:0;
-  height:0;
+  inset:0;
   z-index:0;
   pointer-events:none;
   overflow:hidden;
   opacity:0;
-  background:#0b0e10;
+  background:transparent;
   transition:opacity .18s ease;
 }
 
