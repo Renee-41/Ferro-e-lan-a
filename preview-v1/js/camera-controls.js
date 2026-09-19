@@ -1,7 +1,8 @@
 /* Ferro & Lança — câmera manual sobre a câmera dinâmica existente.
    Scroll do mouse = zoom, pinça = zoom, duplo clique = reset.
+   Botão de câmera fixa trava a visão geral e bloqueia tentativas de zoom.
    Câmera livre durante combate normal; cinematografia fica restrita a finishers especiais.
-   preview-build: camera-free-combat-v1 */
+   preview-build: camera-free-combat-v2 */
 (function(){
   const arena = document.getElementById('arena');
   if(!arena) return;
@@ -15,31 +16,73 @@
   let indicatorTimer = null;
   let pinchStartDistance = 0;
   let pinchStartZoom = 1;
+  let cameraLocked = false;
+  let zoomBeforeLock = 1;
 
   const wrap = arena.closest('.arena-wrap');
   let indicator = null;
+  let lockBtn = null;
   if(wrap){
     indicator = document.createElement('div');
     indicator.id = 'camera-zoom-indicator';
     indicator.textContent = 'Zoom 100% · roda / pinça';
     wrap.appendChild(indicator);
+
+    let tools=document.getElementById('qa-battle-tools');
+    if(!tools){ tools=document.createElement('div'); tools.id='qa-battle-tools'; wrap.appendChild(tools); }
+    lockBtn=document.createElement('button');
+    lockBtn.id='camera-lock-btn';
+    lockBtn.type='button';
+    lockBtn.textContent='📷';
+    lockBtn.setAttribute('aria-label','Travar câmera em visão geral');
+    lockBtn.title='Travar câmera em visão geral';
+    tools.appendChild(lockBtn);
   }
 
   function clamp(v,min,max){ return Math.max(min,Math.min(max,v)); }
 
-  function showIndicator(){
+  function showIndicator(message){
     if(!indicator) return;
     const pct = Math.round(100 / manualZoomTarget);
-    indicator.textContent = `Zoom ${pct}% · duplo clique reseta`;
+    indicator.textContent = message || `Zoom ${pct}% · duplo clique reseta`;
     indicator.classList.add('active');
     clearTimeout(indicatorTimer);
-    indicatorTimer = setTimeout(()=>indicator.classList.remove('active'), 1100);
+    indicatorTimer = setTimeout(()=>indicator.classList.remove('active'), 1400);
   }
 
   function setZoomFactor(next){
+    if(cameraLocked){ showIndicator('📷 Câmera travada · visão geral'); return; }
     manualZoomTarget = clamp(next, MIN_ZOOM_FACTOR, MAX_ZOOM_FACTOR);
     showIndicator();
   }
+
+  function syncLockButton(){
+    if(!lockBtn) return;
+    lockBtn.classList.toggle('on',cameraLocked);
+    lockBtn.setAttribute('aria-pressed',cameraLocked?'true':'false');
+    lockBtn.title=cameraLocked?'Câmera travada — clique para liberar':'Travar câmera em visão geral';
+  }
+
+  function setCameraLocked(next){
+    const on=!!next;
+    if(on===cameraLocked) return;
+    cameraLocked=on;
+    if(cameraLocked){
+      zoomBeforeLock=manualZoomTarget;
+      manualZoom=manualZoomTarget=MAX_ZOOM_FACTOR;
+      try{
+        camViewBox.x=fullViewBox.x; camViewBox.y=fullViewBox.y;
+        camViewBox.w=fullViewBox.w; camViewBox.h=fullViewBox.h;
+      }catch(_){ }
+      showIndicator('📷 Câmera travada · visão geral');
+    }else{
+      manualZoom=manualZoomTarget=clamp(zoomBeforeLock,MIN_ZOOM_FACTOR,MAX_ZOOM_FACTOR);
+      showIndicator('📷 Câmera liberada');
+    }
+    syncLockButton();
+  }
+  if(lockBtn) lockBtn.addEventListener('click',()=>setCameraLocked(!cameraLocked));
+  syncLockButton();
 
   function distanceBetweenTouches(touches){
     const a = touches[0], b = touches[1];
@@ -48,12 +91,14 @@
 
   arena.addEventListener('wheel', (ev)=>{
     ev.preventDefault();
+    if(cameraLocked){ showIndicator('📷 Câmera travada · visão geral'); return; }
     const sensitivity = ev.deltaMode===1 ? 0.035 : 0.00135;
     const factor = Math.exp(ev.deltaY * sensitivity);
     setZoomFactor(manualZoomTarget * factor);
   }, {passive:false});
 
   arena.addEventListener('touchstart', (ev)=>{
+    if(cameraLocked) return;
     if(ev.touches.length===2){
       pinchStartDistance = distanceBetweenTouches(ev.touches);
       pinchStartZoom = manualZoomTarget;
@@ -61,6 +106,7 @@
   }, {passive:true});
 
   arena.addEventListener('touchmove', (ev)=>{
+    if(cameraLocked){ if(ev.touches.length===2) ev.preventDefault(); return; }
     if(ev.touches.length!==2 || !pinchStartDistance) return;
     ev.preventDefault();
     const currentDistance = distanceBetweenTouches(ev.touches);
@@ -74,6 +120,7 @@
 
   arena.addEventListener('dblclick', (ev)=>{
     ev.preventDefault();
+    if(cameraLocked){ showIndicator('📷 Câmera travada · visão geral'); return; }
     setZoomFactor(1);
   });
 
@@ -91,6 +138,14 @@
   }
 
   updateCamera = function(rawDt){
+    if(cameraLocked){
+      try{
+        camViewBox.x=fullViewBox.x; camViewBox.y=fullViewBox.y;
+        camViewBox.w=fullViewBox.w; camViewBox.h=fullViewBox.h;
+      }catch(_){ }
+      return;
+    }
+
     let targetX, targetY, targetW, targetH;
 
     if(dramaticActive){
@@ -122,6 +177,12 @@
     camViewBox.y += (safe.y-camViewBox.y)*ease;
     camViewBox.w += (safe.w-camViewBox.w)*ease;
     camViewBox.h += (safe.h-camViewBox.h)*ease;
+  };
+
+  window.FerroCameraLock={
+    isLocked:()=>cameraLocked,
+    setLocked:setCameraLocked,
+    toggle:()=>setCameraLocked(!cameraLocked)
   };
 })();
 
@@ -156,7 +217,7 @@
     ['arena-scene','js/arena-scene.js?v=arena-scene-1'],
     ['combat-feedback','js/combat-feedback.js?v=combat-polish-2'],
     ['combat-polish','js/combat-polish.js?v=combat-polish-1'],
-    ['biome-mechanics','js/biome-mechanics.js?v=biome-mechanics-1'],
+    ['biome-mechanics','js/biome-mechanics.js?v=biome-mechanics-2'],
     ['impact-surprise','js/impact-surprise.js?v=impact-surprise-1'],
     ['signature-vfx','js/signature-vfx.js?v=signature-vfx-1'],
     ['time-controls','js/time-controls.js?v=time-controls-1'],
@@ -164,6 +225,7 @@
     ['shooter-items','js/shooter-items.js?v=shooter-items-1'],
     ['rupture-endgame','js/rupture-endgame.js?v=rupture-endgame-1'],
     ['cinematic-combat','js/cinematic-combat.js?v=cinematic-combat-2'],
+    ['gameplay-polish','js/gameplay-polish.js?v=gameplay-polish-2'],
     ['mobile-ui','js/mobile-ui.js?v=mobile-ux-1']
   ];
   modules.forEach(([key,src])=>{

@@ -1,0 +1,181 @@
+/* Ferro & Lança — Gameplay Polish v1: classes oficiais, progressão e módulos de QA. */
+(function(){
+  if(window.__ferroGameplayPolishV1) return;
+  window.__ferroGameplayPolishV1 = true;
+
+  const OFFICIAL_CLASS = {
+    ferrha:'tanque', voss:'atirador', nyx:'atirador', shava:'lutador',
+    kael:'lutador', terrus:'tanque', jedegar:'suporte', pyra:'atirador',
+    glacia:'suporte', zeph:'atirador', ima:'lutador', frosk:'lutador',
+    gelida:'lutador', raio:'lutador', shecry:'tanque', nerith:'lutador',
+    voltra:'atirador'
+  };
+  const SUGGESTION_CATEGORY = {
+    tanque:'tank', lutador:'corpo a corpo', atirador:'longa distância', suporte:'suporte'
+  };
+
+  try{
+    if(typeof CHAMPION_CATALOG!=='undefined'){
+      Object.entries(OFFICIAL_CLASS).forEach(([id,cls])=>{
+        if(CHAMPION_CATALOG[id]) CHAMPION_CATALOG[id].classType=cls;
+      });
+    }
+    if(typeof ROLE_CATEGORY!=='undefined'){
+      Object.entries(OFFICIAL_CLASS).forEach(([id,cls])=>{
+        ROLE_CATEGORY[id]=SUGGESTION_CATEGORY[cls];
+      });
+    }
+  }catch(_){ }
+
+  window.FerroClasses = {
+    byChampion:Object.assign({},OFFICIAL_CLASS),
+    get:(id)=>OFFICIAL_CLASS[id]||null,
+    beats:{atirador:'tanque',tanque:'lutador',lutador:'atirador'}
+  };
+
+  const style=document.createElement('style');
+  style.textContent=`
+    .polish-class-tag{font-weight:800;letter-spacing:.07em;border:1px solid rgba(255,255,255,.12)}
+    .polish-class-tag[data-class="tanque"]{background:rgba(120,145,165,.16);color:#c7d3dd}
+    .polish-class-tag[data-class="lutador"]{background:rgba(205,95,62,.14);color:#e4a088}
+    .polish-class-tag[data-class="atirador"]{background:rgba(91,143,184,.14);color:#a9c8df}
+    .polish-class-tag[data-class="suporte"]{background:rgba(105,164,103,.14);color:#a9d0a7}
+  `;
+  document.head.appendChild(style);
+
+  function championIdFromCard(card){
+    if(!card || typeof CHAMPION_CATALOG==='undefined') return null;
+    const name=(card.querySelector('.champ-name')?.textContent||'').trim();
+    const pair=Object.entries(CHAMPION_CATALOG).find(([,def])=>def && def.name===name);
+    return pair ? pair[0] : null;
+  }
+
+  function decorateClassCards(root){
+    if(!root) return;
+    root.querySelectorAll('.champ-card').forEach(card=>{
+      if(card.querySelector('.polish-class-tag')) return;
+      const id=championIdFromCard(card);
+      const cls=id && OFFICIAL_CLASS[id];
+      if(!cls) return;
+      const chip=document.createElement('span');
+      chip.className='champ-tag polish-class-tag';
+      chip.dataset.class=cls;
+      chip.textContent=`CLASSE · ${cls.toUpperCase()}`;
+      const tags=card.querySelectorAll('.champ-tag');
+      if(tags.length) tags[tags.length-1].insertAdjacentElement('afterend',chip);
+      else card.querySelector('.champ-name')?.insertAdjacentElement('afterend',chip);
+    });
+  }
+
+  function copiesNeededForNextStar(stars){
+    const s=Math.max(1,Number(stars)||1);
+    if(s<=1) return 3;
+    if(s===2) return 5;
+    return 7;
+  }
+  window.FerroCopiesNeededForNextStar=copiesNeededForNextStar;
+
+  function patchShopProgression(){
+    const root=document.getElementById('shop-cards');
+    if(!root || typeof owned==='undefined') return;
+    root.querySelectorAll('button[data-buy]').forEach(btn=>{
+      const id=btn.dataset.buy;
+      const prog=owned[id];
+      if(!prog || prog.stars>=MAX_STARS) return;
+      const needed=copiesNeededForNextStar(prog.stars);
+      const cost=Math.round(CHAMPION_CATALOG[id].cost*0.5);
+      btn.dataset.polishCopy='1';
+      btn.textContent=`Comprar cópia — ${cost} 🪙`;
+      btn.disabled=coins<cost;
+      const card=btn.closest('.champ-card');
+      const line=card && [...card.querySelectorAll('.champ-stats')].find(el=>el.textContent.includes('Cópias pra evoluir'));
+      if(line) line.textContent=`Cópias pra evoluir: ${prog.copies}/${needed}`;
+    });
+    decorateClassCards(root);
+  }
+
+  document.addEventListener('click',ev=>{
+    const btn=ev.target && ev.target.closest ? ev.target.closest('button[data-polish-copy="1"]') : null;
+    if(!btn) return;
+    ev.preventDefault();
+    ev.stopImmediatePropagation();
+    try{
+      const id=btn.dataset.buy;
+      const prog=owned[id];
+      if(!prog || prog.stars>=MAX_STARS) return;
+      const cost=Math.round(CHAMPION_CATALOG[id].cost*0.5);
+      if(coins<cost) return;
+
+      coins-=cost;
+      if(typeof sfxCoin==='function') sfxCoin();
+      prog.copies=(prog.copies||0)+1;
+      const needed=copiesNeededForNextStar(prog.stars);
+
+      if(prog.copies>=needed && prog.stars<MAX_STARS){
+        prog.stars++;
+        prog.copies=0;
+        if(typeof sfxLevelUp==='function') sfxLevelUp();
+        if(typeof log==='function') log(`${CHAMPION_CATALOG[id].name} fundiu e virou ${starIcons(prog.stars)}!`, 'sys');
+        if(prog.stars>=MAX_STARS && typeof unlockAchievement==='function') unlockAchievement('four_star');
+      }
+
+      if(typeof updateCoinBadge==='function') updateCoinBadge();
+      if(typeof renderShop==='function') renderShop();
+      const roster=document.getElementById('screen-roster');
+      if(roster && roster.classList.contains('active') && typeof renderRoster==='function') renderRoster();
+    }catch(_){ }
+  },true);
+
+  try{
+    if(typeof renderShop==='function'){
+      const base=renderShop;
+      renderShop=function(){
+        const out=base.apply(this,arguments);
+        patchShopProgression();
+        return out;
+      };
+    }
+    if(typeof renderRoster==='function'){
+      const base=renderRoster;
+      renderRoster=function(){
+        const out=base.apply(this,arguments);
+        decorateClassCards(document.getElementById('roster-cards'));
+        return out;
+      };
+    }
+    if(typeof renderRecommended==='function'){
+      const base=renderRecommended;
+      renderRecommended=function(){
+        const out=base.apply(this,arguments);
+        decorateClassCards(document.getElementById('recommended-cards'));
+        return out;
+      };
+    }
+  }catch(_){ }
+
+  try{
+    decorateClassCards(document.getElementById('shop-cards'));
+    decorateClassCards(document.getElementById('roster-cards'));
+    decorateClassCards(document.getElementById('recommended-cards'));
+  }catch(_){ }
+
+  [
+    ['gameplay-reworks','js/gameplay-reworks.js?v=gameplay-reworks-1'],
+    ['support-systems','js/support-systems.js?v=support-systems-1'],
+    ['qa-visual-alignment','js/qa-visual-alignment.js?v=qa-visual-alignment-1'],
+    ['starter-ui-polish','js/starter-ui-polish.js?v=starter-ui-polish-1'],
+    ['qa-ux','js/qa-ux.js?v=qa-ux-1'],
+    ['qa-run-flow','js/qa-run-flow.js?v=qa-run-flow-1'],
+    ['character-interactions','js/character-interactions.js?v=character-interactions-1'],
+    ['ui-control-placement','js/ui-control-placement.js?v=ui-control-placement-1'],
+    ['qa-patchnotes','js/qa-patchnotes.js?v=qa-patchnotes-3'],
+    ['cinematic-slow-patch','js/cinematic-slow-patch.js?v=cinematic-slow-1']
+  ].forEach(([key,src])=>{
+    if(document.querySelector(`script[data-ferro-module="${key}"]`)) return;
+    const s=document.createElement('script');
+    s.src=src;
+    s.async=false;
+    s.dataset.ferroModule=key;
+    (document.head||document.documentElement).appendChild(s);
+  });
+})();

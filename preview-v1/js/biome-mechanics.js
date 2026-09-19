@@ -30,8 +30,8 @@
   });
   wrap.appendChild(chip);
 
-  let nextGreenTick=0;
-  let nextCorruptTick=0;
+  let greenElapsed=0;
+  let corruptElapsed=0;
   let lastBiome=null;
   let lastDraw=0;
 
@@ -73,9 +73,10 @@
     }else chip.style.display='none';
   }
 
-  function runGreen(now){
-    if(now<nextGreenTick) return;
-    nextGreenTick=now+5000;
+  function runGreen(dt){
+    greenElapsed+=Math.max(0,Number(dt)||0);
+    if(greenElapsed<5000) return;
+    greenElapsed%=5000;
     currentUnits().forEach(u=>{
       if(u.hp>=u.maxhp || isBlockedForBiome(u)) return;
       const heal=Math.max(1,Math.round(u.maxhp*.015));
@@ -85,9 +86,10 @@
     });
   }
 
-  function runCorrupted(now){
-    if(now<nextCorruptTick) return;
-    nextCorruptTick=now+3500;
+  function runCorrupted(dt){
+    corruptElapsed+=Math.max(0,Number(dt)||0);
+    if(corruptElapsed<3500) return;
+    corruptElapsed%=3500;
     currentUnits().forEach(u=>{
       if(!unstableHex(u) || isBlockedForBiome(u)) return;
       const dmg=Math.max(2,Math.round(u.maxhp*.025));
@@ -102,21 +104,21 @@
     });
   }
 
-  function runMechanics(){
+  function runMechanics(dt){
     let active=false;
     try{ active=!!battleActive; }catch(_){ active=false; }
     if(!active) return;
     try{ if(finisherActive) return; }catch(_){ /* noop */ }
-    const now=performance.now();
     const b=biome();
     if(b!==lastBiome){
       lastBiome=b;
-      nextGreenTick=now+1800;
-      nextCorruptTick=now+1800;
+      // Mantém o primeiro pulso ~1,8s depois da entrada no bioma, mas agora em tempo de batalha.
+      greenElapsed=3200;
+      corruptElapsed=1700;
       updateChip();
     }
-    if(b==='grama') runGreen(now);
-    else if(b==='rachadura') runCorrupted(now);
+    if(b==='grama') runGreen(dt);
+    else if(b==='rachadura') runCorrupted(dt);
   }
 
   try{
@@ -124,7 +126,7 @@
       const originalUpdateBattleLogic=updateBattleLogic;
       updateBattleLogic=function(dt){
         const result=originalUpdateBattleLogic(dt);
-        runMechanics();
+        runMechanics(dt);
         return result;
       };
     }
