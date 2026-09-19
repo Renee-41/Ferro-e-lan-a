@@ -10,6 +10,32 @@
     linear-gradient(180deg,#101316,#090b0d);
 }
 
+#arena-3d-layer{
+  position:absolute;
+  left:0;
+  top:0;
+  width:0;
+  height:0;
+  z-index:0;
+  pointer-events:none;
+  overflow:hidden;
+  opacity:0;
+  background:#0b0e10;
+  transition:opacity .18s ease;
+}
+
+#arena-3d-layer canvas{
+  display:block;
+  width:100%;
+  height:100%;
+  pointer-events:none;
+}
+
+.arena-3d-ready #arena-3d-layer{opacity:1;}
+.arena-3d-ready #arena{background:transparent;}
+.arena-3d-ready #arena polygon[fill="rgba(28,58,34,0.55)"],
+.arena-3d-ready #arena polygon[fill="rgba(58,32,74,0.55)"]{opacity:.13;}
+
 #arena{
   position:relative;
   z-index:1;

@@ -153,6 +153,7 @@
   }
 
   const modules = [
+    ['arena-scene','js/arena-scene.js?v=arena-scene-1'],
     ['combat-feedback','js/combat-feedback.js?v=combat-polish-2'],
     ['combat-polish','js/combat-polish.js?v=combat-polish-1'],
     ['biome-mechanics','js/biome-mechanics.js?v=biome-mechanics-1'],
