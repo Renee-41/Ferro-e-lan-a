@@ -40,7 +40,10 @@ const server=http.createServer((request,response)=>{
         document.getElementById('intro-preshow').style.display='none';
         document.getElementById('intro-screen').style.display='none';
       });
-      await page.waitForFunction(()=>window.FerroArena3D&&window.FerroArena3D.debug().arena==='normal'&&window.FerroArena3D.debug().canvas?.width>0,null,{timeout:60000});
+      await page.waitForFunction(()=>{
+        const debug=window.FerroArena3D&&window.FerroArena3D.debug();
+        return debug&&debug.arena==='normal'&&debug.projectionValid&&debug.canvas?.width>300&&debug.canvas?.height>150&&debug.fps>0&&debug.lastFrameAt>0;
+      },null,{timeout:60000});
 
       const normal=await page.evaluate(()=>({
         debug:window.FerroArena3D.debug(),
@@ -51,6 +54,13 @@ const server=http.createServer((request,response)=>{
       }));
       assert.equal(normal.debug.rendererActive,true);
       assert.equal(normal.debug.visible,true);
+      assert.equal(normal.debug.fallback2D,false);
+      assert.equal(normal.debug.projectionValid,true);
+      assert(normal.debug.arenaRect.width>1&&normal.debug.arenaRect.height>1);
+      assert(normal.debug.viewBox.width>0&&normal.debug.viewBox.height>0);
+      assert(normal.debug.canvas.width>300&&normal.debug.canvas.height>150);
+      assert(normal.debug.fps>0&&normal.debug.lastFrameAt>0);
+      assert.notDeepEqual(normal.debug.camera,{left:-10,right:10,top:10,bottom:-10});
       assert.equal(normal.layerPointer,'none');
       assert.equal(normal.canvasPointer,'none');
       assert(Number(normal.layerZ)<Number(normal.svgZ));
@@ -59,7 +69,19 @@ const server=http.createServer((request,response)=>{
       await page.waitForFunction(()=>window.FerroArena3D.debug().arena==='corrupted'&&!window.FerroArena3D.debug().pending,null,{timeout:60000});
       const corrupted=await page.evaluate(()=>window.FerroArena3D.debug());
       assert.equal(corrupted.visible,true);
+      assert.equal(corrupted.projectionValid,true);
       assert(corrupted.cached.includes('normal')&&corrupted.cached.includes('corrupted'));
+
+      const zoom=await page.evaluate(()=>{
+        const before=window.FerroArena3D.debug();
+        const vb=document.getElementById('arena').viewBox.baseVal;
+        document.getElementById('arena').setAttribute('viewBox',`${vb.x+25} ${vb.y+23} ${vb.width*.8} ${vb.height*.8}`);
+        return before;
+      });
+      await page.waitForFunction(before=>{
+        const after=window.FerroArena3D.debug();
+        return after.projectionValid&&after.viewBox.width<before.viewBox.width&&after.camera.right-after.camera.left<before.camera.right-before.camera.left;
+      },zoom);
 
       await page.evaluate(()=>{RADIUS=8;});
       await page.waitForFunction(()=>window.FerroArena3D.debug().fallback2D===true);

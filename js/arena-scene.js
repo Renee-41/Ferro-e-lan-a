@@ -48,7 +48,15 @@
   let fps=0;
   let fpsFrames=0;
   let fpsWindowStart=performance.now();
+  let resizeObserver=null;
+  let projectionValid=false;
+  let lastArenaRect=null;
+  let lastViewBox=null;
+  let lastProjectionWarningAt=0;
   const cache=new Map();
+  const SVG_CENTER_X=250;
+  const SVG_CENTER_Y=230;
+  const SVG_UNITS_PER_WORLD_UNIT=30;
 
   function boardIsCompatible(){
     try{return typeof RADIUS==='undefined'||RADIUS===4;}
@@ -131,9 +139,28 @@
     };
   }
 
+  function readViewBox(){
+    const baseVal=arena&&arena.viewBox&&arena.viewBox.baseVal;
+    if(baseVal&&[baseVal.x,baseVal.y,baseVal.width,baseVal.height].every(Number.isFinite)&&baseVal.width>0&&baseVal.height>0){
+      return {x:baseVal.x,y:baseVal.y,width:baseVal.width,height:baseVal.height};
+    }
+    const values=((arena&&arena.getAttribute('viewBox'))||'').trim().split(/[\s,]+/).map(Number);
+    if(values.length===4&&values.every(Number.isFinite)&&values[2]>0&&values[3]>0){
+      return {x:values[0],y:values[1],width:values[2],height:values[3]};
+    }
+    return null;
+  }
+
   function syncProjection(){
-    if(!renderer||!camera||!arena||!layer) return false;
+    projectionValid=false;
+    if(!renderer||!camera||!arena||!wrap||!layer) return false;
     const box=arenaBox();
+    lastArenaRect={
+      width:box.screen.width,
+      height:box.screen.height,
+      left:box.screen.left,
+      top:box.screen.top
+    };
     const width=Math.max(0,Math.round(box.width));
     const height=Math.max(0,Math.round(box.height));
     if(width<2||height<2) return false;
@@ -149,16 +176,29 @@
       renderer.setSize(width,height,false);
     }
 
-    const matrix=arena.getScreenCTM();
-    if(!matrix||Math.abs(matrix.a)<.0001||Math.abs(matrix.d)<.0001) return false;
-    const x=(box.screen.left-matrix.e)/matrix.a;
-    const y=(box.screen.top-matrix.f)/matrix.d;
-    camera.left=(x-250)/30;
-    camera.right=(x+box.width/matrix.a-250)/30;
-    camera.top=-(y-230)/30;
-    camera.bottom=-(y+box.height/matrix.d-230)/30;
+    const vb=readViewBox();
+    lastViewBox=vb;
+    if(!vb) return false;
+    camera.left=(vb.x-SVG_CENTER_X)/SVG_UNITS_PER_WORLD_UNIT;
+    camera.right=(vb.x+vb.width-SVG_CENTER_X)/SVG_UNITS_PER_WORLD_UNIT;
+    camera.top=-(vb.y-SVG_CENTER_Y)/SVG_UNITS_PER_WORLD_UNIT;
+    camera.bottom=-(vb.y+vb.height-SVG_CENTER_Y)/SVG_UNITS_PER_WORLD_UNIT;
     camera.updateProjectionMatrix();
+    projectionValid=true;
     return true;
+  }
+
+  function renderImmediately(){
+    try{
+      if(renderer&&scene&&camera&&syncProjection()){
+        renderer.render(scene,camera);
+        lastFrameAt=performance.now();
+        return true;
+      }
+    }catch(error){
+      console.warn('Falha temporária ao projetar a arena 3D; uma nova tentativa será feita.',error);
+    }
+    return false;
   }
 
   function desiredBiome(){
@@ -190,6 +230,7 @@
       pendingType=null;
       if(renderer.domElement) renderer.domElement.style.display='block';
       setReadyState(true);
+      renderImmediately();
       return true;
     }catch(error){
       fallback(error);
@@ -206,14 +247,23 @@
 
     const wanted=desiredBiome();
     if(wanted!==currentType&&wanted!==pendingType) setArena(wanted);
-    if(!currentType||!syncProjection()) return;
-    renderer.render(scene,camera);
-    lastFrameAt=now;
-    fpsFrames++;
-    if(now-fpsWindowStart>=500){
-      fps=Math.round(fpsFrames*1000/(now-fpsWindowStart));
-      fpsFrames=0;
-      fpsWindowStart=now;
+    if(!currentType) return;
+    try{
+      if(syncProjection()){
+        renderer.render(scene,camera);
+        lastFrameAt=now;
+        fpsFrames++;
+        if(now-fpsWindowStart>=500){
+          fps=Math.round(fpsFrames*1000/(now-fpsWindowStart));
+          fpsFrames=0;
+          fpsWindowStart=now;
+        }
+      }
+    }catch(error){
+      if(now-lastProjectionWarningAt>2000){
+        lastProjectionWarningAt=now;
+        console.warn('Falha temporária ao projetar a arena 3D; o render loop continuará tentando.',error);
+      }
     }
   }
 
@@ -255,6 +305,12 @@
       camera.lookAt(0,0,0);
       camera.updateMatrixWorld();
 
+      if('ResizeObserver' in window){
+        resizeObserver=new ResizeObserver(()=>resize());
+        resizeObserver.observe(arena);
+        if(wrap!==arena) resizeObserver.observe(wrap);
+      }
+
       await setArena(desiredBiome());
       if(!raf) raf=requestAnimationFrame(frame);
       const preload=()=>loadArena(currentType==='normal'?'corrupted':'normal').catch(error=>{
@@ -282,6 +338,7 @@
     disposed=true;
     switchToken++;
     if(raf) cancelAnimationFrame(raf);
+    if(resizeObserver) resizeObserver.disconnect();
     cache.forEach(value=>Promise.resolve(value).then(entry=>disposeObject(entry.root)).catch(()=>{}));
     cache.clear();
     if(renderer){renderer.dispose();if(renderer.forceContextLoss) renderer.forceContextLoss();}
@@ -296,6 +353,12 @@
     setVisible,
     dispose,
     debug(){
+      let arenaRect=lastArenaRect;
+      try{
+        const rect=arena&&arena.getBoundingClientRect();
+        if(rect) arenaRect={width:rect.width,height:rect.height,left:rect.left,top:rect.top};
+      }catch(_){/* keep last measured rect */}
+      const viewBox=readViewBox()||lastViewBox;
       return {
         arena:currentType,
         pending:pendingType,
@@ -305,6 +368,9 @@
         fallbackReason:failed?'load-or-webgl-error':(!boardIsCompatible()?'expanded-grid-has-no-matching-3d-asset':null),
         canvas:renderer?{width:renderer.domElement.width,height:renderer.domElement.height}:null,
         camera:camera?{left:camera.left,right:camera.right,top:camera.top,bottom:camera.bottom}:null,
+        arenaRect,
+        viewBox,
+        projectionValid,
         cached:[...cache.keys()],
         fps,
         lastFrameAt
