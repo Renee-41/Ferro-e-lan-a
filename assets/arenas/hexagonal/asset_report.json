@@ -1,0 +1,17 @@
+{
+  "tile_count": 61,
+  "triangles_per_module": 70,
+  "board_triangles": 6718,
+  "full_scene_triangles": 8734,
+  "unique_tile_meshes": 4,
+  "mesh_objects_full_scene": 64,
+  "atlas_size": 2048,
+  "materials_full_scene": 9,
+  "height_range_m": [
+    0.26999999999999996,
+    0.33499999999999996
+  ],
+  "normal_map": "Neutral tangent space; all bevels and relief are geometry. No high-poly bake.",
+  "textures": "Original procedural painted-style colour atlas; no photographic textures.",
+  "runtime_fog": "Use native engine fog; preview fog is excluded from GLB."
+}
